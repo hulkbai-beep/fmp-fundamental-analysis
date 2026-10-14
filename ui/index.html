@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FMP 基本面分析</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #dde2e8;
+  --accent: #2563eb; --pos: #15803d; --neg: #b91c1c; --warn-bg: #fff7e6; --warn-text: #8a5a00;
+  --row: #f1f4f8;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1216; --card: #181c22; --text: #e6e9ee; --muted: #98a2b0; --border: #2a313a;
+    --accent: #6ea0ff; --pos: #4ade80; --neg: #f87171; --warn-bg: #2b2210; --warn-text: #f5c56b; --row: #1f252d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 14px; }
+form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: var(--card);
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
+input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px; min-width: 0; }
+#symbol { width: 120px; text-transform: uppercase; font-weight: 600; }
+.small { width: 90px; }
+#peers { width: 180px; }
+button { font: inherit; background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+  padding: 8px 18px; cursor: pointer; font-weight: 600; }
+button:disabled { opacity: .6; cursor: wait; }
+.chk { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 8px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 14px; }
+.notice { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 13px; }
+.error { color: var(--neg); white-space: pre-wrap; }
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: baseline; }
+.name { font-size: 22px; font-weight: 700; }
+.sub { color: var(--muted); font-size: 13px; }
+.price { font-size: 26px; font-weight: 700; text-align: right; }
+.pos { color: var(--pos); } .neg { color: var(--neg); }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.stat { background: var(--row); border-radius: 8px; padding: 10px; }
+.stat .k { font-size: 12px; color: var(--muted); } .stat .v { font-size: 18px; font-weight: 700; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .price { text-align: left; } }
+.grid2 .card { margin-top: 0; }
+h3 { margin: 0 0 8px; font-size: 15px; }
+ul.flags { margin: 0; padding-left: 18px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.tab { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; }
+.tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.section { overflow-x: auto; }
+.section h2 { font-size: 16px; margin: 0 0 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; background: var(--row); }
+svg text { fill: var(--muted); font-size: 11px; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent;
+  border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+@keyframes s { to { transform: rotate(360deg); } }
+details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); }
+pre { white-space: pre-wrap; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FMP 基本面分析</h1>
+  <form id="f">
+    <label>股票代码<input id="symbol" name="symbol" placeholder="AAPL" required autofocus></label>
+    <label>对比公司（可选）<input id="peers" name="peers" placeholder="MSFT,GOOGL 或 none"></label>
+    <label>折现率 %<input class="small" name="discount" placeholder="9"></label>
+    <label>1-5年增速 %<input class="small" name="growth" placeholder="自动"></label>
+    <label>永续增速 %<input class="small" name="terminal" placeholder="2.5"></label>
+    <label>起始 FCF<select name="fcf_base"><option value="latest">最新</option><option value="avg3">3年平均</option></select></label>
+    <label class="chk"><input type="checkbox" name="refresh" value="1">忽略缓存</label>
+    <button id="go">分析</button>
+  </form>
+  <div id="out"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtPct = v => v == null ? "n/a" : (v * 100).toFixed(1) + "%";
+const fmtX = v => v == null ? "n/a" : v.toFixed(1) + "x";
+function fmtMoney(v) {
+  if (v == null) return "n/a";
+  const a = Math.abs(v);
+  for (const [d, s] of [[1e12, "T"], [1e9, "B"], [1e6, "M"]]) if (a >= d) return (v / d).toFixed(2) + s;
+  return v.toFixed(2);
+}
+
+// Minimal markdown -> HTML for the report produced by analyze.py (headings, tables, bold, lists).
+function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
+function md(text) {
+  const lines = text.split("\n"); let html = "", i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (l.startsWith("|")) {
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith("|")) { rows.push(lines[i]); i++; }
+      const cells = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      html += "<table><thead><tr>" + cells(rows[0]).map(c => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>";
+      for (const r of rows.slice(1)) if (!/^\|[\s|:-]+\|$/.test(r)) html += "<tr>" + cells(r).map(c => `<td>${inline(c)}</td>`).join("") + "</tr>";
+      html += "</tbody></table>"; continue;
+    }
+    if (l.startsWith("- ")) {
+      html += "<ul>";
+      while (i < lines.length && lines[i].startsWith("- ")) { html += `<li>${inline(lines[i].slice(2))}</li>`; i++; }
+      html += "</ul>"; continue;
+    }
+    if (l.startsWith("## ")) html += `<h2>${inline(l.slice(3))}</h2>`;
+    else if (l.trim()) html += `<p>${inline(l)}</p>`;
+    i++;
+  }
+  return html;
+}
+
+function chart(prices) {
+  if (!prices || prices.length < 2) return "<p class='sub'>没有价格数据。</p>";
+  const W = 560, H = 200, P = 36;
+  const ys = prices.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), span = (hi - lo) || 1;
+  const x = i => P + i * (W - P - 8) / (prices.length - 1), y = v => 10 + (H - 34) * (1 - (v - lo) / span);
+  const d = prices.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(p[1]).toFixed(1)).join("");
+  const up = ys[ys.length - 1] >= ys[0];
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="一年股价走势">
+    <path d="${d}" fill="none" stroke="var(${up ? "--pos" : "--neg"})" stroke-width="1.6"/>
+    <text x="2" y="${y(hi) + 4}">${hi.toFixed(0)}</text><text x="2" y="${y(lo) + 4}">${lo.toFixed(0)}</text>
+    <text x="${P}" y="${H - 4}">${prices[0][0]}</text>
+    <text x="${W - 8}" y="${H - 4}" text-anchor="end">${prices[prices.length - 1][0]}</text></svg>`;
+}
+
+function render(data) {
+  const r = data.result, p = r.profile || {}, c = r.current || {}, dcf = r.dcf || {}, conn = r.meta.connection || {};
+  const last = r.years[r.years.length - 1] || {};
+  const chg = p.changePercentage;
+  let h = "";
+  if (!conn.route || conn.route.startsWith("third-party")) {
+    h += `<div class="notice">数据来自 <b>FMP 第三方代理接口</b>（${esc(conn.base)}），不是 FMP 官方服务器。重要数字请对照公司财报核实。` +
+         (conn.tls_verify === false ? " 本次 HTTPS 证书验证已关闭。" : "") + `</div>`;
+  }
+  h += `<div class="card"><div class="head"><div>
+      <div class="name">${esc(p.companyName || r.symbol)} <span class="sub">${esc(r.symbol)}</span></div>
+      <div class="sub">${esc(p.sector)} / ${esc(p.industry)} · ${esc(p.exchange)} · 截至 ${esc(r.as_of)}</div></div>
+      <div><div class="price">${p.price != null ? p.price.toFixed(2) : "n/a"} <span class="sub">${esc(p.currency)}</span></div>
+      <div class="sub" style="text-align:right">${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> · ` : ""}市值 ${fmtMoney(p.marketCap)}</div></div></div>
+    <div class="stats">
+      <div class="stat"><div class="k">P/E</div><div class="v">${fmtX(c.pe)}</div></div>
+      <div class="stat"><div class="k">EV/EBITDA</div><div class="v">${fmtX(c.ev_ebitda)}</div></div>
+      <div class="stat"><div class="k">FCF 收益率</div><div class="v">${fmtPct(c.fcf_yield)}</div></div>
+      <div class="stat"><div class="k">ROIC (${esc(last.label)})</div><div class="v">${fmtPct(last.roic)}</div></div>
+      <div class="stat"><div class="k">营收 CAGR</div><div class="v">${fmtPct(r.cagr.revenue)}</div></div>
+      <div class="stat"><div class="k">Piotroski</div><div class="v">${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}</div></div>
+      <div class="stat"><div class="k">DCF 每股价值</div><div class="v">${dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a"}</div></div>
+      <div class="stat"><div class="k">DCF vs 股价</div><div class="v ${dcf.margin_of_safety >= 0 ? "pos" : "neg"}">${dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a"}</div></div>
+    </div></div>`;
+  h += `<div class="grid2" style="margin-top:14px">
+    <div class="card"><h3>近一年股价</h3>${chart(data.prices)}</div>
+    <div class="card"><h3>自动提示（需进一步核实，不是结论）</h3>
+      <b class="pos">优点</b><ul class="flags">${(r.flags.green || []).map(x => `<li>${esc(x)}</li>`).join("") || "<li>无</li>"}</ul>
+      <b class="neg">风险</b><ul class="flags">${(r.flags.red || []).map(x => `<li>${esc(x)}</li>`).join("") || "<li>无</li>"}</ul></div></div>`;
+
+  const parts = data.report.split(/\n(?=## )/).filter(s => s.startsWith("## "));
+  h += `<div class="tabs">` + parts.map((s, i) => `<button class="tab${i ? "" : " on"}" data-i="${i}">${esc(s.split("\n")[0].slice(3).replace(/\s*\(.*$/, ""))}</button>`).join("") + `</div>`;
+  h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i ? "hidden" : ""}>${md(s)}</div>`).join("");
+  h += `<details><summary>完整文字报告</summary><div class="card"><pre>${esc(data.report)}</pre></div></details>`;
+  $("#out").innerHTML = h;
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === b));
+    document.querySelectorAll(".section").forEach(s => s.hidden = s.dataset.i !== b.dataset.i);
+  });
+}
+
+$("#f").onsubmit = async e => {
+  e.preventDefault();
+  const q = new URLSearchParams(new FormData(e.target));
+  q.set("symbol", q.get("symbol").trim().toUpperCase());
+  $("#go").disabled = true;
+  $("#out").innerHTML = `<div class="card"><span class="spin"></span>正在分析 ${esc(q.get("symbol"))}…（首次约 10-30 秒，之后有缓存会更快）</div>`;
+  try {
+    const res = await fetch("/api/analyze?" + q);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    render(data);
+    history.replaceState(null, "", "?symbol=" + encodeURIComponent(q.get("symbol")));
+  } catch (err) {
+    $("#out").innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  } finally { $("#go").disabled = false; }
+};
+const s0 = new URLSearchParams(location.search).get("symbol");
+if (s0) { $("#symbol").value = s0; $("#f").requestSubmit(); }
+</script>
+</body>
+</html>

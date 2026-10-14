@@ -1,0 +1,222 @@
+# FMP 基本面分析（fmp-fundamental-analysis）
+
+用 Financial Modeling Prep（FMP）的数据，对美股做基本面分析。它可以作为 Claude 的技能使用，也可以在命令行或本地网页里直接运行。
+
+分析内容包括：
+- 增长：营收、利润、EPS、FCF 的历年数据和 CAGR
+- 盈利能力和回报率：毛利率、营业利润率、ROE、ROIC
+- 资产负债和流动性：净负债、负债率、流动比率、利息覆盖
+- 现金流质量和资本配置：FCF/净利润、股权激励、回购、分红
+- 估值：当前倍数与自身 5 年历史对比，以及与同行对比
+- 质量评分：Piotroski F-score、Altman Z
+- DCF 和反向 DCF：含折现率 × 增速敏感性表
+- 分析师预期和目标价
+- 自动提示：列出优点和风险，作为进一步核实的线索，不是结论
+
+所有计算都由脚本完成，Claude 只负责解读。
+
+> 这是分析工具，不构成投资建议。数据可能有误，重要数字请对照公司财报核实。
+
+---
+
+## 目录结构
+
+```
+fmp-fundamental-analysis/
+├── SKILL.md            # 给 Claude 看的技能说明（工作流程、解读规则、报告模板）
+├── README.md           # 本文件：给人看的使用说明
+├── references/
+│   └── metrics.md      # 指标定义、阈值、行业注意事项
+├── scripts/
+│   ├── fmp_client.py   # FMP API 客户端：连接、缓存、限速，以及 check / get 命令
+│   └── analyze.py      # 主分析脚本：生成完整报告
+└── ui/
+    ├── server.py       # 本地网页服务器
+    └── index.html      # 网页界面
+```
+
+## 环境要求
+
+- Python 3.8 及以上，只用标准库，**不需要 pip install**。
+- Windows 上的命令一般是 `python`（找不到时用 `py`）；macOS / Linux 上用 `python3`。
+
+---
+
+## 一、首次设置
+
+### 1. 设置 API key
+
+API key 只从环境变量 `FMP_API_KEY` 读取，不要写进本目录下的任何文件。
+
+Windows（PowerShell 或 CMD）：
+
+```bash
+setx FMP_API_KEY "你的key"
+```
+
+macOS / Linux：把 `export FMP_API_KEY="你的key"` 加到 `~/.zshrc` 或 `~/.bashrc`。
+
+> `setx` 只对**新打开**的终端生效。设置完要重新打开终端，并重启 Claude，它才能读到新变量。
+
+### 2. 使用第三方 FMP 代理接口（本机当前的配置）
+
+本机用的是 **FMP 的第三方代理接口，不是 FMP 官方服务器**：
+
+| 环境变量 | 值 / 说明 |
+|---|---|
+| `FMP_API_KEY` | 代理服务商给你的 token |
+| `FMP_BASE_URL` | 代理地址，本机为 `https://54.236.92.205` |
+| `FMP_TLS_VERIFY` | 设为 `0` 会关闭 HTTPS 证书验证。这个代理用的是裸 IP，证书验证不通过，所以需要设置 |
+| `FMP_PATH_PREFIX`、`FMP_AUTH_STYLE` | 一般不用设置，第一次连接时会自动识别并保存 |
+
+设置代理地址：
+
+```bash
+setx FMP_BASE_URL "https://54.236.92.205"
+```
+
+**关于 `FMP_TLS_VERIFY=0` 的风险：** 关闭证书验证后，连接可能被中间人截获，你的 API key 也会经过这条连接。目前的做法是只在需要时、只对单次运行设置，不用 `setx` 永久保存：
+- Claude 运行这个技能时会自动处理（见 SKILL.md）。
+- 本地网页会自动处理。
+- 你自己在命令行运行时，需要手动设置（见下文）。
+
+长期来看，换成 FMP 官方 key 或带有效证书的代理更稳妥。
+
+经代理拿到的数据是转售的 FMP 数据。报告的 Data notes 会写明数据来源（route），看到异常数字时要多留个心。
+
+### 3. 其他可选环境变量
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `FMP_MAX_PER_MIN` | `280` | 每分钟最多发多少个请求 |
+| `FMP_CACHE_DIR` | `~/.cache/fmp-fundamentals` | 缓存目录 |
+
+### 4. 检查连接
+
+```bash
+python scripts/fmp_client.py check
+```
+
+它会显示当前连接（官方还是代理、路径前缀、认证方式、证书验证状态），然后用 AAPL 测试十几个接口，每个接口显示 OK 或 Skipped。全部 OK 就说明设置成功。
+
+在 PowerShell 里通过代理检查（只对当前终端窗口生效）：
+
+```powershell
+$env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
+```
+
+---
+
+## 二、三种用法
+
+### 用法 1：直接问 Claude（推荐）
+
+技能装好后，在 Claude 里直接用中文或英文问就行，不用提到 FMP，例如：
+- 「分析一下 AAPL 的基本面」
+- 「NVDA 现在贵不贵？」
+- 「比较 MSFT、GOOGL、AMZN 的盈利能力和估值」
+- 「COST 的护城河怎么样？现金流质量好吗？」
+
+Claude 会运行 `analyze.py`，然后按 SKILL.md 里的模板写一份报告。报告包括结论、增长、盈利能力、资产负债、现金流、估值、风险、关注点和数据说明。
+
+**注意：Claude 实际读取的是 `~/.claude/skills/fmp-fundamental-analysis/` 里的那一份技能。**修改本目录后，要把改动同步到那里才会生效。
+
+### 用法 2：命令行
+
+在本目录下运行：
+
+```bash
+python scripts/analyze.py AAPL
+```
+
+通过第三方代理运行时，在 PowerShell 里先设置证书验证（只对当前终端窗口生效）：
+
+```powershell
+$env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
+```
+
+常用参数：
+
+| 参数 | 说明 | 什么时候用 |
+|---|---|---|
+| `--peers MSFT,GOOGL` | 指定对比公司，逗号分隔 | 想和特定公司比较，或自动找到的同行不合适 |
+| `--peers none` | 不做同行对比 | 节省时间和 API 调用 |
+| `--max-peers 5` | 自动同行的最多数量（默认 5） | |
+| `--years 5` | 拉取几年历史（默认 5，Starter 套餐上限 5） | |
+| `--discount 0.10` | DCF 折现率（默认 0.09） | 风险高的公司用 0.10，非常稳定的用 0.08 |
+| `--growth 0.06` | DCF 第 1-5 年增速（默认：历史营收 CAGR，限制在 0-15%） | 历史增速不能代表未来（并购、放缓、公司指引） |
+| `--terminal 0.025` | DCF 永续增速（默认 0.025） | |
+| `--fcf-base avg3` | DCF 起始 FCF 用近 3 年平均（默认 `latest`，用最新一期） | 周期性行业，或最近一年波动大 |
+| `--no-ttm` | 不用最近 12 个月（TTM）数据，可以省 3 次 API 调用 | |
+| `--json out.json` | 把所有计算结果另存为 JSON | 需要原始数字，或交给其他工具使用 |
+| `--refresh` | 忽略缓存，重新拉取数据 | 数据看起来过时，或公司刚发布财报 |
+
+示例：
+
+```bash
+python scripts/analyze.py MSFT --peers GOOGL,AMZN,ORCL --discount 0.085 --fcf-base avg3
+```
+
+调用分析没覆盖到的任意 FMP 接口，拿原始数据：
+
+```bash
+python scripts/fmp_client.py get key-metrics symbol=AAPL period=annual limit=5
+```
+
+### 用法 3：本地网页 UI
+
+启动：
+
+```bash
+python ui/server.py
+```
+
+然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。
+
+- **启动时自动处理：**
+  - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
+  - 连接 54.236.92.205 代理时，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`。
+- **页面上可以设置：** 股票代码、对比公司、折现率 %、1-5 年增速 %、永续增速 %、起始 FCF（最新或 3 年平均）、忽略缓存。
+- **页面显示的内容：**
+  - 顶部有黄色提示条，标明数据来自 FMP 第三方代理接口。
+  - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。
+  - 近一年股价走势图，以及自动提示的优点和风险。
+  - 报告的各部分按标签页分开显示，底部可以展开完整文字报告。
+- **链接可以直接打开：** 例如 `http://127.0.0.1:8765/?symbol=NVDA` 会自动分析 NVDA。
+- **只能在本机访问：** 网页只监听 127.0.0.1，局域网里的其他设备打不开。
+
+网页显示的数字和 `analyze.py` 的结果完全一致，两者也共用同一个缓存。
+
+---
+
+## 三、缓存
+
+- **位置：** `~/.cache/fmp-fundamentals`（Windows 上是 `C:\Users\<用户名>\.cache\fmp-fundamentals`）
+- **有效期：** 财务数据 7 天，价格 12 小时
+- **跳过缓存：** 命令行加 `--refresh`，或在网页上勾选「忽略缓存」
+- **清空缓存：**
+
+```bash
+python scripts/fmp_client.py clear-cache
+```
+
+这也会删除自动识别出的代理连接方式，下次运行时会重新识别。
+
+---
+
+## 四、常见问题
+
+| 现象 | 原因 / 解决 |
+|---|---|
+| `FMP_API_KEY is not set` | 没设置 key，或设置后没重开终端/重启 Claude。见「设置 API key」 |
+| `API key problem` / `key rejected` | key 错误或已过期。用代理时，先运行 `fmp_client.py check` 重新识别连接方式 |
+| `HTTPS certificate verification failed for 54.236.92.205` | 代理证书无法验证。在单次运行时设置 `FMP_TLS_VERIFY=0`（注意风险） |
+| `does not cover TICKER` | 套餐只覆盖美股。港股、A 股可以试试对应的美股 ADR |
+| `No profile found for XXX` | 股票代码不对 |
+| 报告里有「Skipped (not in your FMP plan)」 | 套餐不包含某些接口（同行、分析师预期、季度数据等）。其他分析仍然可以基于年报完成 |
+| 股价或市值看起来是旧的 | 加 `--refresh`，或在网页上勾选「忽略缓存」 |
+| Windows 上提示找不到 `python` | 改用 `py`，例如 `py scripts/analyze.py AAPL` |
+| 网页打不开 / 端口被占用 | 确认 `server.py` 还在运行，或换个端口：`--port 9000` |
+| 金融或 REIT 公司的某些指标显示 n/a 或没有意义 | 这是正常的：银行、保险不适用毛利率、EV 倍数和 DCF。报告的 sector note 会说明 |
+
+指标的定义和判断阈值见 [references/metrics.md](references/metrics.md)。
