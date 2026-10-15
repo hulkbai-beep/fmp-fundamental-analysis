@@ -67,7 +67,7 @@ load_user_env()
 apply_proxy_tls_rule()
 
 import analyze as A  # noqa: E402
-from fmp_client import FMPClient, FMPError, InvalidKey  # noqa: E402
+from fmp_client import FMPError, InvalidKey  # noqa: E402
 
 _lock = threading.Lock()  # FMPClient rate limiting and cache are per-process; run one analysis at a time
 
@@ -105,13 +105,9 @@ def run_analysis(q):
         except FMPError as e:
             return 502, {"error": f"FMP error: {e}", "log": log.getvalue()}
 
-        prices = []
-        try:
-            client = FMPClient(refresh=args.refresh)
-            start = (dt.date.today() - dt.timedelta(days=366)).isoformat()
-            prices = client.prices(sym, start, dt.date.today().isoformat())
-        except FMPError as e:
-            result["meta"]["errors"].append(f"1y price chart: {e}")
+    # the analysis already fetched daily prices back to its oldest fiscal year; chart the last year
+    start = (dt.date.today() - dt.timedelta(days=366)).isoformat()
+    prices = [p for p in result.pop("price_series", []) if p[0] >= start]
     return 200, {"result": result, "report": report, "prices": prices, "log": log.getvalue()}
 
 

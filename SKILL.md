@@ -18,7 +18,11 @@ gave you). If something is missing, say it is missing.
 2. Python 3.8+ is the only requirement (standard library only, no pip install).
    On Windows the command is usually `python` (or `py`); elsewhere `python3`.
 3. Optional: `python scripts/fmp_client.py check` shows the connection in use and which
-   endpoints the plan allows. Run it the first time, or whenever data unexpectedly comes back missing.
+   endpoints the plan allows (company data, plus sector/industry and macro data such as
+   treasury rates and economic indicators). Run it the first time, or whenever data
+   unexpectedly comes back missing.
+4. Requests run in parallel (`FMP_MAX_WORKERS`, default 6). If a proxy returns frequent
+   HTTP 429 or connection errors, set `FMP_MAX_WORKERS=2` (or `1` for one at a time).
 
 If the script exits with "API key problem", walk the user through step 1.
 

@@ -18,9 +18,12 @@ Connection settings (environment variables):
                     (default "header" = FMP's apikey header; auto-detected for proxies)
   FMP_TLS_VERIFY    "0" turns off HTTPS certificate verification (needed for many
                     bare-IP proxies; less secure). Default "1".
+  FMP_MAX_PER_MIN   request rate cap shared by all threads (default 280).
+  FMP_MAX_WORKERS   parallel requests analyze.py may run (default 6; 1 = one at a time).
 
 CLI:
   python fmp_client.py check [SYMBOL]          connection info + which endpoints work
+                                               (company, sector/industry and macro data)
   python fmp_client.py get ENDPOINT k=v ...    raw JSON from any stable endpoint
   python fmp_client.py clear-cache             delete the local cache and saved detection
 """
@@ -32,6 +35,7 @@ import os
 import shutil
 import ssl
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -128,9 +132,11 @@ class FMPClient:
         self.use_cache = use_cache
         self.refresh = refresh
         per_min = max_per_min or int(os.environ.get("FMP_MAX_PER_MIN", "280"))
-        self.min_interval = 60.0 / max(per_min, 1)
+        self.rate = max(per_min, 1) / 60.0  # requests per second
+        self.burst = min(10.0, float(max(per_min, 1)))
         self.timeout = timeout
-        self._last_call = 0.0
+        self._tokens, self._refilled = self.burst, time.time()
+        self._lock = threading.Lock()  # guards the rate limiter, stats and the lists below
         self.stats = {"network_calls": 0, "cache_hits": 0}
         self.restricted = []  # endpoints skipped because the plan lacks them
         self.errors = []      # optional endpoints that failed for other reasons
@@ -227,7 +233,7 @@ class FMPClient:
                     if _is_cert_error(e):
                         raise FMPError(self._cert_hint())
                     raise FMPError(f"cannot reach {self.host}: {getattr(e, 'reason', e)}")
-                self.stats["network_calls"] += 1
+                self._count("network_calls")
                 ok = status == 402 or (status == 200 and _error_message(body) is None
                                        and body.strip()[:1] in ("[", "{"))
                 seen.append(f"/{prefix or ''} + {style}: HTTP {status}")
@@ -275,14 +281,28 @@ class FMPClient:
         sym = "".join(c for c in str(params.get("symbol", "all")) if c.isalnum() or c in ".-_")
         return self.cache_dir / f"{safe_ep}__{sym}__{digest}.json"
 
+    def _count(self, key):
+        with self._lock:
+            self.stats[key] += 1
+
+    def _throttle(self):
+        """Token bucket shared by all threads: short bursts of up to 10 requests, and
+        about FMP_MAX_PER_MIN per minute over time. A caller that finds the bucket empty
+        reserves the next token and sleeps until it is due."""
+        with self._lock:
+            now = time.time()
+            self._tokens = min(self.burst, self._tokens + (now - self._refilled) * self.rate)
+            self._refilled = now
+            self._tokens -= 1
+            wait = -self._tokens / self.rate if self._tokens < 0 else 0.0
+        if wait > 0:
+            time.sleep(wait)
+
     def _fetch(self, endpoint, params):
         url = self._url(endpoint, params)
         last_err = None
         for attempt in range(4):
-            wait = self.min_interval - (time.time() - self._last_call)
-            if wait > 0:
-                time.sleep(wait)
-            self._last_call = time.time()
+            self._throttle()
             try:
                 status, body = self._http_get(url)
             except (urllib.error.URLError, TimeoutError, OSError) as e:
@@ -291,7 +311,7 @@ class FMPClient:
                 last_err = FMPError(f"network error on {endpoint}: {getattr(e, 'reason', e)}")
                 time.sleep(2 ** attempt)
                 continue
-            self.stats["network_calls"] += 1
+            self._count("network_calls")
             if status == 429 or status >= 500:
                 last_err = FMPError(f"HTTP {status} on {endpoint} (rate limit or server error)")
                 time.sleep(2 ** attempt + 1)
@@ -327,17 +347,23 @@ class FMPClient:
             if time.time() - path.stat().st_mtime < ttl:
                 try:
                     data = json.loads(path.read_text(encoding="utf-8"))
-                    self.stats["cache_hits"] += 1
+                    self._count("cache_hits")
                     return data
                 except (OSError, ValueError):
                     pass
         data = self._fetch(endpoint, params)
         if self.use_cache:
+            # write-then-rename so a parallel reader never sees a half-written file
+            tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(data), encoding="utf-8")
+                tmp.write_text(json.dumps(data), encoding="utf-8")
+                os.replace(tmp, path)
             except OSError:
-                pass
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
         return data
 
     def try_get(self, endpoint, **params):
@@ -350,11 +376,22 @@ class FMPClient:
             extra = ", ".join(f"{k}={v}" for k, v in params.items()
                               if k not in ("symbol", "page", "from", "to"))
             label = f"{endpoint} ({extra})" if extra else endpoint
-            if label not in self.restricted:
-                self.restricted.append(label)
+            with self._lock:
+                if label not in self.restricted:
+                    self.restricted.append(label)
         except FMPError as e:
-            self.errors.append(str(e))
+            with self._lock:
+                self.errors.append(str(e))
         return None
+
+    def unrestrict(self, endpoint):
+        """Drop earlier 'not in your plan' notes for an endpoint that later succeeded."""
+        with self._lock:
+            self.restricted[:] = [x for x in self.restricted if not x.startswith(endpoint)]
+
+    def add_error(self, msg):
+        with self._lock:
+            self.errors.append(msg)
 
     # ------------------------------------------------------------------ helpers
     def profile(self, symbol):
@@ -413,6 +450,41 @@ PROBES = [
 ]
 
 
+# Market-wide data (no symbol): sector/industry and macro endpoints the skill may use.
+# {today}, {month_ago}, {week_ago}, {in_2w} and {last_bday} are filled in at run time.
+MARKET_PROBES = [
+    ("sector-performance-snapshot", {"date": "{last_bday}"}),
+    ("industry-performance-snapshot", {"date": "{last_bday}"}),
+    ("historical-sector-performance", {"sector": "Technology"}),
+    ("sector-pe-snapshot", {"date": "{last_bday}"}),
+    ("industry-pe-snapshot", {"date": "{last_bday}"}),
+    ("historical-sector-pe", {"sector": "Technology"}),
+    ("historical-price-eod/light", {"symbol": "SPY", "from": "{month_ago}", "to": "{today}"}),
+    ("treasury-rates", {"from": "{month_ago}", "to": "{today}"}),
+    ("market-risk-premium", {}),
+    ("economic-indicators", {"name": "federalFunds"}),
+    ("economic-indicators", {"name": "CPI"}),
+    ("economic-indicators", {"name": "inflationRate"}),
+    ("economic-indicators", {"name": "unemploymentRate"}),
+    ("economic-indicators", {"name": "realGDP"}),
+    ("economic-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
+    ("earnings-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
+]
+
+
+def _probe(client, ep, params):
+    try:
+        data = client.get(ep, **params)
+        n = len(data) if isinstance(data, list) else (1 if data else 0)
+        return ("OK", f"{n} rows") if n else ("EMPTY", "no rows returned")
+    except RestrictedEndpoint as e:
+        return "RESTRICTED", str(e).split("(", 1)[-1].rstrip(")")[:60]
+    except InvalidKey:
+        raise
+    except FMPError as e:
+        return "ERROR", str(e)[:60]
+
+
 def _cmd_check(symbol):
     client = FMPClient(refresh=True)
     c = client.describe()
@@ -422,28 +494,36 @@ def _cmd_check(symbol):
     print(f"  path prefix : /{c['prefix'] or ''}")
     print(f"  auth style  : {c['auth_style']}  ({c['source']})")
     print(f"  TLS verify  : {'on' if c['tls_verify'] else 'OFF'}")
-    print(f"\nProbing endpoints with {symbol} ...\n")
-    print(f"{'endpoint':<28} {'params':<26} {'result':<11} detail")
-    print("-" * 90)
-    today = time.strftime("%Y-%m-%d")
-    month_ago = time.strftime("%Y-%m-%d", time.localtime(time.time() - 30 * DAY))
-    for ep, params in PROBES:
-        label = " ".join(f"{k}={v}" for k, v in params.items() if k != "page")
-        if ep.startswith("historical-price"):
-            params = dict(params, **{"from": month_ago, "to": today})
-            label = "last 30 days"
-        try:
-            data = client.get(ep, symbol=symbol, **params)
-            n = len(data) if isinstance(data, list) else (1 if data else 0)
-            result, detail = ("OK", f"{n} rows") if n else ("EMPTY", "no rows returned")
-        except InvalidKey as e:
-            print(f"\nKey problem: {e}")
-            return 2
-        except RestrictedEndpoint as e:
-            result, detail = "RESTRICTED", str(e).split("(", 1)[-1].rstrip(")")[:60]
-        except FMPError as e:
-            result, detail = "ERROR", str(e)[:60]
-        print(f"{ep:<28} {label:<26} {result:<11} {detail}")
+    print(f"\nProbing company endpoints with {symbol} ...\n")
+    print(f"{'endpoint':<30} {'params':<28} {'result':<11} detail")
+    print("-" * 92)
+    now = time.time()
+    day = lambda offset: time.strftime("%Y-%m-%d", time.localtime(now + offset * DAY))
+    last_bday = next(day(-i) for i in range(1, 8)
+                     if time.localtime(now - i * DAY).tm_wday < 5)
+    dates = {"today": day(0), "month_ago": day(-30), "week_ago": day(-7), "in_2w": day(14),
+             "last_bday": last_bday}
+    try:
+        for ep, params in PROBES:
+            label = " ".join(f"{k}={v}" for k, v in params.items() if k != "page")
+            if ep.startswith("historical-price"):
+                params = dict(params, **{"from": dates["month_ago"], "to": dates["today"]})
+                label = "last 30 days"
+            result, detail = _probe(client, ep, dict(params, symbol=symbol))
+            print(f"{ep:<30} {label:<28} {result:<11} {detail}")
+        print("\nProbing sector/industry and macro endpoints ...\n")
+        print(f"{'endpoint':<30} {'params':<38} {'result':<11} detail")
+        print("-" * 102)
+        for ep, params in MARKET_PROBES:
+            params = {k: v.format(**dates) for k, v in params.items()}
+            label = " ".join(f"{k}={v}" for k, v in params.items() if k not in ("from", "to"))
+            if "from" in params:
+                label = (label + f" {params['from']}..{params['to']}").strip()
+            result, detail = _probe(client, ep, params)
+            print(f"{ep:<30} {label:<38} {result:<11} {detail}")
+    except InvalidKey as e:
+        print(f"\nKey problem: {e}")
+        return 2
     print(f"\nNetwork calls used: {client.stats['network_calls']}")
     return 0
 
