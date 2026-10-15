@@ -11,9 +11,10 @@ Benchmarks are rules of thumb for US companies; always prefer peer and own-histo
 5. Valuation multiples
 6. Quality scores (Piotroski, Altman)
 7. DCF and reverse DCF (rate-linked discount rate)
-8. Industry, sector and rates context
-9. Sector cheat sheet
-10. Known approximations in the script
+8. Price range by method (forward P/E, DCF, analyst targets, trading range)
+9. Industry, sector and rates context
+10. Sector cheat sheet
+11. Known approximations in the script
 
 ---
 
@@ -154,7 +155,56 @@ Reading the output:
   (or the market expects a decline - find out why).
 - DCF is not applicable when FCF is negative, and not meaningful for banks/insurers.
 
-## 8. Industry, sector and rates context
+## 8. Price range by method
+
+The "Price range" section puts several independent ranges side by side (the UI draws them as a
+bar chart with the current price as a dashed line). None of them is a forecast.
+
+**Forward P/E by fiscal year** (FMP `analyst-estimates`):
+- Forward P/E is computed for every trading day of the last 3 years: close / diluted EPS of the
+  fiscal year in progress that day. Years already reported use the reported EPS, so the history
+  shows what the market paid for the earnings the company went on to deliver; the current year
+  uses the analysts' average estimate. Days with EPS <= 0 are left out; at least ~6 months of
+  positive-EPS days are needed.
+- Low / Base / High = analysts' average EPS for the year x the 25th-percentile / median /
+  75th-percentile forward P/E. The current fiscal year's row is a fair-value range for today;
+  the next year's row is the same estimate once that year becomes the current one (about a year
+  out). Analysts' EPS low-high is shown for reference but not multiplied in, so the range only
+  reflects how the multiple has varied. The report also prints today's forward P/E (price /
+  current-year EPS) and its percentile in that history: Base assumes the multiple returns to its
+  median, which is a re-rating call when today sits far from it (a growth slowdown usually
+  compresses the multiple; say so rather than treating Base as fair value).
+- Why forward and not trailing P/E: for a fast grower the trailing P/E is inflated by earnings
+  that lag the price (in 2023 NVDA often traded above 100x trailing earnings but below 45x the
+  earnings it delivered that fiscal year), and multiplying that by future EPS counts the growth twice.
+- Why 3 years: it reflects the current rate and growth regime and keeps one old earnings trough
+  from dominating the percentiles. The report warns when the 75th percentile is more than 1.6x
+  the 25th (an earnings trough or a re-rating); then lean on the Base column.
+- Caveats: the multiple is the company's own recent history, so a business whose growth or risk
+  has changed may not return to it. Analyst EPS is often on an adjusted (non-GAAP) basis while
+  history uses reported EPS; the report flags a gap above 5% between FMP's estimate row for the
+  last reported year and the reported figure. Negative or zero EPS estimates give n/a. Weak guide
+  for REITs (net income understates cash earnings) and for cyclicals at peak or trough earnings.
+- Safety checks: the range is skipped when a reported year's diluted share count is outside
+  0.55-1.8x today's (market cap / price; a split the statements do not reflect, an ADR ratio or
+  several share classes) or when the price history has a one-day move above 50% (possibly an
+  unadjusted split).
+
+**Other rows:**
+- DCF: the "reasonable range" from the DCF section (discount +/-1pt, growth +/-2pt), base case as mid.
+- Analyst price targets: FMP `price-target-consensus` low / consensus / high.
+- 52-week closing range: lowest and highest daily close over the last 365 days.
+- 1-year volatility band: price x e^(+/-sigma), sigma = standard deviation of the last year's daily
+  log returns x sqrt(252). Under a random-walk assumption about two in three one-year outcomes
+  fall inside it. It describes how much the price moves, not what the company is worth.
+
+Reading it: where the price sits against the forward P/E rows says what the market already
+expects (above the High rows = priced for a higher multiple or faster earnings growth than
+usual). Agreement between methods matters more than any single row; a DCF far below the P/E
+rows usually means the DCF growth or discount inputs are conservative for this business, or
+the multiple is rich - say which you think it is.
+
+## 9. Industry, sector and rates context
 
 **Industry / sector P/E** (FMP `historical-industry-pe`, `historical-sector-pe`):
 - An aggregate P/E of the companies in that group listed on one exchange (the company's own
@@ -186,7 +236,7 @@ PCE (headline and core), payrolls, GDP and Fed rate decisions. PPI running above
 margin pressure for companies that cannot pass costs on; check the gross-margin trend.
 `economic-indicators` CPI is the index level (1982-84 = 100), so it only gives month-on-month.
 
-## 9. Sector cheat sheet
+## 10. Sector cheat sheet
 
 | Sector | Focus on | Discount |
 |---|---|---|
@@ -200,10 +250,13 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 | REITs | OCF as FFO proxy, occupancy, leverage, dividend coverage | net-income P/E |
 | Utilities | regulated ROE, dividend yield, leverage (net debt/EBITDA 5-6x is normal) | high growth assumptions |
 
-## 10. Known approximations in the script
+## 11. Known approximations in the script
 
 - Historical market cap = fiscal-year-end price x that year's weighted diluted shares.
 - TTM = sum of the last four quarters (EPS summed); balance sheet = latest quarter.
+- Forward P/E history for the price range uses each fiscal year's reported EPS for every day of
+  that year (hindsight, not what analysts expected at the time) and the analysts' average for the
+  year in progress.
 - Peer table always uses the last fiscal year for every company so the rows are comparable.
 - Industry/sector returns compound FMP's equal-weighted average daily change; they ignore dividends
   (so does the company and SPY comparison, which uses closing prices).
