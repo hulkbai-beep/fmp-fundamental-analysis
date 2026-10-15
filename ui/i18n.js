@@ -81,7 +81,7 @@ const ZH_EXACT = new Map(Object.entries({
   "Change": "变化", "Release": "数据", "Event": "事件", "Released (UTC)": "公布时间（UTC）", "Actual": "实际值",
   "Consensus": "预期值", "When (UTC)": "时间（UTC）", "Impact": "影响",
   "Method": "方法", "Low": "低", "Mid": "中值", "High": "高", "Basis": "依据", "Year ends": "财年结束日",
-  "EPS est. low / avg / high": "EPS 预期 低 / 平均 / 高", "Base": "基准", "Base vs price": "基准 vs 股价",
+  "Base": "基准", "Base vs price": "基准 vs 股价",
   // growth / profitability / balance sheet / cash flow rows
   "Revenue": "营收", "Revenue YoY": "营收同比", "Gross profit": "毛利", "Operating income": "营业利润",
   "Net income": "净利润", "EPS (diluted)": "EPS（稀释）", "EPS YoY": "EPS 同比", "Free cash flow": "自由现金流",
@@ -117,18 +117,20 @@ const ZH_EXACT = new Map(Object.entries({
   "Analyst price targets": "分析师目标价", "52-week closing range": "52 周收盘价区间", "1-year volatility band": "1 年波动区间",
   "discount +/-1pt, growth +/-2pt": "折现率 ±1 个百分点、增速 ±2 个百分点", "low / consensus / high": "最低 / 共识 / 最高",
   "No method had enough data for a range.": "数据不够，没有一种方法能算出区间。",
-  "No analyst EPS estimates (not on this FMP plan or none published); forward P/E range not available.":
-    "没有分析师 EPS 预期（套餐不含或没有发布），算不了前瞻 P/E 区间。",
+  "No analyst EPS estimates for the current or next fiscal year (not on this FMP plan or none published); forward P/E range not available.":
+    "没有本财年和下一财年的分析师 EPS 预期（套餐不含或没有发布），算不了前瞻 P/E 区间。",
+  "The price history has a one-day move of more than 50% (possibly a stock split the prices do not reflect), so no forward P/E range is shown.":
+    "股价历史里有单日涨跌超过 50% 的情况（可能是股价没有按拆股调整），所以不显示前瞻 P/E 区间。",
   "Not enough positive-earnings price history for a P/E range (needs about 6 months).":
     "盈利为正的历史股价数据不够（约需 6 个月），算不了 P/E 区间。",
-  "Low = EPS low x 25th-percentile P/E; Base = EPS avg x median P/E; High = EPS high x 75th-percentile P/E. It is what the shares would be worth at each fiscal year end if they traded within their usual 5-year P/E range on analysts' EPS, not a forecast.":
-    "低 = EPS 低值 × 25 分位 P/E；基准 = EPS 平均值 × P/E 中位数；高 = EPS 高值 × 75 分位 P/E。意思是：到每个财年末，如果股价按分析师预期的 EPS、落在过去 5 年常见的 P/E 区间里，大约值多少。这不是预测。",
+  "Forward P/E each day = close / diluted EPS of the fiscal year in progress that day (the reported figure once that year was reported, the analysts' average for the current year).":
+    "每天的前瞻 P/E = 当天收盘价 ÷ 当天所在财年的稀释 EPS（已公布的财年用实际数，本财年用分析师平均预期）。",
+  "Low / Base / High = analysts' average EPS x the 25th-percentile / median / 75th-percentile forward P/E. The current year's row is a fair-value range for today if the company earns that EPS and trades at its usual forward multiple; the next year's row is the same once that year becomes the current one (about a year out). Not a forecast.":
+    "低 / 基准 / 高 = 分析师平均 EPS × 前瞻 P/E 的 25 分位 / 中位数 / 75 分位。本财年这一行的意思是：如果公司赚到这个 EPS、市场给它惯常的前瞻市盈率，现在的合理价格区间；下一财年这一行是一年后（下一财年变成本财年时）的同样估算。这不是预测。",
   "The share counts in the statements do not match today's share basis (for example a stock split the statements do not reflect, an ADR ratio or several share classes), so the P/E history is not comparable and no forward P/E range is shown.":
     "财报里的股数和现在的股本口径对不上（比如财报没有反映拆股、ADR 换股比例或多类股票），历史 P/E 没法比，所以不显示前瞻 P/E 区间。",
-  "Trailing P/E each day = close / diluted EPS of the latest fiscal year (or TTM) ended by that day.":
-    "每天的历史 P/E = 当天收盘价 ÷ 当时最近一个已结束财年（或 TTM）的稀释 EPS。",
-  "n/a = the EPS estimate is zero or negative, so a P/E-based price is not meaningful.":
-    "n/a = EPS 预期为零或负数，用 P/E 算价格没有意义。",
+  "n/a = the average EPS estimate is zero or negative, so a P/E-based price is not meaningful.":
+    "n/a = 平均 EPS 预期为零或负数，用 P/E 算价格没有意义。",
   "REIT: net-income P/E understates cash earnings, so the P/E rows are a weak guide here.":
     "REIT：按净利润算的 P/E 低估了现金收益，这里 P/E 那几行参考价值有限。",
   "The volatility band is statistical, not a valuation: if the past year's volatility holds, about two in three one-year outcomes fall inside it.":
@@ -233,13 +235,16 @@ const ZH_RULES = [
     "above 100%/yr": "高于每年 100%"}[note] || " " + note}。`],
   // analyst, price range
   [/^(\d{4}) \(ended, not yet reported\)$/, "$1（已结束，尚未公布）"],
+  [/^(\d{4}) \(current year\)$/, "$1（本财年）"], [/^(\d{4}) \(next year\)$/, "$1（下一财年）"],
   [/^FY(\d{4}) forward P\/E$/, "FY$1 前瞻 P/E"],
-  [/^EPS (\S+) \/ (\S+) \/ (\S+) x P\/E (\S+) \/ (\S+) \/ (\S+)$/, "EPS $1 / $2 / $3 × P/E $4 / $5 / $6"],
+  [/^EPS (\S+) x forward P\/E (\S+) \/ (\S+) \/ (\S+)$/, "EPS $1 × 前瞻 P/E $2 / $3 / $4"],
   [/^daily closes (\S+) to (\S+)$/, "每日收盘价，$1 至 $2"],
   [/^\+\/-1 standard deviation of the past year's daily moves \((\S+) a year\)$/, "过去一年日涨跌幅的 ±1 个标准差（年化 $1）"],
   [/^Current price (\S+)\. Each row is the range one method gives; none of them is a forecast\.$/, "当前股价 $1。每一行是一种方法给出的区间，都不是预测。"],
-  [/^5-year trailing P\/E: 25th percentile (\S+), median (\S+), 75th percentile (\S+) \(10th-90th (\S+) - (\S+); (\d+) trading days, (\S+) to (\S+)\)\.$/,
-    "过去 5 年的历史 P/E：25 分位 $1，中位数 $2，75 分位 $3（10-90 分位 $4 - $5；$6 个交易日，$7 至 $8）。"],
+  [/^3-year forward P\/E: 25th percentile (\S+), median (\S+), 75th percentile (\S+) \(10th-90th (\S+) - (\S+); (\d+) trading days, (\S+) to (\S+)\)\.$/,
+    "过去 3 年的前瞻 P/E：25 分位 $1，中位数 $2，75 分位 $3（10-90 分位 $4 - $5；$6 个交易日，$7 至 $8）。"],
+  [/^The forward P\/E history is wide \((\S+) - (\S+) between the 25th and 75th percentiles\), often after an earnings trough or a re-rating; lean on the Base column\.$/,
+    "历史前瞻 P/E 分布很宽（25-75 分位 $1 - $2），通常是经历过盈利低谷或估值重估；以「基准」一列为主。"],
   [/^Analysts' (\S+) EPS \((\S+)\) differs from reported diluted EPS \((\S+)\) by (\S+): the estimates may be on an adjusted \(non-GAAP\) basis, while the P\/E history uses reported EPS, so the forward P\/E prices may run (high|low)\.$/,
     (m, fy, e, rp, gap, dir) => `分析师对 ${fy} 的 EPS（${e}）和公司公布的稀释 EPS（${rp}）相差 ${gap}：预期可能是调整后（非 GAAP）口径，而历史 P/E 用的是公布的 EPS，所以前瞻 P/E 算出的价格可能偏${dir === "high" ? "高" : "低"}。`],
   [/^Statements are in (\S+) and the price in (\S+): the P\/E rows assume a steady exchange rate and analysts' EPS in (\S+) per share; check both before relying on them\.$/,

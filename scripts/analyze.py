@@ -577,29 +577,38 @@ def analyst_view(est, pt, last_fy, price, today):
 
 
 # ============================================================ price ranges
-def pe_band(years, ttm, series, today, cur_shares=None, lookback_years=5):
-    """Daily trailing P/E over the last `lookback_years`: each close divided by the diluted EPS of the
-    latest fiscal year (or TTM period) that had ended by that day. Days with EPS <= 0 are left out.
-    Returns (band or None, reason when None)."""
-    periods = [p for p in years + ([ttm] if ttm else []) if p.get("eps") is not None]
-    steps = sorted(((p["date"], p["eps"]) for p in periods), key=lambda x: x[0])
-    if not steps or not series:
-        return None, "Not enough positive-earnings price history for a P/E range (needs about 6 months)."
+def pe_band(years, estimates, series, today, cur_shares=None, lookback_years=3):
+    """Daily forward P/E over the last `lookback_years`: each close divided by the diluted EPS of the
+    fiscal year in progress that day - the reported figure once that year is reported (so history
+    reflects the earnings the company went on to deliver), the analysts' average estimate for a year
+    not reported yet. Days with EPS <= 0 are left out. Returns (band or None, reason when None)."""
+    reported = [y for y in years if y.get("eps") is not None]
+    fys = sorted([(y["date"], y["eps"]) for y in reported] +
+                 [(e["date"], e["eps_avg"]) for e in estimates if e.get("eps_avg") is not None])
+    no_history = "Not enough positive-earnings price history for a P/E range (needs about 6 months)."
+    if not fys or not series:
+        return None, no_history
+    start = (today - dt.timedelta(days=round(365.25 * lookback_years))).isoformat()
     # Prices are split-adjusted; statement EPS may not be (or may be per ordinary share of an ADR).
-    # If a period's share count is far from today's, its EPS is on another basis: skip the band.
-    if cur_shares and any(p.get("shares") and not 0.55 <= p["shares"] / cur_shares <= 1.8 for p in periods):
+    # If a year in the window has a share count far from today's, its EPS is on another basis.
+    if cur_shares and any(y.get("shares") and y["date"] >= start and not 0.55 <= y["shares"] / cur_shares <= 1.8
+                          for y in reported):
         return None, ("The share counts in the statements do not match today's share basis (for example a stock "
                       "split the statements do not reflect, an ADR ratio or several share classes), so the P/E "
                       "history is not comparable and no forward P/E range is shown.")
-    start = (today - dt.timedelta(days=round(365.25 * lookback_years))).isoformat()
-    ends = [d for d, _ in steps]
+    window = [(d, px) for d, px in series if d >= start and px]
+    if any(not 0.5 <= b / a <= 2.0 for (_, a), (_, b) in zip(window, window[1:])):
+        return None, ("The price history has a one-day move of more than 50% (possibly a stock split the prices "
+                      "do not reflect), so no forward P/E range is shown.")
+    ends = [d for d, _ in fys]
+    end_dates = [dt.date.fromisoformat(d) for d in ends]
     used = []
-    for d, px in series:
-        i = bisect.bisect_right(ends, d) - 1
-        if d >= start and i >= 0 and px and steps[i][1] > 0:
-            used.append((d, px / steps[i][1]))
+    for d, px in window:
+        i = bisect.bisect_left(ends, d)  # first fiscal year ending on or after this day
+        if i < len(ends) and (end_dates[i] - dt.date.fromisoformat(d)).days <= 380 and fys[i][1] > 0:
+            used.append((d, px / fys[i][1]))
     if len(used) < 120:  # under ~6 months of trading days with positive earnings
-        return None, "Not enough positive-earnings price history for a P/E range (needs about 6 months)."
+        return None, no_history
     q = statistics.quantiles([v for _, v in used], n=20, method="inclusive")  # 5% steps
     return {"p10": q[1], "p25": q[4], "median": q[9], "p75": q[14], "p90": q[17],
             "n": len(used), "from": used[0][0], "to": used[-1][0]}, None
@@ -621,20 +630,19 @@ def trading_ranges(series, price, today):
     return out
 
 
-def price_range(years, ttm, series, analyst, dcf, price, today, cur_shares=None):
+def price_range(years, series, analyst, dcf, price, today, cur_shares=None):
     """Price ranges from several methods, for the report's price-range section and the UI chart."""
-    band, band_note = pe_band(years, ttm, series, today, cur_shares)
+    estimates = analyst.get("estimates") or []
+    band, band_note = pe_band(years, estimates, series, today, cur_shares)
     forward = []
-    for e in analyst.get("estimates") or []:
+    for e in (e for e in estimates if not e["ended"]):  # the current and next fiscal years
         avg = e["eps_avg"]
-        lo = e["eps_low"] if e["eps_low"] is not None else avg
-        hi = e["eps_high"] if e["eps_high"] is not None else avg
-        row = {"fy": e["fy"], "date": e["date"], "ended": e["ended"], "eps_low": lo, "eps_avg": avg, "eps_high": hi,
+        lo, hi = e["eps_low"], e["eps_high"]
+        row = {"fy": e["fy"], "date": e["date"], "which": "current" if not forward else "next",
+               "eps_low": lo, "eps_avg": avg, "eps_high": hi,
                "low": None, "base": None, "high": None, "base_vs_price": None}
         if band and avg is not None and avg > 0:
-            row["low"] = lo * band["p25"] if lo is not None and lo > 0 else None
-            row["base"] = avg * band["median"]
-            row["high"] = hi * band["p75"] if hi is not None and hi > 0 else None
+            row["low"], row["base"], row["high"] = (avg * band[k] for k in ("p25", "median", "p75"))
             row["base_vs_price"] = row["base"] / price - 1 if price else None
         forward.append(row)
 
@@ -813,8 +821,7 @@ def render_price_range(r):
         if k == "fwd_pe":
             f = next(x for x in fwd if x["fy"] == s["fy"])
             name = f"FY{f['fy']} forward P/E"
-            basis = (f"EPS {per_share(f['eps_low'])} / {per_share(f['eps_avg'])} / {per_share(f['eps_high'])} x "
-                     f"P/E {mult(band['p25'])} / {mult(band['median'])} / {mult(band['p75'])}")
+            basis = f"EPS {per_share(f['eps_avg'])} x forward P/E {mult(band['p25'])} / {mult(band['median'])} / {mult(band['p75'])}"
         elif k == "dcf":
             name, basis = names[k], "discount +/-1pt, growth +/-2pt"
         elif k == "targets":
@@ -831,24 +838,31 @@ def render_price_range(r):
 
     out.append("\n### Forward P/E by fiscal year")
     if not fwd:
-        out.append("No analyst EPS estimates (not on this FMP plan or none published); forward P/E range not available.")
+        out.append("No analyst EPS estimates for the current or next fiscal year (not on this FMP plan or none "
+                   "published); forward P/E range not available.")
     elif not band:
         out.append(pr["pe_band_note"])
     else:
-        out.append(f"5-year trailing P/E: 25th percentile {mult(band['p25'])}, median {mult(band['median'])}, "
+        out.append(f"3-year forward P/E: 25th percentile {mult(band['p25'])}, median {mult(band['median'])}, "
                    f"75th percentile {mult(band['p75'])} (10th-90th {mult(band['p10'])} - {mult(band['p90'])}; "
                    f"{band['n']} trading days, {band['from']} to {band['to']}).")
     if fwd and band:
-        out.append(table(["FY", "Year ends", "EPS est. low / avg / high", "Low", "Base", "High", "Base vs price"],
-                         [[fy_label(f), f["date"], f"{per_share(f['eps_low'])} / {per_share(f['eps_avg'])} / {per_share(f['eps_high'])}",
+        out.append(table(["FY", "Year ends", "EPS est. (low-high)", "Low", "Base", "High", "Base vs price"],
+                         [[f"{f['fy']} ({f['which']} year)", f["date"],
+                           f"{per_share(f['eps_avg'])} ({per_share(f['eps_low'])}-{per_share(f['eps_high'])})",
                            per_share(f["low"]), per_share(f["base"]), per_share(f["high"]), pct(f["base_vs_price"])]
                           for f in fwd]))
-        out.append("\nLow = EPS low x 25th-percentile P/E; Base = EPS avg x median P/E; High = EPS high x 75th-percentile P/E. "
-                   "It is what the shares would be worth at each fiscal year end if they traded within their usual "
-                   "5-year P/E range on analysts' EPS, not a forecast.")
-        out.append("Trailing P/E each day = close / diluted EPS of the latest fiscal year (or TTM) ended by that day.")
+        out.append("\nForward P/E each day = close / diluted EPS of the fiscal year in progress that day (the reported "
+                   "figure once that year was reported, the analysts' average for the current year).")
+        out.append("Low / Base / High = analysts' average EPS x the 25th-percentile / median / 75th-percentile forward "
+                   "P/E. The current year's row is a fair-value range for today if the company earns that EPS and "
+                   "trades at its usual forward multiple; the next year's row is the same once that year becomes the "
+                   "current one (about a year out). Not a forecast.")
+        if band["p75"] > 1.6 * band["p25"]:
+            out.append(f"The forward P/E history is wide ({mult(band['p25'])} - {mult(band['p75'])} between the 25th and "
+                       f"75th percentiles), often after an earnings trough or a re-rating; lean on the Base column.")
         if any(f["base"] is None for f in fwd):
-            out.append("n/a = the EPS estimate is zero or negative, so a P/E-based price is not meaningful.")
+            out.append("n/a = the average EPS estimate is zero or negative, so a P/E-based price is not meaningful.")
     eb = a.get("eps_basis")
     if fwd and band and eb and abs(eb["gap"]) > 0.05:
         out.append(f"Analysts' {eb['fy']} EPS ({per_share(eb['estimate'])}) differs from reported diluted EPS "
@@ -1229,7 +1243,7 @@ def analyze(args):
     alt = altman(years[-1], mcap)
     dcf = run_dcf(years, basis, current, args, cg["revenue"], sector_kind, rate, rate_src)
     analyst = analyst_view(est, pt, years[-1], price, today.isoformat())
-    ranges = price_range(years, ttm, series, analyst, dcf, price, today, div(mcap, price))
+    ranges = price_range(years, series, analyst, dcf, price, today, div(mcap, price))
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
 
     return {

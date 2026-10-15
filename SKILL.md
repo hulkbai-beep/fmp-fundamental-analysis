@@ -110,11 +110,12 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   reverse DCF: "the price assumes X% growth; history delivered Y%; analysts expect Z%" is the
   most honest valuation statement you can make.
 - **Price range: show it when the user asks where the price could go.** The "Price range"
-  section gives forward P/E ranges for the current and next fiscal years (analysts' EPS low /
-  avg / high x the company's own 5-year P/E percentiles) next to the DCF range, analyst targets,
+  section gives forward P/E ranges for the current and next fiscal years (analysts' average EPS
+  x the 25th / 50th / 75th percentile of the company's own 3-year forward P/E) next to the DCF
+  range, analyst targets,
   the 52-week range and a +/-1 standard deviation volatility band. Present them as ranges with
-  their basis, point out where the methods agree or disagree, and mention the adjusted-EPS note
-  when the report prints it. None of them is a forecast or a target.
+  their basis, point out where the methods agree or disagree, and mention the adjusted-EPS and
+  wide-history notes when the report prints them. None of them is a forecast or a target.
 - **Automated flags are prompts, not verdicts.** Explain each relevant one, and drop flags that
   are artifacts (for example, negative equity caused by buybacks at a highly profitable company,
   or a current ratio below 1 at a company with strong cash generation).

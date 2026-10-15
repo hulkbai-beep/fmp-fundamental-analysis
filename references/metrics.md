@@ -161,20 +161,31 @@ The "Price range" section puts several independent ranges side by side (the UI d
 bar chart with the current price as a dashed line). None of them is a forecast.
 
 **Forward P/E by fiscal year** (FMP `analyst-estimates`):
-- Trailing P/E is computed for every trading day of the last 5 years: close / diluted EPS of the
-  latest fiscal year (or TTM period) that had ended by that day. Days with EPS <= 0 are left out;
-  at least ~6 months of positive-EPS days are needed.
-- Low = analysts' low EPS x 25th-percentile P/E; Base = average EPS x median P/E; High = high EPS
-  x 75th-percentile P/E. It answers "what would the shares be worth at that fiscal year end if
-  they traded at their usual multiple on those earnings".
-- Fiscal years shown: every year after the last reported one up to the year after the one in
-  progress, so a year that has ended but is not reported yet is shown and marked.
-- Caveats: the multiple is the company's own history, so a business whose growth or risk has
-  changed (or that was re-rated) may not return to it. Analyst EPS is often on an adjusted
-  (non-GAAP) basis while the P/E history uses reported EPS; the report flags a gap above 5%
-  between FMP's estimate row for the last reported year and the reported figure. Negative or
-  zero EPS estimates give n/a. Weak guide for REITs (net income understates cash earnings) and
-  for cyclicals at peak or trough earnings.
+- Forward P/E is computed for every trading day of the last 3 years: close / diluted EPS of the
+  fiscal year in progress that day. Years already reported use the reported EPS, so the history
+  shows what the market paid for the earnings the company went on to deliver; the current year
+  uses the analysts' average estimate. Days with EPS <= 0 are left out; at least ~6 months of
+  positive-EPS days are needed.
+- Low / Base / High = analysts' average EPS for the year x the 25th-percentile / median /
+  75th-percentile forward P/E. The current fiscal year's row is a fair-value range for today;
+  the next year's row is the same estimate once that year becomes the current one (about a year
+  out). Analysts' EPS low-high is shown for reference but not multiplied in, so the range only
+  reflects how the multiple has varied.
+- Why forward and not trailing P/E: for a fast grower the trailing P/E is inflated by earnings
+  that lag the price (in 2023 NVDA often traded above 100x trailing earnings but below 45x the
+  earnings it delivered that fiscal year), and multiplying that by future EPS counts the growth twice.
+- Why 3 years: it reflects the current rate and growth regime and keeps one old earnings trough
+  from dominating the percentiles. The report warns when the 75th percentile is more than 1.6x
+  the 25th (an earnings trough or a re-rating); then lean on the Base column.
+- Caveats: the multiple is the company's own recent history, so a business whose growth or risk
+  has changed may not return to it. Analyst EPS is often on an adjusted (non-GAAP) basis while
+  history uses reported EPS; the report flags a gap above 5% between FMP's estimate row for the
+  last reported year and the reported figure. Negative or zero EPS estimates give n/a. Weak guide
+  for REITs (net income understates cash earnings) and for cyclicals at peak or trough earnings.
+- Safety checks: the range is skipped when a reported year's diluted share count is outside
+  0.55-1.8x today's (market cap / price; a split the statements do not reflect, an ADR ratio or
+  several share classes) or when the price history has a one-day move above 50% (possibly an
+  unadjusted split).
 
 **Other rows:**
 - DCF: the "reasonable range" from the DCF section (discount +/-1pt, growth +/-2pt), base case as mid.
@@ -240,9 +251,9 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 
 - Historical market cap = fiscal-year-end price x that year's weighted diluted shares.
 - TTM = sum of the last four quarters (EPS summed); balance sheet = latest quarter.
-- Daily P/E history for the price range steps from one fiscal year's EPS to the next on the
-  fiscal-year-end date (before the results are actually published) and uses TTM after the
-  latest quarter.
+- Forward P/E history for the price range uses each fiscal year's reported EPS for every day of
+  that year (hindsight, not what analysts expected at the time) and the analysts' average for the
+  year in progress.
 - Peer table always uses the last fiscal year for every company so the rows are comparable.
 - Industry/sector returns compound FMP's equal-weighted average daily change; they ignore dividends
   (so does the company and SPY comparison, which uses closing prices).
