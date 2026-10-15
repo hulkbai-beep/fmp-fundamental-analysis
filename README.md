@@ -1,5 +1,7 @@
 # FMP 基本面分析（fmp-fundamental-analysis）
 
+**中文** | [English](README.en.md)
+
 用 Financial Modeling Prep（FMP）的数据，对美股做基本面分析。它可以作为 Claude 的技能使用，也可以在命令行或本地网页里直接运行。
 
 分析内容包括：
@@ -27,7 +29,8 @@
 ```
 fmp-fundamental-analysis/
 ├── SKILL.md            # 给 Claude 看的技能说明（工作流程、解读规则、报告模板）
-├── README.md           # 本文件：给人看的使用说明
+├── README.md           # 本文件：给人看的使用说明（中文）
+├── README.en.md        # 英文版使用说明
 ├── references/
 │   └── metrics.md      # 指标定义、阈值、行业注意事项
 ├── scripts/
@@ -49,6 +52,8 @@ fmp-fundamental-analysis/
 
 ## 一、首次设置
 
+下面 1-4 步以 Windows 为主；**在 MacBook 上请直接看第 5 步**，一步步照做。
+
 ### 1. 设置 API key
 
 API key 只从环境变量 `FMP_API_KEY` 读取，不要写进本目录下的任何文件。
@@ -59,7 +64,7 @@ Windows（PowerShell 或 CMD）：
 setx FMP_API_KEY "你的key"
 ```
 
-macOS / Linux：把 `export FMP_API_KEY="你的key"` 加到 `~/.zshrc` 或 `~/.bashrc`。
+macOS / Linux：把 `export FMP_API_KEY="你的key"` 加到 `~/.zshrc` 或 `~/.bashrc`（Mac 的详细步骤见第 5 步）。
 
 > `setx` 只对**新打开**的终端生效。设置完要重新打开终端，并重启 Claude，它才能读到新变量。
 
@@ -112,6 +117,88 @@ python scripts/fmp_client.py check
 $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
 ```
 
+### 5. 在 MacBook（macOS）上设置
+
+上面 1-4 步以 Windows 为主。在 Mac 上从头装一遍，照下面做就行。命令都在「终端」里运行：按 ⌘ + 空格，搜索「终端」或 Terminal 打开。macOS 默认的 shell 是 zsh，配置文件是 `~/.zshrc`。
+
+**① 确认 Python 和 git**
+
+```bash
+python3 --version
+git --version
+```
+
+Python 显示 3.8 或以上就行。如果弹窗提示安装「命令行开发者工具」，点「安装」，它会同时装好 python3 和 git。也可以用 Homebrew 安装：`brew install python git`。
+
+**② 下载代码**
+
+```bash
+mkdir -p ~/Documents/claude
+cd ~/Documents/claude
+git clone https://github.com/hulkbai-beep/fmp-fundamental-analysis.git
+cd fmp-fundamental-analysis
+```
+
+如果仓库是私有的，git 会要求登录 GitHub。最省事的是先装 GitHub CLI 登录：`brew install gh`，再 `gh auth login`，然后用 `gh repo clone hulkbai-beep/fmp-fundamental-analysis` 下载。
+
+**③ 设置 API key 和代理地址**
+
+用终端里的 nano 编辑器打开 `~/.zshrc`。这样 key 不会留在命令历史里；也不要用「文本编辑」，它可能把引号自动改成中文弯引号，导致设置失效：
+
+```bash
+nano ~/.zshrc
+```
+
+用方向键移到文件末尾，粘贴下面两行，把「你的key」换成真实的 key。然后按 Ctrl + O、回车保存，再按 Ctrl + X 退出：
+
+```bash
+export FMP_API_KEY="你的key"
+export FMP_BASE_URL="https://54.236.92.205"
+```
+
+回到终端，运行 `source ~/.zshrc`（或者关掉终端再开一个）让它生效。检查有没有设置成功（只显示「已设置」，不会打印 key）：
+
+```bash
+[ -n "$FMP_API_KEY" ] && echo "已设置" || echo "没设置"
+```
+
+**不要**把 `FMP_TLS_VERIFY=0` 写进 `~/.zshrc`，它只在每次运行时单独加（见下一步）。
+
+**④ 检查连接**
+
+```bash
+FMP_TLS_VERIFY=0 python3 scripts/fmp_client.py check
+```
+
+命令前面的 `FMP_TLS_VERIFY=0` 只对这一条命令生效，相当于 Windows 上的 `$env:FMP_TLS_VERIFY = '0'; ...`。
+
+**⑤ 安装成 Claude 技能**
+
+```bash
+mkdir -p ~/.claude/skills
+rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/skills/fmp-fundamental-analysis/
+```
+
+以后代码有更新，先在代码目录里 `git pull`，再跑一次同一条 `rsync`。它相当于 Windows 上的 robocopy。
+
+**⑥ 让 Claude 读到 key**
+
+- **在终端里运行 Claude Code（输入 `claude`）：** 它会读 `~/.zshrc`，第 ③ 步设置好、重开终端就行。
+- **用 Claude 桌面 App：** 从程序坞或启动台打开的 App 可能读不到 `~/.zshrc`。如果 Claude 提示 `FMP_API_KEY is not set`，就在 `~/.claude/settings.json` 里也写一份，然后完全退出 App（⌘ + Q）再打开：
+
+```json
+{
+  "env": {
+    "FMP_API_KEY": "你的key",
+    "FMP_BASE_URL": "https://54.236.92.205"
+  }
+}
+```
+
+用 `nano ~/.claude/settings.json` 打开（文件不存在会自动新建），保存和退出的按键同上。如果文件里已经有内容，只把 `"env"` 这一段合并进去，不要覆盖原有内容。
+
+**Mac 上其他命令的写法：** 本文里的 `python` 都换成 `python3`；PowerShell 的 `$env:FMP_TLS_VERIFY = '0'; python ...` 写成 `FMP_TLS_VERIFY=0 python3 ...`。
+
 ---
 
 ## 二、三种用法
@@ -128,7 +215,17 @@ $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
 
 Claude 会运行 `analyze.py`，然后按 SKILL.md 里的模板写一份报告。报告包括结论、增长、盈利能力、资产负债、现金流、估值、风险、关注点和数据说明。
 
-**注意：Claude 实际读取的是 `~/.claude/skills/fmp-fundamental-analysis/` 里的那一份技能。**修改本目录后，要把改动同步到那里才会生效。
+**注意：Claude 实际读取的是 `~/.claude/skills/fmp-fundamental-analysis/` 里的那一份技能。**修改本目录后，要把改动同步到那里才会生效。Windows 上可以用：
+
+```powershell
+robocopy C:\Users\<用户名>\Documents\claude\fmp-fundamental-analysis C:\Users\<用户名>\.claude\skills\fmp-fundamental-analysis /E /XD .git
+```
+
+Mac 上用：
+
+```bash
+rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/skills/fmp-fundamental-analysis/
+```
 
 ### 用法 2：命令行
 
@@ -142,6 +239,12 @@ python scripts/analyze.py AAPL
 
 ```powershell
 $env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
+```
+
+Mac 上：
+
+```bash
+FMP_TLS_VERIFY=0 python3 scripts/analyze.py AAPL
 ```
 
 常用参数：
@@ -193,12 +296,12 @@ python scripts/fmp_client.py get key-metrics symbol=AAPL period=annual limit=5
 python ui/server.py
 ```
 
-然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。
+Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端里启动。然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。
 
 - **启动时自动处理：**
   - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
   - 连接 54.236.92.205 代理时，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`。
-- **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
+- **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、隐含波动率 %（留空 = 用过去一年的实际波动率）、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
 - **页面显示的内容：**
   - 顶部有黄色提示条，标明数据来自 FMP 第三方代理接口。
   - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。
@@ -240,6 +343,9 @@ python scripts/fmp_client.py clear-cache
 | 报告里有「Skipped (not in your FMP plan)」 | 套餐不包含某些接口（同行、分析师预期、季度数据等）。其他分析仍然可以基于年报完成 |
 | 股价或市值看起来是旧的 | 加 `--refresh`，或在网页上勾选「忽略缓存」 |
 | Windows 上提示找不到 `python` | 改用 `py`，例如 `py scripts/analyze.py AAPL` |
+| Mac 上提示 `command not found: python` | Mac 上用 `python3` |
+| Mac 上的 Claude 提示 `FMP_API_KEY is not set`，但终端里设置好了 | Claude 桌面 App 没读到 `~/.zshrc`。在 `~/.claude/settings.json` 的 `env` 里也写一份（见第 5 步 ⑥），然后用 ⌘ + Q 退出 App 再打开 |
+| Mac 上连 FMP 官方服务器报 `CERTIFICATE_VERIFY_FAILED` | 从 python.org 下载安装的 Python 默认不带证书。打开「应用程序 → Python 3.x」，双击 `Install Certificates.command` 运行一次 |
 | 网页打不开 / 端口被占用 | 确认 `server.py` 还在运行，或换个端口：`--port 9000` |
 | 金融或 REIT 公司的某些指标显示 n/a 或没有意义 | 这是正常的：银行、保险不适用毛利率、EV 倍数和 DCF。报告的 sector note 会说明 |
 | DCF 折现率显示 `fixed default` | 国债或股权风险溢价接口没拿到数据，这次用了固定 9%。运行 `fmp_client.py check` 看是哪个接口有问题 |
