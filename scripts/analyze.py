@@ -500,19 +500,20 @@ def lfy_snapshot(profile, years):
 
 
 def peer_requests(client, s):
-    """The four calls behind one peer row, as (function, args, kwargs) so they can run in parallel."""
+    """The five calls behind one peer row, as (function, args, kwargs) so they can run in parallel."""
     st = client.statements
     return [(client.try_get, ("profile",), {"symbol": s}),
             (st, ("income-statement", s, "annual", 2), {"optional": True}),
             (st, ("balance-sheet-statement", s, "annual", 1), {"optional": True}),
-            (st, ("cash-flow-statement", s, "annual", 1), {"optional": True})]
+            (st, ("cash-flow-statement", s, "annual", 1), {"optional": True}),
+            (fetch_quote, (client, s), {})]
 
 
-def peer_snapshot(s, prof, inc, bs, cf):
+def peer_snapshot(s, prof, inc, bs, cf, quote=None):
     prof = prof[0] if isinstance(prof, list) and prof else (prof if isinstance(prof, dict) else None)
     if not prof or not inc:
         return {"symbol": s, "error": "no data (plan restriction or unknown ticker)"}
-    return lfy_snapshot(prof, build_years(inc, bs, cf))
+    return lfy_snapshot(quote_price(prof, quote), build_years(inc, bs, cf))
 
 
 def fetch_estimates(client, sym):
@@ -1365,16 +1366,11 @@ def us_eastern(ts):
     return utc - dt.timedelta(hours=4 if start <= utc < end else 5)
 
 
-def apply_quote(profile, quote, series, candles):
-    """Use the latest quote for the price, day change and market cap, and for the latest day of the price
-    history, so each run shows the current price while the profile and the daily bars come from the cache.
-    Returns (profile, series, candles, quote time in New York as 'YYYY-MM-DD HH:MM'); the time is "" when the
-    quote has no timestamp, and None when the quote was not used because it is older than the price history."""
-    ts = num(quote, "timestamp")
-    when = us_eastern(ts / 1000 if ts > 1e12 else ts) if ts and ts > 0 else None
-    day = when.date().isoformat() if when else None
-    if day and any(h and h[-1][0] > day for h in (series, candles)):
-        return profile, series, candles, None  # the quote is older than the price history: keep the profile's price
+def quote_price(profile, quote):
+    """The profile with the quote's price, day change and market cap (the profile itself is cached for a day).
+    Used for the company and for each peer, so the peer table compares prices taken at the same time."""
+    if not quote:
+        return profile
     px, old = num(quote, "price"), num(profile, "price")
     mcap = num(quote, "marketCap")
     if mcap is None and old and num(profile, "marketCap", "mktCap"):
@@ -1385,6 +1381,21 @@ def apply_quote(profile, quote, series, candles):
             profile[k] = num(quote, k)
     if mcap:
         profile["marketCap"] = mcap
+    return profile
+
+
+def apply_quote(profile, quote, series, candles):
+    """Use the latest quote for the price, day change and market cap, and for the latest day of the price
+    history, so each run shows the current price while the profile and the daily bars come from the cache.
+    Returns (profile, series, candles, quote time in New York as 'YYYY-MM-DD HH:MM'); the time is "" when the
+    quote has no timestamp, and None when the quote was not used because it is older than the price history."""
+    ts = num(quote, "timestamp")
+    when = us_eastern(ts / 1000 if ts > 1e12 else ts) if ts and ts > 0 else None
+    day = when.date().isoformat() if when else None
+    if day and any(h and h[-1][0] > day for h in (series, candles)):
+        return profile, series, candles, None  # the quote is older than the price history: keep the profile's price
+    profile = quote_price(profile, quote)
+    px = profile["price"]
     if not when:
         return profile, series, candles, ""
     # A bar for the quote's day exists once that session has opened (not on weekends or before 9:30).

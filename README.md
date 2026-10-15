@@ -296,7 +296,7 @@ python scripts/fmp_client.py get key-metrics symbol=AAPL period=annual limit=5
 python ui/server.py
 ```
 
-Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端里启动。然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。
+Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端里启动。然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。代码更新后要按 Ctrl+C 停掉再重新启动，网页才会用上新代码。
 
 - **启动时自动处理：**
   - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。

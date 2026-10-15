@@ -296,7 +296,7 @@ Start it:
 python ui/server.py
 ```
 
-On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.zshrc` is already set up. Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`.
+On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.zshrc` is already set up. Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`. After the code is updated, stop it with Ctrl+C and start it again so the page uses the new code.
 
 - **Handled automatically at start-up:**
   - Reads the `FMP_*` variables saved with `setx`, even if the terminal was opened before `setx`.
