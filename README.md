@@ -90,6 +90,7 @@ setx FMP_BASE_URL "https://54.236.92.205"
 |---|---|---|
 | `FMP_MAX_PER_MIN` | `280` | 每分钟最多发多少个请求 |
 | `FMP_MAX_WORKERS` | `6` | 同时并发几个请求。代理不稳定或经常报 429 时调小；设为 `1` 就是逐个请求 |
+| `FMP_TIMEOUT` | `30` | 每个请求最多等几秒。代理响应慢、经常超时可以调到 `60` |
 | `FMP_CACHE_DIR` | `~/.cache/fmp-fundamentals` | 缓存目录 |
 
 ### 4. 检查连接

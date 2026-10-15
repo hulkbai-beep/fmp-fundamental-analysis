@@ -20,6 +20,7 @@ Connection settings (environment variables):
                     bare-IP proxies; less secure). Default "1".
   FMP_MAX_PER_MIN   request rate cap shared by all threads (default 280).
   FMP_MAX_WORKERS   parallel requests analyze.py may run (default 6; 1 = one at a time).
+  FMP_TIMEOUT       seconds to wait for each response (default 30).
 
 CLI:
   python fmp_client.py check [SYMBOL]          connection info + which endpoints work
@@ -113,6 +114,11 @@ def _env_flag(name, default=True):
     return v.strip().lower() not in ("0", "false", "no", "off")
 
 
+def _is_timeout(exc):
+    reason = getattr(exc, "reason", exc)
+    return isinstance(reason, TimeoutError) or "timed out" in str(reason).lower()
+
+
 def _is_cert_error(exc):
     reason = getattr(exc, "reason", exc)
     return isinstance(reason, (ssl.SSLCertVerificationError, ssl.CertificateError)) or \
@@ -134,7 +140,10 @@ class FMPClient:
         per_min = max_per_min or int(os.environ.get("FMP_MAX_PER_MIN", "280"))
         self.rate = max(per_min, 1) / 60.0  # requests per second
         self.burst = min(10.0, float(max(per_min, 1)))
-        self.timeout = timeout
+        try:
+            self.timeout = float(os.environ.get("FMP_TIMEOUT") or timeout)
+        except ValueError:
+            self.timeout = timeout
         self._tokens, self._refilled = self.burst, time.time()
         self._lock = threading.Lock()  # guards the rate limiter, stats and the lists below
         self.stats = {"network_calls": 0, "cache_hits": 0}
@@ -227,12 +236,16 @@ class FMPClient:
         for prefix in prefixes:
             for style in styles:
                 url = self._url("profile", {"symbol": symbol}, prefix, style)
-                try:
-                    status, body = self._http_get(url, style)
-                except urllib.error.URLError as e:
-                    if _is_cert_error(e):
-                        raise FMPError(self._cert_hint())
-                    raise FMPError(f"cannot reach {self.host}: {getattr(e, 'reason', e)}")
+                for attempt in range(2):  # one retry if the server is momentarily slow
+                    try:
+                        status, body = self._http_get(url, style)
+                        break
+                    except (urllib.error.URLError, OSError) as e:  # OSError covers read timeouts
+                        if _is_cert_error(e):
+                            raise FMPError(self._cert_hint())
+                        if attempt == 0 and _is_timeout(e):
+                            continue
+                        raise FMPError(self._unreachable_hint(e))
                 self._count("network_calls")
                 ok = status == 402 or (status == 200 and _error_message(body) is None
                                        and body.strip()[:1] in ("[", "{"))
@@ -248,6 +261,13 @@ class FMPClient:
             + ". Check FMP_API_KEY / FMP_BASE_URL, or set FMP_PATH_PREFIX and FMP_AUTH_STYLE "
               "to match the proxy's documentation."
         )
+
+    def _unreachable_hint(self, exc):
+        msg = f"cannot reach {self.host}: {getattr(exc, 'reason', exc)}."
+        if _is_timeout(exc):
+            msg += (f" The server sent no response within {self.timeout:g}s (tried twice). It may be "
+                    f"down or overloaded: try again in a few minutes, or set FMP_TIMEOUT=60.")
+        return msg
 
     def _cert_hint(self):
         return (f"HTTPS certificate verification failed for {self.host}. This is common for "
@@ -308,7 +328,8 @@ class FMPClient:
             except (urllib.error.URLError, TimeoutError, OSError) as e:
                 if _is_cert_error(e):
                     raise FMPError(self._cert_hint())
-                last_err = FMPError(f"network error on {endpoint}: {getattr(e, 'reason', e)}")
+                last_err = FMPError(f"network error on {endpoint}: {getattr(e, 'reason', e)}"
+                                    + (f" (no response within {self.timeout:g}s)" if _is_timeout(e) else ""))
                 time.sleep(2 ** attempt)
                 continue
             self._count("network_calls")

@@ -163,4 +163,5 @@ Responses are cached under `~/.cache/fmp-fundamentals` (fundamentals 7 days, pri
 | `python` not found on Windows | Use `py scripts/analyze.py ...` |
 | `certificate verification failed` (proxy) | Proxy certificate not trusted; the user may set `FMP_TLS_VERIFY=0` |
 | `Could not find a working request format` (proxy) | Token or address wrong, or the proxy uses another path/auth scheme: set `FMP_PATH_PREFIX` / `FMP_AUTH_STYLE` from the proxy's docs |
+| `cannot reach ... no response within 30s` | Proxy slow or down: retry in a few minutes; if it keeps happening set `FMP_TIMEOUT=60` and/or `FMP_MAX_WORKERS=2` |
 | Proxy worked before, now `key rejected` | Run `fmp_client.py check` to re-detect; the token may have expired |
