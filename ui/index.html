@@ -58,6 +58,10 @@ th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: r
 th:first-child, td:first-child { text-align: left; }
 th { color: var(--muted); font-weight: 600; background: var(--row); }
 svg text { fill: var(--muted); font-size: 11px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; }
+.top h1 { margin: 0; }
+button.lang { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500;
+  padding: 5px 12px; }
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent;
   border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes s { to { transform: rotate(360deg); } }
@@ -67,20 +71,24 @@ pre { white-space: pre-wrap; font-size: 12px; }
 </head>
 <body>
 <div class="wrap">
-  <h1>FMP 基本面分析</h1>
+  <div class="top">
+    <h1 data-i18n="title">FMP 基本面分析</h1>
+    <button type="button" class="lang" id="lang"></button>
+  </div>
   <form id="f">
-    <label>股票代码<input id="symbol" name="symbol" placeholder="AAPL" required autofocus></label>
-    <label>对比公司（可选）<input id="peers" name="peers" placeholder="MSFT,GOOGL 或 none"></label>
-    <label>折现率 %<input class="small" name="discount" placeholder="自动" title="留空 = 10 年期国债 + Beta × 股权风险溢价（7%-13%）"></label>
-    <label>1-5年增速 %<input class="small" name="growth" placeholder="自动"></label>
-    <label>永续增速 %<input class="small" name="terminal" placeholder="2.5"></label>
-    <label>起始 FCF<select name="fcf_base"><option value="latest">最新</option><option value="avg3">3年平均</option></select></label>
-    <label class="chk"><input type="checkbox" name="macro" value="1">宏观背景</label>
-    <label class="chk"><input type="checkbox" name="refresh" value="1">忽略缓存</label>
-    <button id="go">分析</button>
+    <label><span data-i18n="f_symbol"></span><input id="symbol" name="symbol" placeholder="AAPL" required autofocus></label>
+    <label><span data-i18n="f_peers"></span><input id="peers" name="peers" data-i18n-ph="ph_peers"></label>
+    <label><span data-i18n="f_discount"></span><input class="small" name="discount" data-i18n-ph="ph_auto" data-i18n-title="discount_tip"></label>
+    <label><span data-i18n="f_growth"></span><input class="small" name="growth" data-i18n-ph="ph_auto"></label>
+    <label><span data-i18n="f_terminal"></span><input class="small" name="terminal" placeholder="2.5"></label>
+    <label><span data-i18n="f_fcf"></span><select name="fcf_base"><option value="latest" data-i18n="opt_latest"></option><option value="avg3" data-i18n="opt_avg3"></option></select></label>
+    <label class="chk"><input type="checkbox" name="macro" value="1"><span data-i18n="c_macro"></span></label>
+    <label class="chk"><input type="checkbox" name="refresh" value="1"><span data-i18n="c_refresh"></span></label>
+    <button id="go" data-i18n="go"></button>
   </form>
   <div id="out"></div>
 </div>
+<script src="i18n.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -93,7 +101,32 @@ function fmtMoney(v) {
   return v.toFixed(2);
 }
 
+// Language: "zh" (default) shows the page and the report in Chinese; "en" shows the original English report.
+let LANG = "zh";
+try { if (localStorage.getItem("lang") === "en") LANG = "en"; } catch (e) {}
+const t = (key, ...a) => { const v = UI[LANG][key]; return typeof v === "function" ? v(...a) : (v ?? key); };
+const tr = s => LANG === "zh" ? zh(s) : String(s ?? "");
+let lastData = null, lastSymbol = "", curTab = 0;
+
+function applyLang() {
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  document.querySelectorAll("[data-i18n-title]").forEach(el => el.title = t(el.dataset.i18nTitle));
+  $("#lang").textContent = t("lang_button");
+  $("#lang").title = t("lang_hint");
+}
+$("#lang").onclick = () => {
+  LANG = LANG === "zh" ? "en" : "zh";
+  try { localStorage.setItem("lang", LANG); } catch (e) {}
+  applyLang();
+  if (lastData) render(lastData);
+  else if ($("#go").disabled) $("#out").innerHTML = loadingHtml(lastSymbol);
+};
+
 // Minimal markdown -> HTML for the report produced by analyze.py (headings, tables, bold, lists).
+// Each text piece goes through tr() first, so the Chinese view translates headings, cells and sentences.
 function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
 function md(text) {
   const lines = text.split("\n"); let html = "", i = 0;
@@ -102,32 +135,32 @@ function md(text) {
     if (l.startsWith("|")) {
       const rows = [];
       while (i < lines.length && lines[i].startsWith("|")) { rows.push(lines[i]); i++; }
-      const cells = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
-      html += "<table><thead><tr>" + cells(rows[0]).map(c => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>";
-      for (const r of rows.slice(1)) if (!/^\|[\s|:-]+\|$/.test(r)) html += "<tr>" + cells(r).map(c => `<td>${inline(c)}</td>`).join("") + "</tr>";
+      const cells = r => r.replace(/^\||\|$/g, "").split("|").map(c => inline(tr(c.trim())));
+      html += "<table><thead><tr>" + cells(rows[0]).map(c => `<th>${c}</th>`).join("") + "</tr></thead><tbody>";
+      for (const r of rows.slice(1)) if (!/^\|[\s|:-]+\|$/.test(r)) html += "<tr>" + cells(r).map(c => `<td>${c}</td>`).join("") + "</tr>";
       html += "</tbody></table>"; continue;
     }
     if (l.startsWith("- ")) {
       html += "<ul>";
-      while (i < lines.length && lines[i].startsWith("- ")) { html += `<li>${inline(lines[i].slice(2))}</li>`; i++; }
+      while (i < lines.length && lines[i].startsWith("- ")) { html += `<li>${inline(tr(lines[i].slice(2)))}</li>`; i++; }
       html += "</ul>"; continue;
     }
-    if (l.startsWith("## ")) html += `<h2>${inline(l.slice(3))}</h2>`;
-    else if (l.startsWith("### ")) html += `<h3>${inline(l.slice(4))}</h3>`;
-    else if (l.trim()) html += `<p>${inline(l)}</p>`;
+    if (l.startsWith("## ")) html += `<h2>${inline(tr(l.slice(3)))}</h2>`;
+    else if (l.startsWith("### ")) html += `<h3>${inline(tr(l.slice(4)))}</h3>`;
+    else if (l.trim()) html += `<p>${inline(tr(l))}</p>`;
     i++;
   }
   return html;
 }
 
 function chart(prices) {
-  if (!prices || prices.length < 2) return "<p class='sub'>没有价格数据。</p>";
+  if (!prices || prices.length < 2) return `<p class='sub'>${esc(t("no_prices"))}</p>`;
   const W = 560, H = 200, P = 36;
   const ys = prices.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), span = (hi - lo) || 1;
   const x = i => P + i * (W - P - 8) / (prices.length - 1), y = v => 10 + (H - 34) * (1 - (v - lo) / span);
   const d = prices.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(p[1]).toFixed(1)).join("");
   const up = ys[ys.length - 1] >= ys[0];
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="一年股价走势">
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(t("chart_aria"))}">
     <path d="${d}" fill="none" stroke="var(${up ? "--pos" : "--neg"})" stroke-width="1.6"/>
     <text x="2" y="${y(hi) + 4}">${hi.toFixed(0)}</text><text x="2" y="${y(lo) + 4}">${lo.toFixed(0)}</text>
     <text x="${P}" y="${H - 4}">${prices[0][0]}</text>
@@ -135,52 +168,60 @@ function chart(prices) {
 }
 
 function render(data) {
+  lastData = data;
   const r = data.result, p = r.profile || {}, c = r.current || {}, dcf = r.dcf || {}, conn = r.meta.connection || {};
   const last = r.years[r.years.length - 1] || {};
   const chg = p.changePercentage;
   let h = "";
   if (!conn.route || conn.route.startsWith("third-party")) {
-    h += `<div class="notice">数据来自 <b>FMP 第三方代理接口</b>（${esc(conn.base)}），不是 FMP 官方服务器。重要数字请对照公司财报核实。` +
-         (conn.tls_verify === false ? " 本次 HTTPS 证书验证已关闭。" : "") + `</div>`;
+    h += `<div class="notice">${t("notice_proxy", esc(conn.base))}` + (conn.tls_verify === false ? esc(t("notice_tls")) : "") + `</div>`;
   }
+  const stat = (key, val, cls = "") => `<div class="stat"><div class="k">${esc(t(key))}</div><div class="v ${cls}">${val}</div></div>`;
   h += `<div class="card"><div class="head"><div>
       <div class="name">${esc(p.companyName || r.symbol)} <span class="sub">${esc(r.symbol)}</span></div>
-      <div class="sub">${esc(p.sector)} / ${esc(p.industry)} · ${esc(p.exchange)} · 截至 ${esc(r.as_of)}</div></div>
+      <div class="sub">${esc(LANG === "zh" ? sectorZh(p.sector) : p.sector)} / ${esc(p.industry)} · ${esc(p.exchange)} · ${esc(t("as_of"))} ${esc(r.as_of)}</div></div>
       <div><div class="price">${p.price != null ? p.price.toFixed(2) : "n/a"} <span class="sub">${esc(p.currency)}</span></div>
-      <div class="sub" style="text-align:right">${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> · ` : ""}市值 ${fmtMoney(p.marketCap)}</div></div></div>
+      <div class="sub" style="text-align:right">${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> · ` : ""}${esc(t("mcap"))} ${fmtMoney(p.marketCap)}</div></div></div>
     <div class="stats">
-      <div class="stat"><div class="k">P/E</div><div class="v">${fmtX(c.pe)}</div></div>
-      <div class="stat"><div class="k">EV/EBITDA</div><div class="v">${fmtX(c.ev_ebitda)}</div></div>
-      <div class="stat"><div class="k">FCF 收益率</div><div class="v">${fmtPct(c.fcf_yield)}</div></div>
-      <div class="stat"><div class="k">ROIC (${esc(last.label)})</div><div class="v">${fmtPct(last.roic)}</div></div>
-      <div class="stat"><div class="k">营收 CAGR</div><div class="v">${fmtPct(r.cagr.revenue)}</div></div>
-      <div class="stat"><div class="k">Piotroski</div><div class="v">${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}</div></div>
-      <div class="stat"><div class="k">DCF 每股价值</div><div class="v">${dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a"}</div></div>
-      <div class="stat"><div class="k">DCF vs 股价</div><div class="v ${dcf.margin_of_safety >= 0 ? "pos" : "neg"}">${dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a"}</div></div>
+      ${stat("s_pe", fmtX(c.pe))}
+      ${stat("s_ev", fmtX(c.ev_ebitda))}
+      ${stat("s_fcfy", fmtPct(c.fcf_yield))}
+      <div class="stat"><div class="k">${esc(t("s_roic"))} (${esc(last.label)})</div><div class="v">${fmtPct(last.roic)}</div></div>
+      ${stat("s_cagr", fmtPct(r.cagr.revenue))}
+      ${stat("s_pio", `${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}`)}
+      ${stat("s_dcf", dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a")}
+      ${stat("s_mos", dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a", dcf.margin_of_safety >= 0 ? "pos" : "neg")}
     </div></div>`;
+  const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
   h += `<div class="grid2" style="margin-top:14px">
-    <div class="card"><h3>近一年股价</h3>${chart(data.prices)}</div>
-    <div class="card"><h3>自动提示（需进一步核实，不是结论）</h3>
-      <b class="pos">优点</b><ul class="flags">${(r.flags.green || []).map(x => `<li>${esc(x)}</li>`).join("") || "<li>无</li>"}</ul>
-      <b class="neg">风险</b><ul class="flags">${(r.flags.red || []).map(x => `<li>${esc(x)}</li>`).join("") || "<li>无</li>"}</ul></div></div>`;
+    <div class="card"><h3>${esc(t("chart_title"))}</h3>${chart(data.prices)}</div>
+    <div class="card"><h3>${esc(t("flags_title"))}</h3>
+      <b class="pos">${esc(t("pos"))}</b><ul class="flags">${flagList(r.flags.green)}</ul>
+      <b class="neg">${esc(t("neg"))}</b><ul class="flags">${flagList(r.flags.red)}</ul></div></div>`;
 
   const parts = data.report.split(/\n(?=## )/).filter(s => s.startsWith("## "));
-  h += `<div class="tabs">` + parts.map((s, i) => `<button class="tab${i ? "" : " on"}" data-i="${i}">${esc(s.split("\n")[0].slice(3).replace(/\s*\(.*$/, ""))}</button>`).join("") + `</div>`;
-  h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i ? "hidden" : ""}>${md(s)}</div>`).join("");
-  h += `<details><summary>完整文字报告</summary><div class="card"><pre>${esc(data.report)}</pre></div></details>`;
+  if (curTab >= parts.length) curTab = 0;
+  const tabName = s => tr(s.split("\n")[0].slice(3)).replace(/\s*[(（].*$/, "");
+  h += `<div class="tabs">` + parts.map((s, i) => `<button class="tab${i === curTab ? " on" : ""}" data-i="${i}">${esc(tabName(s))}</button>`).join("") + `</div>`;
+  h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i === curTab ? "" : "hidden"}>${md(s)}</div>`).join("");
+  h += `<details><summary>${esc(t("full_report"))}</summary><div class="card"><pre>${esc(data.report)}</pre></div></details>`;
   $("#out").innerHTML = h;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
-    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === b));
+    curTab = +b.dataset.i;
+    document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === b));
     document.querySelectorAll(".section").forEach(s => s.hidden = s.dataset.i !== b.dataset.i);
   });
 }
+
+const loadingHtml = sym => `<div class="card"><span class="spin"></span>${esc(t("loading", sym))}</div>`;
 
 $("#f").onsubmit = async e => {
   e.preventDefault();
   const q = new URLSearchParams(new FormData(e.target));
   q.set("symbol", q.get("symbol").trim().toUpperCase());
+  lastSymbol = q.get("symbol"); lastData = null; curTab = 0;
   $("#go").disabled = true;
-  $("#out").innerHTML = `<div class="card"><span class="spin"></span>正在分析 ${esc(q.get("symbol"))}…（首次约 10-30 秒，之后有缓存会更快）</div>`;
+  $("#out").innerHTML = loadingHtml(lastSymbol);
   try {
     const res = await fetch("/api/analyze?" + q);
     const data = await res.json();
@@ -191,6 +232,8 @@ $("#f").onsubmit = async e => {
     $("#out").innerHTML = `<div class="card error">${esc(err.message)}</div>`;
   } finally { $("#go").disabled = false; }
 };
+
+applyLang();
 const s0 = new URLSearchParams(location.search).get("symbol");
 if (s0) { $("#symbol").value = s0; $("#f").requestSubmit(); }
 </script>
