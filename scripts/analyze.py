@@ -577,7 +577,7 @@ def analyst_view(est, pt, last_fy, price, today):
 
 
 # ============================================================ price ranges
-def pe_band(years, estimates, series, today, cur_shares=None, lookback_years=3):
+def pe_band(years, estimates, series, today, cur_shares=None, now_pe=None, lookback_years=3):
     """Daily forward P/E over the last `lookback_years`: each close divided by the diluted EPS of the
     fiscal year in progress that day - the reported figure once that year is reported (so history
     reflects the earnings the company went on to deliver), the analysts' average estimate for a year
@@ -609,9 +609,11 @@ def pe_band(years, estimates, series, today, cur_shares=None, lookback_years=3):
             used.append((d, px / fys[i][1]))
     if len(used) < 120:  # under ~6 months of trading days with positive earnings
         return None, no_history
-    q = statistics.quantiles([v for _, v in used], n=20, method="inclusive")  # 5% steps
+    vals = [v for _, v in used]
+    q = statistics.quantiles(vals, n=20, method="inclusive")  # 5% steps
     return {"p10": q[1], "p25": q[4], "median": q[9], "p75": q[14], "p90": q[17],
-            "n": len(used), "from": used[0][0], "to": used[-1][0]}, None
+            "n": len(used), "from": used[0][0], "to": used[-1][0], "now": now_pe,
+            "now_pct": sum(v <= now_pe for v in vals) / len(vals) if now_pe else None}, None
 
 
 def trading_ranges(series, price, today):
@@ -633,7 +635,9 @@ def trading_ranges(series, price, today):
 def price_range(years, series, analyst, dcf, price, today, cur_shares=None):
     """Price ranges from several methods, for the report's price-range section and the UI chart."""
     estimates = analyst.get("estimates") or []
-    band, band_note = pe_band(years, estimates, series, today, cur_shares)
+    cur_fy = next((e for e in estimates if not e["ended"]), None)
+    now_pe = pos_div(price, cur_fy["eps_avg"]) if cur_fy else None
+    band, band_note = pe_band(years, estimates, series, today, cur_shares, now_pe)
     forward = []
     for e in (e for e in estimates if not e["ended"]):  # the current and next fiscal years
         avg = e["eps_avg"]
@@ -846,6 +850,11 @@ def render_price_range(r):
         out.append(f"3-year forward P/E: 25th percentile {mult(band['p25'])}, median {mult(band['median'])}, "
                    f"75th percentile {mult(band['p75'])} (10th-90th {mult(band['p10'])} - {mult(band['p90'])}; "
                    f"{band['n']} trading days, {band['from']} to {band['to']}).")
+        if band["now"] is not None:
+            n = round(band["now_pct"] * 100)
+            suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+            out.append(f"Today's forward P/E: {mult(band['now'])} on FY{fwd[0]['fy']} EPS, at the "
+                       f"{n}{suffix} percentile of that history.")
     if fwd and band:
         out.append(table(["FY", "Year ends", "EPS est. (low-high)", "Low", "Base", "High", "Base vs price"],
                          [[f"{f['fy']} ({f['which']} year)", f["date"],

@@ -243,6 +243,8 @@ const ZH_RULES = [
   [/^Current price (\S+)\. Each row is the range one method gives; none of them is a forecast\.$/, "当前股价 $1。每一行是一种方法给出的区间，都不是预测。"],
   [/^3-year forward P\/E: 25th percentile (\S+), median (\S+), 75th percentile (\S+) \(10th-90th (\S+) - (\S+); (\d+) trading days, (\S+) to (\S+)\)\.$/,
     "过去 3 年的前瞻 P/E：25 分位 $1，中位数 $2，75 分位 $3（10-90 分位 $4 - $5；$6 个交易日，$7 至 $8）。"],
+  [/^Today's forward P\/E: (\S+) on FY(\d{4}) EPS, at the (\d+)(?:st|nd|rd|th) percentile of that history\.$/,
+    "当前前瞻 P/E：按 FY$2 EPS 算是 $1，处于这段历史的第 $3 百分位。"],
   [/^The forward P\/E history is wide \((\S+) - (\S+) between the 25th and 75th percentiles\), often after an earnings trough or a re-rating; lean on the Base column\.$/,
     "历史前瞻 P/E 分布很宽（25-75 分位 $1 - $2），通常是经历过盈利低谷或估值重估；以「基准」一列为主。"],
   [/^Analysts' (\S+) EPS \((\S+)\) differs from reported diluted EPS \((\S+)\) by (\S+): the estimates may be on an adjusted \(non-GAAP\) basis, while the P\/E history uses reported EPS, so the forward P\/E prices may run (high|low)\.$/,

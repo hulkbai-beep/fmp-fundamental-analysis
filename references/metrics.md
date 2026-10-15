@@ -170,7 +170,10 @@ bar chart with the current price as a dashed line). None of them is a forecast.
   75th-percentile forward P/E. The current fiscal year's row is a fair-value range for today;
   the next year's row is the same estimate once that year becomes the current one (about a year
   out). Analysts' EPS low-high is shown for reference but not multiplied in, so the range only
-  reflects how the multiple has varied.
+  reflects how the multiple has varied. The report also prints today's forward P/E (price /
+  current-year EPS) and its percentile in that history: Base assumes the multiple returns to its
+  median, which is a re-rating call when today sits far from it (a growth slowdown usually
+  compresses the multiple; say so rather than treating Base as fair value).
 - Why forward and not trailing P/E: for a fast grower the trailing P/E is inflated by earnings
   that lag the price (in 2023 NVDA often traded above 100x trailing earnings but below 45x the
   earnings it delivered that fiscal year), and multiplying that by future EPS counts the growth twice.
