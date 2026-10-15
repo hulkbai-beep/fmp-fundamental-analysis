@@ -49,16 +49,17 @@ FALLBACK_DISCOUNT = 0.09
 
 # Key US releases on the economic calendar: (label, pattern matched against the event name with
 # its trailing "(Sep)" / "(Q3)" period removed, lower-cased). Names follow FMP's calendar
-# (e.g. "Core PPI MoM (Sep)", "Fed Interest Rate Decision"); alternatives cover naming variants.
+# (e.g. "Producer Price Index YoY (Aug)" for headline PPI, "Core PPI MoM (Sep)",
+# "Inflation Rate YoY (Sep)", "Fed Interest Rate Decision"); alternatives cover naming variants.
 KEY_EVENTS = (
     ("Fed rate decision", r"(fed|fomc)( funds)? interest rate decision$"),
-    ("CPI YoY", r"(cpi|inflation rate) yoy$"),
+    ("CPI YoY", r"(cpi|inflation rate|consumer price index) yoy$"),
     ("Core CPI YoY", r"core (cpi|inflation rate) yoy$"),
-    ("CPI MoM", r"(cpi|inflation rate) mom$"),
+    ("CPI MoM", r"(cpi|inflation rate|consumer price index) mom$"),
     ("Core CPI MoM", r"core (cpi|inflation rate) mom$"),
-    ("PPI YoY", r"ppi yoy$"),
+    ("PPI YoY", r"(ppi|producer price index) yoy$"),
     ("Core PPI YoY", r"core ppi yoy$"),
-    ("PPI MoM", r"ppi mom$"),
+    ("PPI MoM", r"(ppi|producer price index) mom$"),
     ("Core PPI MoM", r"core ppi mom$"),
     ("PCE price index YoY", r"pce price index yoy$"),
     ("Core PCE price index YoY", r"core pce price index yoy$"),
