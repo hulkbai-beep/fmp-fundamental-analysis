@@ -439,7 +439,7 @@ def run_dcf(years, basis, cur, args, rev_cagr, sector_kind, r, r_source):
     if base is None:
         return {"skipped": "DCF inputs invalid (discount rate must exceed terminal growth)."}
     rs = [round(r + d, 4) for d in (-0.02, -0.01, 0, 0.01, 0.02) if r + d > gt + 0.005]
-    gs = [round(g1 + d, 4) for d in (-0.04, -0.02, 0, 0.02, 0.04)]
+    gs = [g1 + d for d in (-0.04, -0.02, 0, 0.02, 0.04)]  # unrounded, so the centre cell equals the base case
     grid = [[(dcf_value(fcf0, g, gt, rr, nd, mi, shares) or {}).get("per_share") for g in gs] for rr in rs]
     inner = [v for i, row in enumerate(grid) for j, v in enumerate(row)
              if v is not None and abs(rs[i] - r) <= 0.0101 and abs(gs[j] - g1) <= 0.0201]
