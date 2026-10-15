@@ -52,6 +52,8 @@ fmp-fundamental-analysis/
 
 ## 1. First-time setup
 
+Steps 1-4 below are mostly about Windows; **on a MacBook, go straight to step 5** and follow it step by step.
+
 ### 1. Set the API key
 
 The API key is read only from the environment variable `FMP_API_KEY`. Do not write it into any file in this folder.
@@ -62,7 +64,7 @@ Windows (PowerShell or CMD):
 setx FMP_API_KEY "your-key"
 ```
 
-macOS / Linux: add `export FMP_API_KEY="your-key"` to `~/.zshrc` or `~/.bashrc`.
+macOS / Linux: add `export FMP_API_KEY="your-key"` to `~/.zshrc` or `~/.bashrc` (detailed Mac steps in step 5).
 
 > `setx` only applies to terminals opened **afterwards**. After setting it, open a new terminal and restart Claude so they can see the new variable.
 
@@ -115,6 +117,88 @@ Checking through the proxy in PowerShell (applies to the current terminal window
 $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
 ```
 
+### 5. Setting up on a MacBook (macOS)
+
+Steps 1-4 above are mostly about Windows. To set everything up from scratch on a Mac, follow these steps. Run the commands in Terminal: press ⌘ + Space and search for "Terminal". macOS uses zsh by default, and its settings file is `~/.zshrc`.
+
+**① Check Python and git**
+
+```bash
+python3 --version
+git --version
+```
+
+Python 3.8 or later is fine. If a window asks to install the "command line developer tools", click Install: it installs both python3 and git. Homebrew works too: `brew install python git`.
+
+**② Download the code**
+
+```bash
+mkdir -p ~/Documents/claude
+cd ~/Documents/claude
+git clone https://github.com/hulkbai-beep/fmp-fundamental-analysis.git
+cd fmp-fundamental-analysis
+```
+
+If the repository is private, git will ask you to sign in to GitHub. The easiest way is the GitHub CLI: `brew install gh`, then `gh auth login`, then download with `gh repo clone hulkbai-beep/fmp-fundamental-analysis`.
+
+**③ Set the API key and proxy address**
+
+Open `~/.zshrc` in the nano editor in Terminal, so the key does not end up in your command history. Avoid TextEdit: it can turn the quotes into curly quotes, which breaks the settings:
+
+```bash
+nano ~/.zshrc
+```
+
+Move to the end of the file with the arrow keys and paste these two lines, with your real key. Press Ctrl + O and Enter to save, then Ctrl + X to exit:
+
+```bash
+export FMP_API_KEY="your-key"
+export FMP_BASE_URL="https://54.236.92.205"
+```
+
+Back in Terminal, run `source ~/.zshrc` (or close Terminal and open a new window). Check that it worked (this prints "set", never the key):
+
+```bash
+[ -n "$FMP_API_KEY" ] && echo "set" || echo "not set"
+```
+
+Do **not** put `FMP_TLS_VERIFY=0` in `~/.zshrc`; add it to each run instead (next step).
+
+**④ Check the connection**
+
+```bash
+FMP_TLS_VERIFY=0 python3 scripts/fmp_client.py check
+```
+
+`FMP_TLS_VERIFY=0` in front of a command applies to that command only, like `$env:FMP_TLS_VERIFY = '0'; ...` on Windows.
+
+**⑤ Install it as a Claude skill**
+
+```bash
+mkdir -p ~/.claude/skills
+rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/skills/fmp-fundamental-analysis/
+```
+
+When the code changes, run `git pull` in the code folder, then the same `rsync` again. It is the Mac equivalent of robocopy on Windows.
+
+**⑥ Let Claude see the key**
+
+- **Claude Code in Terminal (you type `claude`):** it reads `~/.zshrc`, so step ③ plus a new Terminal window is enough.
+- **The Claude desktop app:** an app opened from the Dock or Launchpad may not read `~/.zshrc`. If Claude says `FMP_API_KEY is not set`, also put the values in `~/.claude/settings.json`, then quit the app completely (⌘ + Q) and reopen it:
+
+```json
+{
+  "env": {
+    "FMP_API_KEY": "your-key",
+    "FMP_BASE_URL": "https://54.236.92.205"
+  }
+}
+```
+
+Open it with `nano ~/.claude/settings.json` (nano creates the file if it does not exist) and save and exit the same way. If the file already has content, merge in just the `"env"` block rather than replacing what is there.
+
+**Other commands on a Mac:** use `python3` wherever this guide says `python`, and write PowerShell's `$env:FMP_TLS_VERIFY = '0'; python ...` as `FMP_TLS_VERIFY=0 python3 ...`.
+
 ---
 
 ## 2. Three ways to use it
@@ -137,6 +221,12 @@ Claude runs `analyze.py` and writes a report from the template in SKILL.md: conc
 robocopy C:\Users\<you>\Documents\claude\fmp-fundamental-analysis C:\Users\<you>\.claude\skills\fmp-fundamental-analysis /E /XD .git
 ```
 
+On a Mac:
+
+```bash
+rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/skills/fmp-fundamental-analysis/
+```
+
 ### Option 2: command line
 
 From this folder:
@@ -149,6 +239,12 @@ When going through the third-party proxy, turn off certificate verification firs
 
 ```powershell
 $env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
+```
+
+On a Mac:
+
+```bash
+FMP_TLS_VERIFY=0 python3 scripts/analyze.py AAPL
 ```
 
 Common options:
@@ -200,7 +296,7 @@ Start it:
 python ui/server.py
 ```
 
-Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`.
+On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.zshrc` is already set up. Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`.
 
 - **Handled automatically at start-up:**
   - Reads the `FMP_*` variables saved with `setx`, even if the terminal was opened before `setx`.
@@ -247,6 +343,9 @@ This also deletes the detected proxy connection settings; they are detected agai
 | The report shows "Skipped (not in your FMP plan)" | Your plan lacks some endpoints (peers, analyst estimates, quarterly data and so on). The rest of the analysis still works from annual statements |
 | Price or market cap looks old | Add `--refresh`, or tick "Ignore cache" on the web page |
 | Windows says `python` is not found | Use `py`, e.g. `py scripts/analyze.py AAPL` |
+| A Mac says `command not found: python` | Use `python3` on a Mac |
+| On a Mac, Claude says `FMP_API_KEY is not set` although Terminal has it | The Claude desktop app did not read `~/.zshrc`. Also put the key in the `env` block of `~/.claude/settings.json` (step 5 ⑥), then quit the app with ⌘ + Q and reopen it |
+| On a Mac, `CERTIFICATE_VERIFY_FAILED` when connecting to FMP's official servers | Python installed from python.org ships without certificates. Open Applications → Python 3.x and double-click `Install Certificates.command` once |
 | The web page does not open / the port is taken | Check that `server.py` is still running, or use another port: `--port 9000` |
 | Some metrics show n/a or are meaningless for a financial company or REIT | Expected: gross margin, EV multiples and DCF do not apply to banks and insurers. The report's sector note explains |
 | The DCF discount rate says `fixed default` | The Treasury or equity risk premium endpoint returned no data, so the fixed 9% was used this time. Run `fmp_client.py check` to see which endpoint failed |
