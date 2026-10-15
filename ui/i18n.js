@@ -19,7 +19,10 @@ const UI = {
     notice_tls: " 本次 HTTPS 证书验证已关闭。",
     as_of: "截至", mcap: "市值",
     s_pe: "P/E", s_ev: "EV/EBITDA", s_fcfy: "FCF 收益率", s_roic: "ROIC", s_cagr: "营收 CAGR", s_pio: "Piotroski",
-    s_dcf: "DCF 每股价值", s_mos: "DCF vs 股价",
+    s_dcf: "DCF 每股价值", s_mos: "DCF vs 股价", s_range: "前瞻 P/E 区间",
+    rc_title: "各方法的股价区间", rc_fwd_pe: "前瞻 P/E", rc_dcf: "DCF", rc_targets: "分析师目标价",
+    rc_week52: "52 周区间", rc_volatility: "1 年波动 ±1σ", rc_price: "现价",
+    rc_note: "黑色短线 = 中值（基准、共识价或现价）；红色虚线 = 当前股价。",
     chart_title: "近一年股价", chart_aria: "一年股价走势", no_prices: "没有价格数据。",
     flags_title: "自动提示（需进一步核实，不是结论）", pos: "优点", neg: "风险", none: "无",
     full_report: "完整文字报告（英文原文）",
@@ -36,7 +39,10 @@ const UI = {
     notice_tls: " HTTPS certificate verification was off for this run.",
     as_of: "as of", mcap: "Mkt cap",
     s_pe: "P/E", s_ev: "EV/EBITDA", s_fcfy: "FCF yield", s_roic: "ROIC", s_cagr: "Revenue CAGR", s_pio: "Piotroski",
-    s_dcf: "DCF value / share", s_mos: "DCF vs price",
+    s_dcf: "DCF value / share", s_mos: "DCF vs price", s_range: "Fwd P/E range",
+    rc_title: "Price range by method", rc_fwd_pe: "forward P/E", rc_dcf: "DCF", rc_targets: "Analyst targets",
+    rc_week52: "52-week range", rc_volatility: "1-yr volatility ±1σ", rc_price: "Price",
+    rc_note: "Black tick = mid value (base case, consensus or current price); red dashed line = current price.",
     chart_title: "Share price, last 12 months", chart_aria: "One-year share price chart", no_prices: "No price data.",
     flags_title: "Automated flags (prompts for investigation, not conclusions)", pos: "Positives", neg: "Concerns", none: "None",
     full_report: "Full text report",
@@ -52,6 +58,8 @@ const ZH_EXACT = new Map(Object.entries({
   "Quality scores": "质量评分",
   "DCF (FCF-based, 10 years + terminal)": "DCF（基于自由现金流，10 年 + 永续）",
   "Analyst consensus": "分析师预期",
+  "Price range (forward P/E, DCF, analyst targets, trading range)": "股价区间（前瞻 P/E、DCF、分析师目标价、交易区间）",
+  "Forward P/E by fiscal year": "按财年的前瞻 P/E 区间",
   "Peer comparison (last fiscal year, same method for all)": "同行对比（统一用最近财年）",
   "Sector & industry context": "行业与板块对比",
   "Rates & macro backdrop": "利率与宏观背景",
@@ -66,12 +74,14 @@ const ZH_EXACT = new Map(Object.entries({
   "Metric": "指标", "CAGR": "复合增速", "Multiple": "倍数", "Now": "当前", "Hist. median": "历史中位数",
   "Hist. range": "历史区间", "Now vs median": "当前 vs 中位数", "Measure": "项目", "Value": "数值",
   "Test": "检验项", "Result": "结果", "Assumption": "假设", "FY": "财年", "EPS est. (low-high)": "EPS 预期（低-高）",
-  "Fwd P/E": "远期 P/E", "Revenue est.": "营收预期", "Rev. growth": "营收增速", "# analysts": "分析师人数",
+  "Fwd P/E": "前瞻 P/E", "Revenue est.": "营收预期", "Rev. growth": "营收增速", "# analysts": "分析师人数",
   "Ticker": "代码", "Mkt cap": "市值", "Rev YoY": "营收同比", "Gross m.": "毛利率", "Op m.": "营业利润率",
   "ND/EBITDA": "净负债/EBITDA", "Percentile in hist.": "历史分位", "1y ago": "1 年前", "Return": "涨跌幅",
   "YTD": "年初至今", "Yield": "期限", "Indicator": "指标", "Latest": "最新", "Period": "期间", "Previous": "前值",
   "Change": "变化", "Release": "数据", "Event": "事件", "Released (UTC)": "公布时间（UTC）", "Actual": "实际值",
   "Consensus": "预期值", "When (UTC)": "时间（UTC）", "Impact": "影响",
+  "Method": "方法", "Low": "低", "Mid": "中值", "High": "高", "Basis": "依据", "Year ends": "财年结束日",
+  "EPS est. low / avg / high": "EPS 预期 低 / 平均 / 高", "Base": "基准", "Base vs price": "基准 vs 股价",
   // growth / profitability / balance sheet / cash flow rows
   "Revenue": "营收", "Revenue YoY": "营收同比", "Gross profit": "毛利", "Operating income": "营业利润",
   "Net income": "净利润", "EPS (diluted)": "EPS（稀释）", "EPS YoY": "EPS 同比", "Free cash flow": "自由现金流",
@@ -103,6 +113,26 @@ const ZH_EXACT = new Map(Object.entries({
   "Value per share (rows = discount rate, columns = growth yrs 1-5):": "每股价值（行 = 折现率，列 = 第 1-5 年增速）：",
   "Financial-sector company: FCF-based DCF is not meaningful (use P/B, ROE, P/E).": "金融类公司：基于自由现金流的 DCF 没有意义（请看 P/B、ROE、P/E）。",
   "DCF inputs invalid (discount rate must exceed terminal growth).": "DCF 参数无效（折现率必须高于永续增速）。",
+  // price range
+  "Analyst price targets": "分析师目标价", "52-week closing range": "52 周收盘价区间", "1-year volatility band": "1 年波动区间",
+  "discount +/-1pt, growth +/-2pt": "折现率 ±1 个百分点、增速 ±2 个百分点", "low / consensus / high": "最低 / 共识 / 最高",
+  "No method had enough data for a range.": "数据不够，没有一种方法能算出区间。",
+  "No analyst EPS estimates (not on this FMP plan or none published); forward P/E range not available.":
+    "没有分析师 EPS 预期（套餐不含或没有发布），算不了前瞻 P/E 区间。",
+  "Not enough positive-earnings price history for a P/E range (needs about 6 months).":
+    "盈利为正的历史股价数据不够（约需 6 个月），算不了 P/E 区间。",
+  "Low = EPS low x 25th-percentile P/E; Base = EPS avg x median P/E; High = EPS high x 75th-percentile P/E. It is what the shares would be worth at each fiscal year end if they traded within their usual 5-year P/E range on analysts' EPS, not a forecast.":
+    "低 = EPS 低值 × 25 分位 P/E；基准 = EPS 平均值 × P/E 中位数；高 = EPS 高值 × 75 分位 P/E。意思是：到每个财年末，如果股价按分析师预期的 EPS、落在过去 5 年常见的 P/E 区间里，大约值多少。这不是预测。",
+  "The share counts in the statements do not match today's share basis (for example a stock split the statements do not reflect, an ADR ratio or several share classes), so the P/E history is not comparable and no forward P/E range is shown.":
+    "财报里的股数和现在的股本口径对不上（比如财报没有反映拆股、ADR 换股比例或多类股票），历史 P/E 没法比，所以不显示前瞻 P/E 区间。",
+  "Trailing P/E each day = close / diluted EPS of the latest fiscal year (or TTM) ended by that day.":
+    "每天的历史 P/E = 当天收盘价 ÷ 当时最近一个已结束财年（或 TTM）的稀释 EPS。",
+  "n/a = the EPS estimate is zero or negative, so a P/E-based price is not meaningful.":
+    "n/a = EPS 预期为零或负数，用 P/E 算价格没有意义。",
+  "REIT: net-income P/E understates cash earnings, so the P/E rows are a weak guide here.":
+    "REIT：按净利润算的 P/E 低估了现金收益，这里 P/E 那几行参考价值有限。",
+  "The volatility band is statistical, not a valuation: if the past year's volatility holds, about two in three one-year outcomes fall inside it.":
+    "波动区间是统计结果，不是估值：如果过去一年的波动幅度不变，一年后的股价大约有三分之二的可能落在这个区间里。",
   // analyst / peers
   "Not available on this FMP plan.": "当前 FMP 套餐不包含这项数据。",
   "Peer median": "同行中位数",
@@ -201,7 +231,19 @@ const ZH_RULES = [
     "not computable": "无法计算",
     "below -50%/yr (price is below even a shrinking-FCF value)": "低于每年 -50%（股价甚至低于 FCF 萎缩情形下的价值）",
     "above 100%/yr": "高于每年 100%"}[note] || " " + note}。`],
-  // analyst
+  // analyst, price range
+  [/^(\d{4}) \(ended, not yet reported\)$/, "$1（已结束，尚未公布）"],
+  [/^FY(\d{4}) forward P\/E$/, "FY$1 前瞻 P/E"],
+  [/^EPS (\S+) \/ (\S+) \/ (\S+) x P\/E (\S+) \/ (\S+) \/ (\S+)$/, "EPS $1 / $2 / $3 × P/E $4 / $5 / $6"],
+  [/^daily closes (\S+) to (\S+)$/, "每日收盘价，$1 至 $2"],
+  [/^\+\/-1 standard deviation of the past year's daily moves \((\S+) a year\)$/, "过去一年日涨跌幅的 ±1 个标准差（年化 $1）"],
+  [/^Current price (\S+)\. Each row is the range one method gives; none of them is a forecast\.$/, "当前股价 $1。每一行是一种方法给出的区间，都不是预测。"],
+  [/^5-year trailing P\/E: 25th percentile (\S+), median (\S+), 75th percentile (\S+) \(10th-90th (\S+) - (\S+); (\d+) trading days, (\S+) to (\S+)\)\.$/,
+    "过去 5 年的历史 P/E：25 分位 $1，中位数 $2，75 分位 $3（10-90 分位 $4 - $5；$6 个交易日，$7 至 $8）。"],
+  [/^Analysts' (\S+) EPS \((\S+)\) differs from reported diluted EPS \((\S+)\) by (\S+): the estimates may be on an adjusted \(non-GAAP\) basis, while the P\/E history uses reported EPS, so the forward P\/E prices may run (high|low)\.$/,
+    (m, fy, e, rp, gap, dir) => `分析师对 ${fy} 的 EPS（${e}）和公司公布的稀释 EPS（${rp}）相差 ${gap}：预期可能是调整后（非 GAAP）口径，而历史 P/E 用的是公布的 EPS，所以前瞻 P/E 算出的价格可能偏${dir === "high" ? "高" : "低"}。`],
+  [/^Statements are in (\S+) and the price in (\S+): the P\/E rows assume a steady exchange rate and analysts' EPS in (\S+) per share; check both before relying on them\.$/,
+    "财报币种是 $1，股价币种是 $2：P/E 这几行假设汇率不变、分析师 EPS 也是以 $3 计的每股数，参考前请先核实这两点。"],
   [/^Price target consensus (\S+) \(median (\S+), range (\S+)\) -> (\S+) vs price\.$/, "目标价共识 $1（中位数 $2，区间 $3），相对股价 $4。"],
   // sector & industry
   [/^(\S+) \(company\)$/, "$1（公司）"],

@@ -9,10 +9,12 @@
   --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #dde2e8;
   --accent: #2563eb; --pos: #15803d; --neg: #b91c1c; --warn-bg: #fff7e6; --warn-text: #8a5a00;
   --row: #f1f4f8;
+  --c-pe: #2563eb; --c-dcf: #7c3aed; --c-tgt: #0d9488; --c-trade: #64748b; --c-vol: #d97706;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #0f1216; --card: #181c22; --text: #e6e9ee; --muted: #98a2b0; --border: #2a313a;
-    --accent: #6ea0ff; --pos: #4ade80; --neg: #f87171; --warn-bg: #2b2210; --warn-text: #f5c56b; --row: #1f252d; }
+    --accent: #6ea0ff; --pos: #4ade80; --neg: #f87171; --warn-bg: #2b2210; --warn-text: #f5c56b; --row: #1f252d;
+    --c-pe: #6ea0ff; --c-dcf: #a78bfa; --c-tgt: #2dd4bf; --c-trade: #94a3b8; --c-vol: #fbbf24; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -58,6 +60,7 @@ th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: r
 th:first-child, td:first-child { text-align: left; }
 th { color: var(--muted); font-weight: 600; background: var(--row); }
 svg text { fill: var(--muted); font-size: 11px; }
+svg text.lab { fill: var(--text); font-size: 12px; }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; }
 .top h1 { margin: 0; }
 button.lang { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500;
@@ -167,11 +170,50 @@ function chart(prices) {
     <text x="${W - 8}" y="${H - 4}" text-anchor="end">${prices[prices.length - 1][0]}</text></svg>`;
 }
 
+const fmtPx = v => v == null ? "n/a" : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2);
+// Price range by method ("football field"): one bar per method from low to high, a tick at its mid
+// value, and a dashed line at the current price.
+function rangeChart(pr) {
+  const rows = (pr?.summary || []).map(s => ({ ...s, lo: s.low ?? s.mid, hi: s.high ?? s.mid }))
+    .filter(s => s.lo != null && s.hi != null);
+  if (!rows.length) return "";
+  const price = pr.price, vals = rows.flatMap(s => [s.lo, s.hi]).concat(price != null ? [price] : []);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.05 || Math.abs(hi) * 0.05 || 1;
+  lo = Math.max(0, lo - pad); hi += pad;
+  const W = 760, L = 150, RW = 96, RH = 28, top = 24, H = top + rows.length * RH + 22;
+  const x = v => L + (v - lo) / (hi - lo) * (W - L - RW - 8);
+  const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= raw) * mag;
+  let g = "";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    g += `<line x1="${x(v)}" x2="${x(v)}" y1="${top - 4}" y2="${H - 18}" stroke="var(--border)"/>` +
+         `<text x="${x(v)}" y="${H - 4}" text-anchor="middle">${+v.toFixed(2)}</text>`;
+  }
+  const color = { fwd_pe: "--c-pe", dcf: "--c-dcf", targets: "--c-tgt", week52: "--c-trade", volatility: "--c-vol" };
+  const name = s => s.kind === "fwd_pe" ? `FY${s.fy} ${t("rc_fwd_pe")}` : t("rc_" + s.kind);
+  rows.forEach((s, i) => {
+    const y = top + i * RH, x1 = x(s.lo), x2 = Math.max(x(s.hi), x1 + 3);
+    g += `<text class="lab" x="0" y="${y + 15}">${esc(name(s))}</text>` +
+         `<rect x="${x1}" y="${y + 5}" width="${x2 - x1}" height="14" rx="3" fill="var(${color[s.kind]})" opacity="0.85"/>` +
+         (s.mid != null ? `<rect x="${x(s.mid) - 1}" y="${y + 2}" width="2.5" height="20" fill="var(--text)"/>` : "") +
+         `<text class="lab" x="${W}" y="${y + 15}" text-anchor="end">${fmtPx(s.lo)} – ${fmtPx(s.hi)}</text>`;
+  });
+  if (price != null) {
+    g += `<line x1="${x(price)}" x2="${x(price)}" y1="${top - 6}" y2="${H - 18}" stroke="var(--neg)" stroke-dasharray="4 3" stroke-width="1.5"/>` +
+         `<text x="${x(price)}" y="${top - 10}" text-anchor="middle" style="fill:var(--neg)">${esc(t("rc_price"))} ${fmtPx(price)}</text>`;
+  }
+  return `<svg viewBox="0 -4 ${W} ${H + 4}" width="100%" style="min-width:600px" role="img" aria-label="${esc(t("rc_title"))}">${g}</svg>` +
+         `<p class="sub">${esc(t("rc_note"))}</p>`;
+}
+
 function render(data) {
   lastData = data;
   const r = data.result, p = r.profile || {}, c = r.current || {}, dcf = r.dcf || {}, conn = r.meta.connection || {};
   const last = r.years[r.years.length - 1] || {};
   const chg = p.changePercentage;
+  const fwd = r.price_range?.forward || [];
+  const fr = fwd.find(f => !f.ended && f.low != null && f.high != null) || fwd.find(f => f.low != null && f.high != null);
   let h = "";
   if (!conn.route || conn.route.startsWith("third-party")) {
     h += `<div class="notice">${t("notice_proxy", esc(conn.base))}` + (conn.tls_verify === false ? esc(t("notice_tls")) : "") + `</div>`;
@@ -191,6 +233,7 @@ function render(data) {
       ${stat("s_pio", `${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}`)}
       ${stat("s_dcf", dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a")}
       ${stat("s_mos", dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a", dcf.margin_of_safety >= 0 ? "pos" : "neg")}
+      ${fr ? `<div class="stat"><div class="k">${esc(t("s_range"))} (FY${esc(fr.fy)})</div><div class="v">${fmtPx(fr.low)} – ${fmtPx(fr.high)}</div></div>` : ""}
     </div></div>`;
   const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
   h += `<div class="grid2" style="margin-top:14px">
@@ -203,7 +246,8 @@ function render(data) {
   if (curTab >= parts.length) curTab = 0;
   const tabName = s => tr(s.split("\n")[0].slice(3)).replace(/\s*[(（].*$/, "");
   h += `<div class="tabs">` + parts.map((s, i) => `<button class="tab${i === curTab ? " on" : ""}" data-i="${i}">${esc(tabName(s))}</button>`).join("") + `</div>`;
-  h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i === curTab ? "" : "hidden"}>${md(s)}</div>`).join("");
+  const body = s => /^## \d+\. Price range/.test(s) ? md(s).replace("</h2>", "</h2>" + rangeChart(r.price_range)) : md(s);
+  h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i === curTab ? "" : "hidden"}>${body(s)}</div>`).join("");
   h += `<details><summary>${esc(t("full_report"))}</summary><div class="card"><pre>${esc(data.report)}</pre></div></details>`;
   $("#out").innerHTML = h;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => {

@@ -109,6 +109,12 @@ This is for the user's own browsing; when you analyse a stock, still run `script
 - **Valuation is a range, never a point.** Present the DCF sensitivity range and lead with the
   reverse DCF: "the price assumes X% growth; history delivered Y%; analysts expect Z%" is the
   most honest valuation statement you can make.
+- **Price range: show it when the user asks where the price could go.** The "Price range"
+  section gives forward P/E ranges for the current and next fiscal years (analysts' EPS low /
+  avg / high x the company's own 5-year P/E percentiles) next to the DCF range, analyst targets,
+  the 52-week range and a +/-1 standard deviation volatility band. Present them as ranges with
+  their basis, point out where the methods agree or disagree, and mention the adjusted-EPS note
+  when the report prints it. None of them is a forecast or a target.
 - **Automated flags are prompts, not verdicts.** Explain each relevant one, and drop flags that
   are artifacts (for example, negative equity caused by buybacks at a highly profitable company,
   or a current ratio below 1 at a company with strong cash generation).
@@ -145,7 +151,8 @@ Use headers and short tables; keep it skimmable. Numbers come from the script ou
 5. **Balance sheet & cash flow quality** - leverage, liquidity, FCF conversion, dilution, capital allocation.
 6. **Valuation** - multiples vs own history, peers and industry/sector, analyst view if
    available, DCF range and reverse DCF with the assumptions spelled out (including the
-   discount rate's 10Y yield, beta and risk premium).
+   discount rate's 10Y yield, beta and risk premium), and the price range table (forward P/E
+   by fiscal year plus the other methods) as a short table.
    If `--macro` was used, add a short **Rates & macro backdrop** paragraph after it: the facts
    that matter for this business, with dates.
 7. **Risks & red flags** - the material ones only, each with why it matters.
