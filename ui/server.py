@@ -80,13 +80,16 @@ def run_analysis(q):
     peers = (q.get("peers") or "").strip()
     if peers:
         argv += ["--peers", peers]
-    for key, flag in (("discount", "--discount"), ("growth", "--growth"), ("terminal", "--terminal")):
+    for key, flag in (("discount", "--discount"), ("growth", "--growth"), ("terminal", "--terminal"), ("iv", "--iv")):
         v = (q.get(key) or "").strip()
         if v:
             try:
-                argv += [flag, str(float(v) / 100)]
+                x = float(v) / 100
             except ValueError:
                 return 400, {"error": f"{key} must be a number (percent)."}
+            if key == "iv" and not 0 < x < 5:
+                return 400, {"error": "Implied volatility must be a positive percent, e.g. 45."}
+            argv += [flag, str(x)]
     if q.get("fcf_base") in ("latest", "avg3"):
         argv += ["--fcf-base", q["fcf_base"]]
     if q.get("macro") == "1":

@@ -78,6 +78,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
    | `--fcf-base avg3` | Cyclical business or a lumpy latest year |
    | `--growth 0.06` | Historical revenue CAGR is a poor guide (recent acquisition, slowdown, guidance) |
    | `--discount 0.10` | Override the default rate-linked discount rate (see step 4) |
+   | `--iv 0.45` | User has the stock's options-implied volatility (annual, 0.45 = 45%); the volatility ranges then use it instead of the past year's realized volatility |
    | `--macro` | User asks how rates, inflation or the Fed affect the stock, or wants the backdrop in the report |
    | `--no-market` | Skip Treasury / sector / industry data (fixed 9% discount, no sector section; cannot be combined with `--macro`); only if those calls fail or the user wants the old behaviour |
    | `--json out.json` | User wants the raw numbers, or another tool/skill will consume them |
@@ -110,14 +111,17 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   reverse DCF: "the price assumes X% growth; history delivered Y%; analysts expect Z%" is the
   most honest valuation statement you can make.
 - **Price range: show it when the user asks where the price could go.** The "Price range"
-  section gives forward P/E ranges for the current and next fiscal years (analysts' average EPS
-  x the 25th / 50th / 75th percentile of the company's own 3-year forward P/E) next to the DCF
-  range, analyst targets,
-  the 52-week range and a +/-1 standard deviation volatility band. Present them as ranges with
-  their basis, point out where the methods agree or disagree, and mention the adjusted-EPS and
-  wide-history notes when the report prints them. Say where today's forward P/E sits in its
-  history: when it is near the bottom because growth is slowing, the Base row assumes a re-rating
-  the market may not give. None of them is a forecast or a target.
+  section gives forward P/E and EV/EBITDA ranges now, at the end of the current fiscal year and at
+  the end of the next one (next-12-month EPS / EBITDA x the 25th / 50th / 75th percentile of the
+  company's own 3-year next-12-month multiple), next to the DCF range, analyst targets, the 52-week
+  range and volatility ranges (68% and 95%) to the same fiscal year ends. Present them as ranges
+  with their basis: the multiple rows are valuations, the volatility rows are how far the price
+  typically moves by then. Point out where the methods agree or disagree, and mention the
+  adjusted-EPS/EBITDA and wide-history notes when the report prints them. Say where today's forward
+  P/E sits in its history: when it is near the bottom because growth is slowing, the Base row
+  assumes a re-rating the market may not give ("At today's P/E" shows the no-re-rating case).
+  If the user has the options-implied volatility, re-run with `--iv`. None of them is a forecast
+  or a target.
 - **Automated flags are prompts, not verdicts.** Explain each relevant one, and drop flags that
   are artifacts (for example, negative equity caused by buybacks at a highly profitable company,
   or a current ratio below 1 at a company with strong cash generation).
@@ -154,8 +158,8 @@ Use headers and short tables; keep it skimmable. Numbers come from the script ou
 5. **Balance sheet & cash flow quality** - leverage, liquidity, FCF conversion, dilution, capital allocation.
 6. **Valuation** - multiples vs own history, peers and industry/sector, analyst view if
    available, DCF range and reverse DCF with the assumptions spelled out (including the
-   discount rate's 10Y yield, beta and risk premium), and the price range table (forward P/E
-   by fiscal year plus the other methods) as a short table.
+   discount rate's 10Y yield, beta and risk premium), and the price range table (forward
+   multiples now and at the fiscal year ends, the volatility ranges and the other methods) as a short table.
    If `--macro` was used, add a short **Rates & macro backdrop** paragraph after it: the facts
    that matter for this business, with dates.
 7. **Risks & red flags** - the material ones only, each with why it matters.

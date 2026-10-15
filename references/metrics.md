@@ -11,7 +11,7 @@ Benchmarks are rules of thumb for US companies; always prefer peer and own-histo
 5. Valuation multiples
 6. Quality scores (Piotroski, Altman)
 7. DCF and reverse DCF (rate-linked discount rate)
-8. Price range by method (forward P/E, DCF, analyst targets, trading range)
+8. Price range by method (forward P/E and EV/EBITDA, DCF, analyst targets, volatility)
 9. Industry, sector and rates context
 10. Sector cheat sheet
 11. Known approximations in the script
@@ -158,20 +158,29 @@ Reading the output:
 ## 8. Price range by method
 
 The "Price range" section puts several independent ranges side by side (the UI draws them as a
-bar chart with the current price as a dashed line). None of them is a forecast.
+bar chart with the current price as a dashed line). None of them is a forecast. The forward
+multiple and volatility ranges are given at three points: **now**, the **end of the current fiscal
+year** and the **end of the next fiscal year**.
 
-**Forward P/E by fiscal year** (FMP `analyst-estimates`):
-- Forward P/E is computed for every trading day of the last 3 years: close / diluted EPS of the
-  fiscal year in progress that day. Years already reported use the reported EPS, so the history
-  shows what the market paid for the earnings the company went on to deliver; the current year
-  uses the analysts' average estimate. Days with EPS <= 0 are left out; at least ~6 months of
-  positive-EPS days are needed.
-- Low / Base / High = analysts' average EPS for the year x the 25th-percentile / median /
-  75th-percentile forward P/E. The current fiscal year's row is a fair-value range for today;
-  the next year's row is the same estimate once that year becomes the current one (about a year
-  out). Analysts' EPS low-high is shown for reference but not multiplied in, so the range only
-  reflects how the multiple has varied. The report also prints today's forward P/E (price /
-  current-year EPS) and its percentile in that history: Base assumes the multiple returns to its
+**Forward P/E on next-12-month EPS** (FMP `analyst-estimates`):
+- Forward P/E is computed for every trading day of the last 3 years: close / next-12-month (NTM)
+  EPS. NTM EPS = w x EPS of the fiscal year in progress + (1 - w) x EPS of the following year,
+  w = days left in the year in progress / 365.25. Years already reported use the reported diluted
+  EPS, so the history shows what the market paid for the earnings the company went on to deliver;
+  other years use the analysts' average. Days where either year's EPS is <= 0 are left out; at
+  least ~6 months of usable days are needed.
+- Why NTM and not one fiscal year: with a single year's EPS the multiple jumps down at every fiscal
+  year end and drifts up through the year (the price looks a year ahead, the denominator does not).
+  For a company growing EPS 70% a year that sawtooth spans ~1.7x, so the percentiles mix early-year
+  and late-year multiples, and applying the median to next year's EPS overstates the price by up
+  to a third. NTM blending is how published forward P/E histories (FactSet, Bloomberg "BF") are built.
+- Rows: Low / Base / High = EPS used x the 25th-percentile / median / 75th-percentile NTM P/E.
+  *Now* uses today's NTM EPS (the weights are printed). At a fiscal year end the next 12 months are
+  exactly the following fiscal year, so the *FY end* rows use that year's average estimate: the
+  current-year-end row uses next year's EPS, the next-year-end row uses the year after (fewer
+  analysts; the report says how many). *At today's P/E* = EPS used x today's NTM P/E: where the
+  price would be if the multiple stays where it is (earnings growth only, no re-rating). The
+  report prints today's NTM P/E and its percentile: Base assumes the multiple returns to its
   median, which is a re-rating call when today sits far from it (a growth slowdown usually
   compresses the multiple; say so rather than treating Base as fair value).
 - Why forward and not trailing P/E: for a fast grower the trailing P/E is inflated by earnings
@@ -181,28 +190,46 @@ bar chart with the current price as a dashed line). None of them is a forecast.
   from dominating the percentiles. The report warns when the 75th percentile is more than 1.6x
   the 25th (an earnings trough or a re-rating); then lean on the Base column.
 - Caveats: the multiple is the company's own recent history, so a business whose growth or risk
-  has changed may not return to it. Analyst EPS is often on an adjusted (non-GAAP) basis while
-  history uses reported EPS; the report flags a gap above 5% between FMP's estimate row for the
-  last reported year and the reported figure. Negative or zero EPS estimates give n/a. Weak guide
-  for REITs (net income understates cash earnings) and for cyclicals at peak or trough earnings.
+  has changed may not return to it (forward P/E rises with expected growth and falls with risk,
+  leverage and rates). Analyst EPS is often on an adjusted (non-GAAP) basis while history uses
+  reported EPS; the report flags a gap above 5% between FMP's estimate row for the last reported
+  year and the reported figure. Weak guide for REITs (net income understates cash earnings) and for
+  cyclicals at peak or trough earnings.
 - Safety checks: the range is skipped when a reported year's diluted share count is outside
   0.55-1.8x today's (market cap / price; a split the statements do not reflect, an ADR ratio or
   several share classes) or when the price history has a one-day move above 50% (possibly an
   unadjusted split).
 
+**Forward EV/EBITDA on next-12-month EBITDA** (not for banks and insurers): the same method with
+EV = price x diluted shares + net debt + minority interest of the latest reported fiscal year on
+each day, and NTM EBITDA (reported, else FMP `ebitdaAvg`). Price = (multiple x EBITDA used - net
+debt - minority interest) / today's shares. It looks through leverage and tax, so it cross-checks
+the P/E rows; a large gap between the two usually means changing leverage, tax or
+below-EBITDA costs (depreciation, interest, stock comp). The report flags a gap above 10% between
+FMP's EBITDA estimate for the last reported year and the reported figure (adjusted EBITDA).
+
+**Volatility range to each fiscal year end:** lognormal around today's price with no drift,
+price x e^(+/-z x sigma x sqrt(T)), T = years to that fiscal year end (1 year when there are no
+estimates); z = 1 gives the 68% range, z = 1.96 the 95% range. sigma = the standard deviation of
+the last year's daily log returns x sqrt(252), or the annual implied volatility given with `--iv`
+(the "Implied vol %" box in the UI). Options-implied volatility is the market's own forward
+estimate and usually beats realized; read it from a broker (at-the-money, expiry near the horizon).
+Real returns have fat tails, so moves beyond the 95% range happen more often than 1 in 20. It
+describes how much the price moves, not what the company is worth.
+
 **Other rows:**
 - DCF: the "reasonable range" from the DCF section (discount +/-1pt, growth +/-2pt), base case as mid.
-- Analyst price targets: FMP `price-target-consensus` low / consensus / high.
+- Analyst price targets: FMP `price-target-consensus` low / consensus / high (12-month targets;
+  sell-side targets are mostly forward EPS x a chosen multiple, so they overlap the P/E rows).
 - 52-week closing range: lowest and highest daily close over the last 365 days.
-- 1-year volatility band: price x e^(+/-sigma), sigma = standard deviation of the last year's daily
-  log returns x sqrt(252). Under a random-walk assumption about two in three one-year outcomes
-  fall inside it. It describes how much the price moves, not what the company is worth.
 
-Reading it: where the price sits against the forward P/E rows says what the market already
-expects (above the High rows = priced for a higher multiple or faster earnings growth than
-usual). Agreement between methods matters more than any single row; a DCF far below the P/E
-rows usually means the DCF growth or discount inputs are conservative for this business, or
-the multiple is rich - say which you think it is.
+Reading it: the valuation rows (forward P/E, EV/EBITDA, DCF) say where the price "should" be; the
+volatility rows say how far it typically moves by then. Where the price sits against the forward
+rows says what the market already expects (above the High rows = priced for a higher multiple or
+faster earnings growth than usual). Agreement between methods matters more than any single row; a
+DCF far below the P/E rows usually means the DCF growth or discount inputs are conservative for
+this business (pass analyst revenue growth with `--growth` to test it), or the multiple is rich -
+say which you think it is.
 
 ## 9. Industry, sector and rates context
 
@@ -254,9 +281,9 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 
 - Historical market cap = fiscal-year-end price x that year's weighted diluted shares.
 - TTM = sum of the last four quarters (EPS summed); balance sheet = latest quarter.
-- Forward P/E history for the price range uses each fiscal year's reported EPS for every day of
-  that year (hindsight, not what analysts expected at the time) and the analysts' average for the
-  year in progress.
+- Forward P/E and EV/EBITDA history for the price range uses reported EPS / EBITDA for years
+  already reported (hindsight, not what analysts expected at the time) and today's analyst averages
+  for the rest; EV uses each year-end's share count and net debt.
 - Peer table always uses the last fiscal year for every company so the rows are comparable.
 - Industry/sector returns compound FMP's equal-weighted average daily change; they ignore dividends
   (so does the company and SPY comparison, which uses closing prices).
