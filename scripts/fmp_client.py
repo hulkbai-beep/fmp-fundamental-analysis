@@ -25,6 +25,8 @@ Connection settings (environment variables):
 CLI:
   python fmp_client.py check [SYMBOL]          connection info + which endpoints work
                                                (company, sector/industry and macro data)
+  python fmp_client.py check --peek            same, plus field names and first/last rows
+                                               of each sector/macro response
   python fmp_client.py get ENDPOINT k=v ...    raw JSON from any stable endpoint
   python fmp_client.py clear-cache             delete the local cache and saved detection
 """
@@ -479,26 +481,54 @@ MARKET_PROBES = [
     ("sector-performance-snapshot", {"date": "{last_bday}"}),
     ("industry-performance-snapshot", {"date": "{last_bday}"}),
     ("historical-sector-performance", {"sector": "Technology"}),
+    ("historical-sector-performance", {"sector": "Technology", "from": "{year_ago}", "to": "{today}"}),
     ("sector-pe-snapshot", {"date": "{last_bday}"}),
     ("industry-pe-snapshot", {"date": "{last_bday}"}),
     ("historical-sector-pe", {"sector": "Technology"}),
+    ("historical-sector-pe", {"sector": "Technology", "from": "{five_years_ago}", "to": "{today}"}),
+    ("historical-industry-pe", {"industry": "Consumer Electronics", "from": "{year_ago}", "to": "{today}"}),
     ("historical-price-eod/light", {"symbol": "SPY", "from": "{month_ago}", "to": "{today}"}),
     ("treasury-rates", {"from": "{month_ago}", "to": "{today}"}),
+    ("treasury-rates", {"from": "{year_ago}", "to": "{today}"}),
     ("market-risk-premium", {}),
     ("economic-indicators", {"name": "federalFunds"}),
-    ("economic-indicators", {"name": "CPI"}),
+    ("economic-indicators", {"name": "federalFunds", "from": "{two_years_ago}", "to": "{today}"}),
+    ("economic-indicators", {"name": "CPI", "from": "{two_years_ago}", "to": "{today}"}),
     ("economic-indicators", {"name": "inflationRate"}),
-    ("economic-indicators", {"name": "unemploymentRate"}),
-    ("economic-indicators", {"name": "realGDP"}),
+    ("economic-indicators", {"name": "unemploymentRate", "from": "{two_years_ago}", "to": "{today}"}),
+    ("economic-indicators", {"name": "realGDP", "from": "{two_years_ago}", "to": "{today}"}),
     ("economic-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
     ("earnings-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
 ]
 
 
-def _probe(client, ep, params):
+def _peek(data):
+    """Field names plus the first and last rows, for working out a response's shape."""
+    rows = data if isinstance(data, list) else [data]
+    show = lambda r: json.dumps(r, ensure_ascii=False, default=str)[:400]
+    lines = [f"      fields: {', '.join(rows[0].keys()) if isinstance(rows[0], dict) else type(rows[0]).__name__}",
+             f"      first : {show(rows[0])}"]
+    if len(rows) > 1:
+        lines.append(f"      last  : {show(rows[-1])}")
+    # rows the macro features will look for: the US risk premium and key US calendar events
+    dicts = [r for r in rows if isinstance(r, dict)]
+    us = [r for r in dicts if "united states" in str(r.get("country", "")).lower()
+          or str(r.get("country", "")).upper() in ("US", "USA")]
+    if us and "event" in dicts[0]:
+        keys = ("cpi", "ppi", "pce", "fed", "fomc", "interest rate", "nonfarm", "gdp")
+        hits = [r for r in us if any(k in str(r.get("event", "")).lower() for k in keys)]
+        lines += [f"      US    : {show(r)}" for r in hits[:12]]
+    elif us:
+        lines.append(f"      US    : {show(us[0])}")
+    return "\n".join(lines)
+
+
+def _probe(client, ep, params, peek=False):
     try:
         data = client.get(ep, **params)
         n = len(data) if isinstance(data, list) else (1 if data else 0)
+        if n and peek:
+            return "OK", f"{n} rows\n{_peek(data)}"
         return ("OK", f"{n} rows") if n else ("EMPTY", "no rows returned")
     except RestrictedEndpoint as e:
         return "RESTRICTED", str(e).split("(", 1)[-1].rstrip(")")[:60]
@@ -508,7 +538,7 @@ def _probe(client, ep, params):
         return "ERROR", str(e)[:60]
 
 
-def _cmd_check(symbol):
+def _cmd_check(symbol, peek=False):
     client = FMPClient(refresh=True)
     c = client.describe()
     print("Connection")
@@ -525,7 +555,8 @@ def _cmd_check(symbol):
     last_bday = next(day(-i) for i in range(1, 8)
                      if time.localtime(now - i * DAY).tm_wday < 5)
     dates = {"today": day(0), "month_ago": day(-30), "week_ago": day(-7), "in_2w": day(14),
-             "last_bday": last_bday}
+             "last_bday": last_bday, "year_ago": day(-365), "two_years_ago": day(-730),
+             "five_years_ago": day(-1826)}
     try:
         for ep, params in PROBES:
             label = " ".join(f"{k}={v}" for k, v in params.items() if k != "page")
@@ -542,7 +573,7 @@ def _cmd_check(symbol):
             label = " ".join(f"{k}={v}" for k, v in params.items() if k not in ("from", "to"))
             if "from" in params:
                 label = (label + f" {params['from']}..{params['to']}").strip()
-            result, detail = _probe(client, ep, params)
+            result, detail = _probe(client, ep, params, peek)
             print(f"{ep:<30} {label:<38} {result:<11} {detail}")
     except InvalidKey as e:
         print(f"\nKey problem: {e}")
@@ -573,7 +604,8 @@ def main(argv):
     cmd = argv[0]
     try:
         if cmd == "check":
-            return _cmd_check((argv[1] if len(argv) > 1 else "AAPL").upper())
+            rest = [a for a in argv[1:] if a != "--peek"]
+            return _cmd_check((rest[0] if rest else "AAPL").upper(), peek="--peek" in argv)
         if cmd == "get" and len(argv) >= 2:
             return _cmd_get(argv[1], argv[2:])
         if cmd == "clear-cache":
