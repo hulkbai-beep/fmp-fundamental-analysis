@@ -288,7 +288,7 @@ function drawPrice(el, w) {
   }
   let lastX = -1e9;  // month labels at each month's first trading day
   bars.forEach((b, i) => {
-    const prev = i ? bars[i - 1] : all[n0 - 1];
+    const prev = i ? bars[i - 1] : daily[d0 - 1];  // the daily bar before the period, also in weekly mode
     if (!prev || prev.date.slice(0, 7) === b.date.slice(0, 7)) return;
     const x = cx(i);
     if (x - lastX < 46 || x > X0 + PW - 16) return;
@@ -313,7 +313,9 @@ function drawPrice(el, w) {
     if (hasVol) g += `<text x="${w - AR + 8}" y="${vy + 10}">${fmtVol(vmax)}</text>`;
   } else {
     const d = bars.map((b, i) => (i ? "L" : "M") + cx(i).toFixed(1) + "," + y(b.c).toFixed(1)).join("");
-    marks = `<path d="${d}" fill="none" stroke="var(${last.c >= base ? "--pos" : "--neg"})" stroke-width="2" stroke-linejoin="round"/>`;
+    const col = `var(${last.c >= base ? "--pos" : "--neg"})`;
+    marks = n > 1 ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`
+      : `<circle cx="${cx(0).toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="${col}"/>`;  // one close: a dot, not an empty path
   }
   const lastTag = `<line x1="${X0}" x2="${X0 + PW}" y1="${lastY}" y2="${lastY}" stroke="${lastColor}" stroke-dasharray="2 3"/>` +
     `<rect x="${w - AR + 2}" y="${lastY - 9}" width="${AR - 2}" height="18" rx="4" fill="${lastColor}"/>` +
