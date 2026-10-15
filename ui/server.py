@@ -97,6 +97,7 @@ def run_analysis(q):
     if q.get("refresh") == "1":
         argv.append("--refresh")
     args = A.parse_args(argv)
+    args.candles = True  # also fetch the last year of daily bars for the candlestick chart
 
     log = io.StringIO()
     with _lock, redirect_stderr(log):
@@ -110,10 +111,13 @@ def run_analysis(q):
         except FMPError as e:
             return 502, {"error": f"FMP error: {e}", "log": log.getvalue()}
 
-    # the analysis already fetched daily prices back to its oldest fiscal year; chart the last year
+    # The chart draws candles from the daily bars; when the data source has none, it falls back to a line of
+    # the daily closes the analysis already fetched (back to its oldest fiscal year), cut to the last year.
     start = (dt.date.today() - dt.timedelta(days=366)).isoformat()
     prices = [p for p in result.pop("price_series", []) if p[0] >= start]
-    return 200, {"result": result, "report": report, "prices": prices, "log": log.getvalue()}
+    candles, candles_note = result.pop("candles", None) or [], result.pop("candles_note", None)
+    return 200, {"result": result, "report": report, "prices": prices, "candles": candles,
+                 "candles_note": candles_note, "log": log.getvalue()}
 
 
 class Handler(BaseHTTPRequestHandler):

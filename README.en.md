@@ -109,7 +109,7 @@ Data obtained through the proxy is resold FMP data. The report's Data notes stat
 python scripts/fmp_client.py check
 ```
 
-It shows the current connection (official or proxy, path prefix, auth style, certificate verification), tests a dozen single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done; the sector and macro results tell you which later features your plan or proxy supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
+It shows the current connection (official or proxy, path prefix, auth style, certificate verification), tests a dozen single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done (except `historical-price-eod/full`, which only feeds the web page's candlestick chart; without it the page draws a line of closing prices); the sector and macro results tell you which later features your plan or proxy supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
 
 Checking through the proxy in PowerShell (applies to the current terminal window only):
 
@@ -305,9 +305,10 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
 - **What the page shows:**
   - A yellow banner at the top saying the data comes from a third-party FMP proxy.
   - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value.
-  - A one-year price chart, plus the automated positives and concerns.
+  - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
+  - The automated positives and concerns.
   - Each part of the report on its own tab, with the full text report expandable at the bottom.
-  - The "Price range" tab has a comparison chart: one bar per method, the current price as a red dashed line, and thin lines on the volatility rows for the 95% range; the header card shows the forward P/E range for now.
+  - The "Price range" tab has a comparison chart grouped by horizon (past 52 weeks, now, each fiscal year end, in 12 months, in time order): one bar per method in each group, a dot at the mid value, a vertical line at the current price, and a lighter band on the volatility rows for the 95% range; hovering a row shows its numbers. The table below uses the same method + horizon names. The header card shows the forward P/E range for now.
 - **Chinese / English toggle:** the "EN / 中文" button at the top right switches the whole page and report; Chinese by default, and the browser remembers your last choice. Translation happens only in the web page: numbers do not change, the full text report at the bottom stays in the original English, and industry names from FMP and a few economic release names without a translation stay in English.
 - **Links open directly:** for example `http://127.0.0.1:8765/?symbol=NVDA` analyzes NVDA straight away.
 - **Local only:** the page listens on 127.0.0.1, so other devices on your network cannot open it.

@@ -723,25 +723,33 @@ def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=Non
                     pt[m]["base_vs_price"] = pt[m]["base"] / price - 1 if price else None
         out["forward"] = points
 
-    def multiple_rows(pt):
-        return [{"kind": k, "at": pt["at"], "fy": pt["fy"], "low": pt[m]["low"], "mid": pt[m]["base"],
-                 "high": pt[m]["high"]} for k, m in (("fwd_pe", "pe"), ("fwd_ev", "ev")) if pt[m]]
+    # Summary: one row per method and horizon. "at" is the horizon: "past" (the last 52 weeks), "now",
+    # "12m" (12 months out) or "fy_end" (with "fy"); rows are sorted by the horizon's date, so they
+    # come grouped by horizon in time order.
+    in_12m = (today + dt.timedelta(days=365)).isoformat()
 
-    s = out["summary"]
-    for pt in out["forward"][:1]:
-        s += multiple_rows(pt)
-    if dcf.get("range_low") is not None:
-        s.append({"kind": "dcf", "low": dcf["range_low"], "mid": dcf["value_per_share"], "high": dcf["range_high"]})
-    t = analyst.get("price_target")
-    if t and t.get("low") is not None and t.get("high") is not None:
-        s.append({"kind": "targets", "low": t["low"], "mid": t["consensus"], "high": t["high"]})
+    def multiple_rows(pt):
+        return [{"kind": k, "at": pt["at"], "fy": pt["fy"], "date": pt["date"], "low": pt[m]["low"],
+                 "mid": pt[m]["base"], "high": pt[m]["high"]} for k, m in (("fwd_pe", "pe"), ("fwd_ev", "ev")) if pt[m]]
+
+    s = []
     year = [(d, px) for d, px in series if d >= (today - dt.timedelta(days=365)).isoformat() and px]
     if len(year) >= 2:
         closes = [px for _, px in year]
         out["week52"] = {"low": min(closes), "high": max(closes), "from": year[0][0], "to": year[-1][0]}
-        s.append({"kind": "week52", "low": out["week52"]["low"], "mid": None, "high": out["week52"]["high"]})
+        s.append({"kind": "week52", "at": "past", "fy": None, "date": year[0][0], "low": out["week52"]["low"],
+                  "mid": None, "high": out["week52"]["high"]})
+    for pt in out["forward"][:1]:
+        s += multiple_rows(pt)
+    if dcf.get("range_low") is not None:
+        s.append({"kind": "dcf", "at": "now", "fy": None, "date": today_iso, "low": dcf["range_low"],
+                  "mid": dcf["value_per_share"], "high": dcf["range_high"]})
+    t = analyst.get("price_target")
+    if t and t.get("low") is not None and t.get("high") is not None:
+        s.append({"kind": "targets", "at": "12m", "fy": None, "date": in_12m, "low": t["low"], "mid": t["consensus"],
+                  "high": t["high"]})
 
-    # Volatility ranges to each fiscal year end (1 year when there are no estimates): lognormal around
+    # Volatility ranges to each fiscal year end (12 months out when there are no estimates): lognormal around
     # today's price with no drift, +/-1 sd (about 68%) and +/-1.96 sd (about 95%).
     sigma = iv if iv else volatility(series, today)
     vol_rows = {}
@@ -756,14 +764,16 @@ def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=Non
                  "low": price * math.exp(-w1), "high": price * math.exp(w1),
                  "low95": price * math.exp(-w2), "high95": price * math.exp(w2)}
             out["volatility"]["bands"].append(b)
-            vol_rows[fy] = {"kind": "volatility", "at": "fy_end" if fy else "1y", "fy": fy, "low": b["low"], "mid": price,
-                            "high": b["high"], "low95": b["low95"], "high95": b["high95"]}
-    # then one group per fiscal year end: forward multiples at that date and the volatility range to it
+            vol_rows[fy] = {"kind": "volatility", "at": "fy_end" if fy else "12m", "fy": fy,
+                            "date": b["end"] if fy else in_12m, "low": b["low"], "mid": price, "high": b["high"],
+                            "low95": b["low95"], "high95": b["high95"]}
+    # each fiscal year end: forward multiples at that date and the volatility range to it
     for pt in out["forward"][1:]:
         s += multiple_rows(pt)
         if pt["fy"] in vol_rows:
             s.append(vol_rows.pop(pt["fy"]))
     s += vol_rows.values()
+    out["summary"] = sorted(s, key=lambda r: r["date"])  # stable: keeps the method order within a horizon
     return out
 
 
@@ -935,8 +945,15 @@ def _band_lines(band, name, base, years):
     return out
 
 
+# Price-range methods and horizons. The report's summary table and the UI chart use these same names,
+# always as Method + When ("Forward P/E" + "FY2027 end"); ui/i18n.js has the Chinese for each.
+RANGE_METHODS = {"fwd_pe": "Forward P/E", "fwd_ev": "Forward EV/EBITDA", "dcf": "DCF", "targets": "Analyst targets",
+                 "week52": "Trading range", "volatility": "Volatility"}
+
+
 def _when(pt):
-    return "Now" if pt["at"] == "now" else f"FY{pt['fy']} end"
+    """Horizon of a price-range row or forward point: Past 52 weeks, Now, In 12 months or FY<year> end."""
+    return {"past": "Past 52 weeks", "now": "Now", "12m": "In 12 months"}.get(pt["at"]) or f"FY{pt['fy']} end"
 
 
 def _uses(pt, fmt):
@@ -963,30 +980,31 @@ def render_price_range(r):
     vol = pr.get("volatility")
     by_at = {(p["at"], p["fy"]): p for p in pts}
     out = [f"Current price {per_share(pr['price'])}. Each row is the range one method gives; none of them is a forecast."]
-    names = {"dcf": "DCF", "targets": "Analyst price targets (12-month)", "week52": "52-week closing range"}
+    d = r["dcf"]
     rows = []
     for s in pr["summary"]:
         k = s["kind"]
-        pt = by_at.get((s.get("at"), s.get("fy")))
         if k in ("fwd_pe", "fwd_ev"):
+            pt = by_at[(s["at"], s["fy"])]
             pe = k == "fwd_pe"
             band, base = (pb, "EPS") if pe else (eb, "EBITDA")
             val = pt["eps"] if pe else pt["ebitda"]
-            src = "next-12-month" if pt["at"] == "now" else f"FY{pt['uses'][0]}"
-            name = f"Forward {'P/E' if pe else 'EV/EBITDA'}, {_when(pt).lower() if pt['at'] == 'now' else _when(pt)}"
-            basis = (f"{src} {base} {per_share(val) if pe else money(val)} x {mult(band['p25'])} / "
-                     f"{mult(band['median'])} / {mult(band['p75'])}" + ("" if pe else ", less net debt"))
+            src = "next 12 months" if pt["at"] == "now" else f"FY{pt['uses'][0]} est."
+            basis = (f"{base} {per_share(val) if pe else money(val)} ({src}) x {'P/E' if pe else 'EV/EBITDA'} "
+                     f"{mult(band['p25'])} / {mult(band['median'])} / {mult(band['p75'])}" + ("" if pe else ", less net debt"))
         elif k == "volatility":
-            name = f"Volatility to FY{s['fy']} end (68%)" if s.get("fy") else "1-year volatility (68%)"
-            basis = (f"+/-1 sd at {pct(vol['sigma'])} a year ({'implied' if vol['implied'] else 'realized'}); "
+            basis = (f"price +/-1 sd at {pct(vol['sigma'])} a year ({'implied' if vol['implied'] else 'realized'}); "
                      f"95%: {per_share(s['low95'])} - {per_share(s['high95'])}")
+        elif k == "dcf":
+            basis = f"discount rate {pct(d['discount_rate'])} +/-1pt, growth {pct(d['growth_1_5'])} +/-2pt"
+        elif k == "targets":
+            basis = "lowest / consensus / highest target"
         else:
-            name = names[k]
-            basis = {"dcf": "discount +/-1pt, growth +/-2pt", "targets": "low / consensus / high"}.get(k) or \
-                f"daily closes {pr['week52']['from']} to {pr['week52']['to']}"
-        rows.append([name, per_share(s["low"]), "-" if k == "week52" else per_share(s["mid"]), per_share(s["high"]), basis])
+            basis = f"lowest / highest daily close, {pr['week52']['from']} to {pr['week52']['to']}"
+        rows.append([RANGE_METHODS[k], _when(s), per_share(s["low"]), "-" if s["mid"] is None else per_share(s["mid"]),
+                     per_share(s["high"]), basis])
     if rows:
-        out.append(table(["Method", "Low", "Mid", "High", "Basis"], rows))
+        out.append(table(["Method", "When", "Low", "Mid", "High", "Basis"], rows))
     else:
         out.append("No method had enough data for a range.")
 
@@ -1061,7 +1079,7 @@ def render_price_range(r):
                "realized: standard deviation of the past year's daily moves, annualized")
         out.append(f"Volatility {pct(vol['sigma'])} a year ({src}).")
         out.append(table(["To", "Date", "Years", "68% range (+/-1 sd)", "95% range (+/-1.96 sd)"],
-                         [[f"FY{b['fy']} end" if b["fy"] else "1 year", b["end"], f"{b['years']:.2f}",
+                         [[f"FY{b['fy']} end" if b["fy"] else "In 12 months", b["end"], f"{b['years']:.2f}",
                            f"{per_share(b['low'])} - {per_share(b['high'])}",
                            f"{per_share(b['low95'])} - {per_share(b['high95'])}"] for b in vol["bands"]]))
         out.append("\nA statistical range around today's price (lognormal, no drift), not a valuation: about two in "
@@ -1310,6 +1328,18 @@ def fetch_prices(client, sym, start, end):
         return []
 
 
+def fetch_candles(client, sym, start, end):
+    """Daily open/high/low/close bars for the UI's candlestick chart, and why they are missing (or None).
+    Only the UI asks for them, so a failure is not added to the report's data notes."""
+    try:
+        bars = client.ohlc(sym, start, end)
+    except InvalidKey:
+        raise
+    except FMPError as e:
+        return [], str(e)
+    return bars, None if bars else "historical-price-eod/full returned no rows"
+
+
 def max_workers():
     try:
         return max(1, int(os.environ.get("FMP_MAX_WORKERS") or 6))
@@ -1365,12 +1395,15 @@ def analyze(args):
         # price history starts just before the oldest fiscal year, so it waits for the income statements
         start = (dt.date.fromisoformat(str(inc[0].get("date"))[:10]) - dt.timedelta(days=10)).isoformat()
         f_px = submit(fetch_prices, client, sym, start, today.isoformat())
+        f_bars = (submit(fetch_candles, client, sym, (today - dt.timedelta(days=366)).isoformat(), today.isoformat())
+                  if getattr(args, "candles", False) else None)
         f_peers = [(s, [submit(fn, *a, **kw) for fn, a, kw in peer_requests(client, s)])
                    for s in f_peer_syms.result()]
 
         years = build_years(inc, f_bs.result(), f_cf.result())
         ttm = build_ttm(*(f.result() for f in f_q)) if f_q else None
         series = f_px.result()
+        candles, candles_note = f_bars.result() if f_bars else (None, None)
         est, pt = f_est.result(), f_pt.result()
         peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
         market_res = {k: f.result() for k, f in f_market.items()}
@@ -1448,6 +1481,7 @@ def analyze(args):
         "flags": {"red": red, "green": green},
         "market": market,
         "price_series": series,  # daily closes used for valuation history (the UI charts the last year)
+        "candles": candles, "candles_note": candles_note,  # last year of daily bars, only when args.candles (UI)
         "meta": {"network_calls": client.stats["network_calls"], "cache_hits": client.stats["cache_hits"],
                  "restricted": client.restricted, "errors": client.errors,
                  "connection": client.describe()},
@@ -1492,7 +1526,7 @@ def main(argv=None):
         return 1
     print(render(result))
     if args.json:
-        out = {k: v for k, v in result.items() if k != "price_series"}
+        out = {k: v for k, v in result.items() if k not in ("price_series", "candles", "candles_note")}
         Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
         print(f"\n(JSON written to {args.json})")
     return 0

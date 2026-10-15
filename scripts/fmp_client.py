@@ -465,6 +465,21 @@ class FMPClient:
                 out.append((str(r["date"])[:10], float(p)))
         return sorted(out)
 
+    def ohlc(self, symbol, start, end):
+        """Daily bars [(date, open, high, low, close, volume)] oldest -> newest (the UI's candlestick chart).
+        Rows missing any of open/high/low/close are skipped; volume may be None."""
+        data = self.get("historical-price-eod/full", symbol=symbol, **{"from": start, "to": end})
+        if isinstance(data, dict):
+            data = data.get("historical", [])
+        out = []
+        for r in data or []:
+            o, h, lo, c = (r.get(k) for k in ("open", "high", "low", "close"))
+            if r.get("date") and all(isinstance(v, (int, float)) for v in (o, h, lo, c)):
+                v = r.get("volume")
+                out.append((str(r["date"])[:10], float(o), float(h), float(lo), float(c),
+                            float(v) if isinstance(v, (int, float)) else None))
+        return sorted(out)
+
 
 # ---------------------------------------------------------------------- CLI
 PROBES = [
@@ -479,6 +494,7 @@ PROBES = [
     ("ratios", {"period": "annual", "limit": 5}),
     ("financial-growth", {"period": "annual", "limit": 5}),
     ("historical-price-eod/light", {}),
+    ("historical-price-eod/full", {}),
     ("stock-peers", {}),
     ("analyst-estimates", {"period": "annual", "page": 0, "limit": 10}),
     ("price-target-consensus", {}),
