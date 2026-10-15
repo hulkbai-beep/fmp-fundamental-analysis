@@ -218,9 +218,19 @@ const signPct = v => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : "
 // Share price: daily candles (green = close above open, red = below) with volume underneath, or weekly candles
 // when the chart is too narrow for one candle a day. When the data source has no open/high/low prices, a line
 // of the daily closes. Hover or arrow keys show one candle's numbers.
-const PERIODS = [["p_3m", 63], ["p_6m", 126], ["p_1y", 260]];  // trading days
-let period = 1;
-try { const p = localStorage.getItem("period"); if (p !== null && PERIODS[+p]) period = +p; } catch (e) {}
+// Periods end at the latest bar: a number is that many calendar months back, "ytd" starts on January 1 of the
+// latest bar's year. The choice is remembered by key.
+const PERIODS = [["3m", 3], ["6m", 6], ["ytd", "ytd"], ["1y", 12]];
+let period = "6m";
+try { const p = localStorage.getItem("period"); if (PERIODS.some(([k]) => k === p)) period = p; } catch (e) {}
+
+function periodCutoff(last, span) {  // the period holds the bars dated after this ISO date
+  const [y, m, d] = last.split("-").map(Number);
+  if (span === "ytd") return `${y - 1}-12-31`;
+  const k = y * 12 + m - 1 - span, ty = Math.floor(k / 12), tm = k % 12 + 1;
+  const td = Math.min(d, new Date(Date.UTC(ty, tm, 0)).getUTCDate());  // e.g. May 31 - 3 months = Feb 28
+  return `${ty}-${String(tm).padStart(2, "0")}-${String(td).padStart(2, "0")}`;
+}
 
 const barsOf = d => d.candles?.length ? d.candles.map(([date, o, h, l, c, v]) => ({ date, o, h, l, c, v }))
   : (d.prices || []).map(([date, c]) => ({ date, c }));
@@ -242,8 +252,8 @@ function priceCard(data) {
   return `<div class="card pricecard"><div class="phead"><h3>${esc(t("chart_title"))}</h3>
       <span class="sub psub">${esc(t(ohlc ? "chart_daily" : "chart_close"))}</span>
       <span class="pchg"></span>
-      <div class="seg" role="group">${PERIODS.map(([k], i) =>
-        `<button type="button" data-p="${i}" class="${i === period ? "on" : ""}">${esc(t(k))}</button>`).join("")}</div></div>
+      <div class="seg" role="group">${PERIODS.map(([k]) =>
+        `<button type="button" data-p="${k}" class="${k === period ? "on" : ""}">${esc(t("p_" + k))}</button>`).join("")}</div></div>
     <div class="readout"></div><div class="chartbox candles"></div>
     ${!ohlc && data.prices?.length ? `<p class="sub" title="${esc(data.candles_note || "")}">${esc(t("no_ohlc"))}</p>` : ""}</div>`;
 }
@@ -252,7 +262,8 @@ function drawPrice(el, w) {
   const daily = barsOf(lastData), card = el.closest(".pricecard");
   if (daily.length < 2) { el.innerHTML = `<p class="sub">${esc(t("no_prices"))}</p>`; return; }
   const AR = 60, X0 = 2, PW = w - AR - X0, ohlc = daily[0].o != null;
-  const d0 = Math.max(0, daily.length - PERIODS[period][1]);
+  const cut = periodCutoff(daily[daily.length - 1].date, PERIODS.find(([k]) => k === period)[1]);
+  const d0 = daily.findIndex(b => b.date > cut);
   const base = d0 > 0 ? daily[d0 - 1].c : (daily[0].o ?? daily[0].c);  // close before the period starts
   const wk = ohlc && PW / (daily.length - d0) < 3;
   const all = wk ? weekly(daily.slice(d0)) : daily, n0 = wk ? 0 : d0, bars = all.slice(n0), n = bars.length;
@@ -277,13 +288,13 @@ function drawPrice(el, w) {
   }
   let lastX = -1e9;  // month labels at each month's first trading day
   bars.forEach((b, i) => {
-    const prev = i ? bars[i - 1] : all[n0 - 1];
+    const prev = i ? bars[i - 1] : daily[d0 - 1];  // the daily bar before the period, also in weekly mode
     if (!prev || prev.date.slice(0, 7) === b.date.slice(0, 7)) return;
     const x = cx(i);
     if (x - lastX < 46 || x > X0 + PW - 16) return;
     lastX = x;
     g += `<line x1="${Math.round(x) + 0.5}" x2="${Math.round(x) + 0.5}" y1="${bottom}" y2="${bottom + 4}" stroke="var(--border)"/>` +
-         `<text x="${x}" y="${H - 4}" text-anchor="middle">${esc(t("month", b.date.slice(0, 4), +b.date.slice(5, 7)))}</text>`;
+         `<text x="${Math.max(x, X0 + 14)}" y="${H - 4}" text-anchor="middle">${esc(t("month", b.date.slice(0, 4), +b.date.slice(5, 7)))}</text>`;
   });
   g += `<line x1="${X0}" x2="${X0 + PW}" y1="${bottom + 0.5}" y2="${bottom + 0.5}" stroke="var(--border)"/>`;
 
@@ -302,7 +313,9 @@ function drawPrice(el, w) {
     if (hasVol) g += `<text x="${w - AR + 8}" y="${vy + 10}">${fmtVol(vmax)}</text>`;
   } else {
     const d = bars.map((b, i) => (i ? "L" : "M") + cx(i).toFixed(1) + "," + y(b.c).toFixed(1)).join("");
-    marks = `<path d="${d}" fill="none" stroke="var(${last.c >= base ? "--pos" : "--neg"})" stroke-width="2" stroke-linejoin="round"/>`;
+    const col = `var(${last.c >= base ? "--pos" : "--neg"})`;
+    marks = n > 1 ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`
+      : `<circle cx="${cx(0).toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="${col}"/>`;  // one close: a dot, not an empty path
   }
   const lastTag = `<line x1="${X0}" x2="${X0 + PW}" y1="${lastY}" y2="${lastY}" stroke="${lastColor}" stroke-dasharray="2 3"/>` +
     `<rect x="${w - AR + 2}" y="${lastY - 9}" width="${AR - 2}" height="18" rx="4" fill="${lastColor}"/>` +
@@ -470,7 +483,7 @@ function render(data) {
   const pc = $(".pricecard");
   mount(pc.querySelector(".candles"), drawPrice);
   pc.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
-    period = +b.dataset.p;
+    period = b.dataset.p;
     try { localStorage.setItem("period", period); } catch (e) {}
     pc.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
     const el = pc.querySelector(".candles");

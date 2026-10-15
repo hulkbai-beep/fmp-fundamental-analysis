@@ -305,7 +305,7 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
 - **What the page shows:**
   - A yellow banner at the top saying the data comes from a third-party FMP proxy.
   - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value.
-  - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
+  - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months, year to date or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
   - The automated positives and concerns.
   - Each part of the report on its own tab, with the full text report expandable at the bottom.
   - The "Price range" tab has a comparison chart grouped by horizon (past 52 weeks, now, each fiscal year end, in 12 months, in time order): one bar per method in each group, a dot at the mid value, a vertical line at the current price, and a lighter band on the volatility rows for the 95% range; hovering a row shows its numbers. The table below uses the same method + horizon names. The header card shows the forward P/E range for now.
