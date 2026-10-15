@@ -5,7 +5,7 @@ Minimal client for the Financial Modeling Prep (FMP) *stable* API.
 - Standard library only (no pip install needed); works on Windows, macOS and Linux.
 - The API key is read from the FMP_API_KEY environment variable. It never appears
   in cache files or printed output.
-- Responses are cached on disk (fundamentals change quarterly, prices daily).
+- Responses are cached on disk (fundamentals change quarterly, prices daily; the live quote for a minute).
 - Endpoints that your plan does not include raise RestrictedEndpoint
   (or return None via try_get) instead of crashing an analysis.
 
@@ -55,7 +55,7 @@ PREFIX_CANDIDATES = ("stable", "")
 
 DAY = 86400
 TTL_BY_ENDPOINT = {
-    "quote": 300,
+    "quote": 60,  # the analysis takes its price from here, so a new run shows the current price
     "profile": DAY,
     "historical-price-eod/light": DAY // 2,
     "historical-price-eod/full": DAY // 2,
