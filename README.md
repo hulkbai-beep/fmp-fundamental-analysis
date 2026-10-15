@@ -1,5 +1,7 @@
 # FMP 基本面分析（fmp-fundamental-analysis）
 
+**中文** | [English](README.en.md)
+
 用 Financial Modeling Prep（FMP）的数据，对美股做基本面分析。它可以作为 Claude 的技能使用，也可以在命令行或本地网页里直接运行。
 
 分析内容包括：
@@ -27,7 +29,8 @@
 ```
 fmp-fundamental-analysis/
 ├── SKILL.md            # 给 Claude 看的技能说明（工作流程、解读规则、报告模板）
-├── README.md           # 本文件：给人看的使用说明
+├── README.md           # 本文件：给人看的使用说明（中文）
+├── README.en.md        # 英文版使用说明
 ├── references/
 │   └── metrics.md      # 指标定义、阈值、行业注意事项
 ├── scripts/
@@ -128,7 +131,11 @@ $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
 
 Claude 会运行 `analyze.py`，然后按 SKILL.md 里的模板写一份报告。报告包括结论、增长、盈利能力、资产负债、现金流、估值、风险、关注点和数据说明。
 
-**注意：Claude 实际读取的是 `~/.claude/skills/fmp-fundamental-analysis/` 里的那一份技能。**修改本目录后，要把改动同步到那里才会生效。
+**注意：Claude 实际读取的是 `~/.claude/skills/fmp-fundamental-analysis/` 里的那一份技能。**修改本目录后，要把改动同步到那里才会生效。Windows 上可以用：
+
+```powershell
+robocopy C:\Users\<用户名>\Documents\claude\fmp-fundamental-analysis C:\Users\<用户名>\.claude\skills\fmp-fundamental-analysis /E /XD .git
+```
 
 ### 用法 2：命令行
 
@@ -198,7 +205,7 @@ python ui/server.py
 - **启动时自动处理：**
   - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
   - 连接 54.236.92.205 代理时，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`。
-- **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
+- **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、隐含波动率 %（留空 = 用过去一年的实际波动率）、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
 - **页面显示的内容：**
   - 顶部有黄色提示条，标明数据来自 FMP 第三方代理接口。
   - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。
