@@ -127,6 +127,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         if url.path in ("/", "/index.html"):
             self._send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+        elif url.path == "/i18n.js":
+            self._send(200, (HERE / "i18n.js").read_bytes(), "text/javascript; charset=utf-8")
         elif url.path == "/api/analyze":
             q = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
             try:

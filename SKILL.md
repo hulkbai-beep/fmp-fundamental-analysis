@@ -57,6 +57,8 @@ bash: `FMP_TLS_VERIFY=0 python ...`). Do not use `setx`. Do not apply this to an
 `python ui/server.py` serves a browser page at http://127.0.0.1:8765 where the user enters a
 ticker and sees the same analysis `analyze.py` produces (standard library only). It reads `setx`
 values from the Windows user environment and applies the proxy TLS rule above on its own.
+A button in the top-right corner switches the page between Chinese (default) and English; the
+translation happens only in the browser, so numbers and `analyze.py` output are unchanged.
 This is for the user's own browsing; when you analyse a stock, still run `scripts/analyze.py`.
 
 ## Workflow
