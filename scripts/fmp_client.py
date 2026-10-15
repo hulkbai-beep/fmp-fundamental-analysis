@@ -230,6 +230,8 @@ class FMPClient:
 
     def detect(self, symbol="AAPL"):
         """Find the path prefix and auth style a proxy accepts, by probing `profile`."""
+        print(f"[fmp] Detecting request format for {self.host} (waits up to {self.timeout:g}s "
+              f"per try) ...", file=sys.stderr, flush=True)
         prefixes = [self.prefix] if self.prefix is not None else list(PREFIX_CANDIDATES)
         styles = [self.auth_style] if self.auth_style else list(AUTH_STYLES)
         seen = []
