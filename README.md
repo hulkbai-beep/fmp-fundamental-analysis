@@ -296,7 +296,7 @@ python scripts/fmp_client.py get key-metrics symbol=AAPL period=annual limit=5
 python ui/server.py
 ```
 
-Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端里启动。然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。
+Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端里启动。然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。代码更新后要按 Ctrl+C 停掉再重新启动，网页才会用上新代码。
 
 - **启动时自动处理：**
   - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
@@ -304,7 +304,7 @@ Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端�
 - **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、隐含波动率 %（留空 = 用过去一年的实际波动率）、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
 - **页面显示的内容：**
   - 顶部有黄色提示条，标明数据来自 FMP 第三方代理接口。
-  - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。
+  - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。股价每次分析都取最新报价（缓存 1 分钟），下面显示报价时间（美东），K 线图最后一根也按这个价格更新。
   - 股价 K 线图（每天的开盘、最高、最低、收盘价，下方是成交量），可以切换 3 个月 / 6 个月 / 年初至今 / 1 年；鼠标移到某一天会显示那天的数字。图太窄放不下每天一根时自动改成周 K 线；数据源没有开高低价时只画收盘价折线。
   - 自动提示的优点和风险。
   - 报告的各部分按标签页分开显示，底部可以展开完整文字报告。
@@ -320,7 +320,7 @@ Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端�
 ## 三、缓存
 
 - **位置：** `~/.cache/fmp-fundamentals`（Windows 上是 `C:\Users\<用户名>\.cache\fmp-fundamentals`）
-- **有效期：** 财务数据 7 天，价格和板块数据 12 小时，国债收益率 6 小时，经济日历 3 小时
+- **有效期：** 最新报价 1 分钟，财务数据 7 天，历史股价和板块数据 12 小时，国债收益率 6 小时，经济日历 3 小时
 - **跳过缓存：** 命令行加 `--refresh`，或在网页上勾选「忽略缓存」
 - **清空缓存：**
 
@@ -342,7 +342,7 @@ python scripts/fmp_client.py clear-cache
 | `does not cover TICKER` | 套餐只覆盖美股。港股、A 股可以试试对应的美股 ADR |
 | `No profile found for XXX` | 股票代码不对 |
 | 报告里有「Skipped (not in your FMP plan)」 | 套餐不包含某些接口（同行、分析师预期、季度数据等）。其他分析仍然可以基于年报完成 |
-| 股价或市值看起来是旧的 | 加 `--refresh`，或在网页上勾选「忽略缓存」 |
+| 股价或市值看起来是旧的 | 看报告「数据说明」里股价来自哪里：写的是公司资料，说明数据源没给最新报价，可以加 `--refresh` 或在网页上勾选「忽略缓存」；美股休市时股价本来就不变 |
 | Windows 上提示找不到 `python` | 改用 `py`，例如 `py scripts/analyze.py AAPL` |
 | Mac 上提示 `command not found: python` | Mac 上用 `python3` |
 | Mac 上的 Claude 提示 `FMP_API_KEY is not set`，但终端里设置好了 | Claude 桌面 App 没读到 `~/.zshrc`。在 `~/.claude/settings.json` 的 `env` 里也写一份（见第 5 步 ⑥），然后用 ⌘ + Q 退出 App 再打开 |

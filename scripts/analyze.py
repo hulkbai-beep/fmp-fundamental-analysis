@@ -500,19 +500,20 @@ def lfy_snapshot(profile, years):
 
 
 def peer_requests(client, s):
-    """The four calls behind one peer row, as (function, args, kwargs) so they can run in parallel."""
+    """The five calls behind one peer row, as (function, args, kwargs) so they can run in parallel."""
     st = client.statements
     return [(client.try_get, ("profile",), {"symbol": s}),
             (st, ("income-statement", s, "annual", 2), {"optional": True}),
             (st, ("balance-sheet-statement", s, "annual", 1), {"optional": True}),
-            (st, ("cash-flow-statement", s, "annual", 1), {"optional": True})]
+            (st, ("cash-flow-statement", s, "annual", 1), {"optional": True}),
+            (fetch_quote, (client, s), {})]
 
 
-def peer_snapshot(s, prof, inc, bs, cf):
+def peer_snapshot(s, prof, inc, bs, cf, quote=None):
     prof = prof[0] if isinstance(prof, list) and prof else (prof if isinstance(prof, dict) else None)
     if not prof or not inc:
         return {"symbol": s, "error": "no data (plan restriction or unknown ticker)"}
-    return lfy_snapshot(prof, build_years(inc, bs, cf))
+    return lfy_snapshot(quote_price(prof, quote), build_years(inc, bs, cf))
 
 
 def fetch_estimates(client, sym):
@@ -1300,6 +1301,12 @@ def render(r):
     if not conn["tls_verify"]:
         out.append("- HTTPS certificate verification was OFF for this run.")
     out.append(f"- API calls: {m['network_calls']} network, {m['cache_hits']} from cache.")
+    if r.get("price_time"):
+        out.append(f"- Price from the latest quote at {r['price_time']} New York time.")
+    elif r.get("price_time") == "":
+        out.append("- Price from the latest quote.")
+    else:
+        out.append("- Price from the company profile, which is cached for up to a day (no current quote).")
     fixed = str((r.get("dcf") or {}).get("discount_source", "")).startswith("fixed default")
     if not r.get("market"):
         out.append("- Treasury, sector and industry data skipped (--no-market).")
@@ -1338,6 +1345,74 @@ def fetch_candles(client, sym, start, end):
     except FMPError as e:
         return [], str(e)
     return bars, None if bars else "historical-price-eod/full returned no rows"
+
+
+def fetch_quote(client, sym):
+    """The latest quote (price, day change, market cap, day range, timestamp), or None when the plan or data
+    source has none; the profile's price, cached for a day, is then used."""
+    q = client.try_get("quote", symbol=sym)
+    if isinstance(q, list):
+        q = q[0] if q else None
+    return q if isinstance(q, dict) and (num(q, "price") or 0) > 0 else None
+
+
+def us_eastern(ts):
+    """A Unix timestamp as naive New York time. US daylight saving rules are computed here because
+    Python on Windows has no time zone database unless the tzdata package is installed."""
+    utc = dt.datetime.fromtimestamp(ts, dt.timezone.utc).replace(tzinfo=None)
+    mar1, nov1 = dt.datetime(utc.year, 3, 1), dt.datetime(utc.year, 11, 1)
+    start = mar1 + dt.timedelta(days=(6 - mar1.weekday()) % 7 + 7, hours=7)  # 2nd Sunday of March, 2:00 EST
+    end = nov1 + dt.timedelta(days=(6 - nov1.weekday()) % 7, hours=6)       # 1st Sunday of November, 2:00 EDT
+    return utc - dt.timedelta(hours=4 if start <= utc < end else 5)
+
+
+def quote_price(profile, quote):
+    """The profile with the quote's price, day change and market cap (the profile itself is cached for a day).
+    Used for the company and for each peer, so the peer table compares prices taken at the same time."""
+    if not quote:
+        return profile
+    px, old = num(quote, "price"), num(profile, "price")
+    mcap = num(quote, "marketCap")
+    if mcap is None and old and num(profile, "marketCap", "mktCap"):
+        mcap = num(profile, "marketCap", "mktCap") * px / old
+    profile = {**profile, "price": px}
+    for k in ("changePercentage", "change"):
+        if num(quote, k) is not None:
+            profile[k] = num(quote, k)
+    if mcap:
+        profile["marketCap"] = mcap
+    return profile
+
+
+def apply_quote(profile, quote, series, candles):
+    """Use the latest quote for the price, day change and market cap, and for the latest day of the price
+    history, so each run shows the current price while the profile and the daily bars come from the cache.
+    Returns (profile, series, candles, quote time in New York as 'YYYY-MM-DD HH:MM'); the time is "" when the
+    quote has no timestamp, and None when the quote was not used because it is older than the price history."""
+    ts = num(quote, "timestamp")
+    when = us_eastern(ts / 1000 if ts > 1e12 else ts) if ts and ts > 0 else None
+    day = when.date().isoformat() if when else None
+    if day and any(h and h[-1][0] > day for h in (series, candles)):
+        return profile, series, candles, None  # the quote is older than the price history: keep the profile's price
+    profile = quote_price(profile, quote)
+    px = profile["price"]
+    if not when:
+        return profile, series, candles, ""
+    # A bar for the quote's day exists once that session has opened (not on weekends or before 9:30).
+    opened = when.weekday() < 5 and when.time() >= dt.time(9, 30)
+    if series and (series[-1][0] == day or (series[-1][0] < day and opened)):
+        series = [p for p in series if p[0] != day] + [(day, px)]
+    if candles and (candles[-1][0] == day or (candles[-1][0] < day and opened)):
+        qo, qh, ql = (v if v and v > 0 else None for v in (num(quote, "open"), num(quote, "dayHigh"), num(quote, "dayLow")))
+        qv = num(quote, "volume")
+        if candles[-1][0] == day:
+            _, o, h, lo, _, v = candles[-1]
+            bar = (day, o, max(h, qh or px, px), min(lo, ql or px, px), px, max(v or 0, qv or 0) or None)
+            candles = candles[:-1] + [bar]
+        else:
+            o = qo or px
+            candles = candles + [(day, o, max(qh or px, px, o), min(ql or px, px, o), px, qv or None)]
+    return profile, series, candles, when.strftime("%Y-%m-%d %H:%M")
 
 
 def max_workers():
@@ -1380,6 +1455,7 @@ def analyze(args):
             submit(st, "balance-sheet-statement", sym, "quarter", 1, optional=True))
         f_est = submit(fetch_estimates, client, sym)
         f_pt = submit(client.try_get, "price-target-consensus", symbol=sym)
+        f_quote = submit(fetch_quote, client, sym)
         f_peer_syms = submit(peer_symbols, client, sym, args.peers, args.max_peers)
         market_reqs = {}
         if not args.no_market:
@@ -1404,7 +1480,7 @@ def analyze(args):
         ttm = build_ttm(*(f.result() for f in f_q)) if f_q else None
         series = f_px.result()
         candles, candles_note = f_bars.result() if f_bars else (None, None)
-        est, pt = f_est.result(), f_pt.result()
+        est, pt, quote = f_est.result(), f_pt.result(), f_quote.result()
         peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
         market_res = {k: f.result() for k, f in f_market.items()}
     except BaseException:
@@ -1413,6 +1489,10 @@ def analyze(args):
         raise
     finally:
         pool.shutdown(wait=True)
+
+    price_time = None
+    if quote:
+        profile, series, candles, price_time = apply_quote(profile, quote, series, candles)
 
     if ttm and ttm["date"] <= years[-1]["date"]:
         ttm = None  # latest quarter is the fiscal year end; annual data is already current
@@ -1472,7 +1552,7 @@ def analyze(args):
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
 
     return {
-        "symbol": sym, "as_of": today.isoformat(), "profile": profile,
+        "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
         "sector_kind": sector_kind, "sector_note": sector_note,
         "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg, "peg": peg,
         "valuation_history": hist, "history_compare": hist_cmp,

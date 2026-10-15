@@ -41,12 +41,13 @@ button:disabled { opacity: .6; cursor: wait; }
 .name { font-size: 22px; font-weight: 700; }
 .sub { color: var(--muted); font-size: 13px; }
 .price { font-size: 26px; font-weight: 700; text-align: right; }
+.pmeta { text-align: right; }
 .pos { color: var(--pos); } .neg { color: var(--neg); }
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
 .stat { background: var(--row); border-radius: 8px; padding: 10px; }
 .stat .k { font-size: 12px; color: var(--muted); } .stat .v { font-size: 18px; font-weight: 700; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .price { text-align: left; } }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .price, .pmeta { text-align: left; } }
 .grid2 .card { margin-top: 0; }
 h3 { margin: 0 0 8px; font-size: 15px; }
 .section h3 { margin-top: 18px; }
@@ -454,7 +455,8 @@ function render(data) {
       <div class="name">${esc(p.companyName || r.symbol)} <span class="sub">${esc(r.symbol)}</span></div>
       <div class="sub">${esc(LANG === "zh" ? sectorZh(p.sector) : p.sector)} / ${esc(p.industry)} · ${esc(p.exchange)} · ${esc(t("as_of"))} ${esc(r.as_of)}</div></div>
       <div><div class="price">${p.price != null ? p.price.toFixed(2) : "n/a"} <span class="sub">${esc(p.currency)}</span></div>
-      <div class="sub" style="text-align:right">${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> · ` : ""}${esc(t("mcap"))} ${fmtMoney(p.marketCap)}</div></div></div>
+      <div class="sub pmeta">${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> · ` : ""}${esc(t("mcap"))} ${fmtMoney(p.marketCap)}</div>
+      ${r.price_time ? `<div class="sub pmeta">${esc(t("px_time", r.price_time.slice(5)))}</div>` : ""}</div></div>
     <div class="stats">
       ${stat("s_pe", fmtX(c.pe))}
       ${stat("s_ev", fmtX(c.ev_ebitda))}

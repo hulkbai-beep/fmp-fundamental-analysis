@@ -220,8 +220,9 @@ For data the analysis does not cover, call any FMP stable endpoint directly:
 python scripts/fmp_client.py get key-metrics symbol=AAPL period=annual limit=5
 python scripts/fmp_client.py get ratios symbol=AAPL period=annual limit=5
 ```
-Responses are cached under `~/.cache/fmp-fundamentals` (fundamentals 7 days, prices and
-sector data 12 hours, Treasury yields 6 hours, economic calendar 3 hours);
+Responses are cached under `~/.cache/fmp-fundamentals` (latest quote 1 minute, fundamentals
+7 days, price history and sector data 12 hours, Treasury yields 6 hours, economic calendar 3 hours);
+the price comes from the quote, so each run uses the current price;
 `python scripts/fmp_client.py clear-cache` empties it.
 
 ## Troubleshooting
@@ -231,7 +232,7 @@ sector data 12 hours, Treasury yields 6 hours, economic calendar 3 hours);
 | `API key problem` | `FMP_API_KEY` missing or wrong; see Setup |
 | `does not cover TICKER` | Non-US symbol on a US-only plan; use the ADR or another source |
 | "Skipped (not in your FMP plan)" | Expected on Starter for peers / estimates / quarterly data; the analysis still works from annual statements |
-| Price/market cap looks stale | Re-run with `--refresh` |
+| Price/market cap looks stale | Data notes say "Price from the company profile": the quote was unavailable, re-run with `--refresh` |
 | `python` not found on Windows | Use `py scripts/analyze.py ...` |
 | `certificate verification failed` (proxy) | Proxy certificate not trusted; the user may set `FMP_TLS_VERIFY=0` |
 | `Could not find a working request format` (proxy) | Token or address wrong, or the proxy uses another path/auth scheme: set `FMP_PATH_PREFIX` / `FMP_AUTH_STYLE` from the proxy's docs |

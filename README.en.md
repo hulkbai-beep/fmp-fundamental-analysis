@@ -296,7 +296,7 @@ Start it:
 python ui/server.py
 ```
 
-On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.zshrc` is already set up. Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`.
+On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.zshrc` is already set up. Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`. After the code is updated, stop it with Ctrl+C and start it again so the page uses the new code.
 
 - **Handled automatically at start-up:**
   - Reads the `FMP_*` variables saved with `setx`, even if the terminal was opened before `setx`.
@@ -304,7 +304,7 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
 - **Settings on the page:** ticker, comparison companies, discount rate % (blank = automatic, tied to Treasuries), growth years 1-5 %, terminal growth %, implied volatility % (blank = the past year's realized volatility), starting FCF (latest or 3-year average), macro backdrop, ignore cache.
 - **What the page shows:**
   - A yellow banner at the top saying the data comes from a third-party FMP proxy.
-  - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value.
+  - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value. Each analysis takes the price from the latest quote (cached for 1 minute) and shows the quote time (New York) under it; the last candle of the chart is updated to that price too.
   - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months, year to date or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
   - The automated positives and concerns.
   - Each part of the report on its own tab, with the full text report expandable at the bottom.
@@ -320,7 +320,7 @@ The numbers on the page are exactly those `analyze.py` produces, and both share 
 ## 3. Cache
 
 - **Location:** `~/.cache/fmp-fundamentals` (on Windows `C:\Users\<username>\.cache\fmp-fundamentals`)
-- **Lifetime:** financial statements 7 days, prices and sector data 12 hours, Treasury yields 6 hours, economic calendar 3 hours
+- **Lifetime:** latest quote 1 minute, financial statements 7 days, price history and sector data 12 hours, Treasury yields 6 hours, economic calendar 3 hours
 - **Skip the cache:** add `--refresh` on the command line, or tick "Ignore cache" on the web page
 - **Clear the cache:**
 
@@ -342,7 +342,7 @@ This also deletes the detected proxy connection settings; they are detected agai
 | `does not cover TICKER` | The plan covers US stocks only. For Hong Kong or mainland China listings, try the US ADR |
 | `No profile found for XXX` | Wrong ticker |
 | The report shows "Skipped (not in your FMP plan)" | Your plan lacks some endpoints (peers, analyst estimates, quarterly data and so on). The rest of the analysis still works from annual statements |
-| Price or market cap looks old | Add `--refresh`, or tick "Ignore cache" on the web page |
+| Price or market cap looks old | Check where the report's data notes say the price came from: if it says the company profile, the data source gave no latest quote, so add `--refresh` or tick "Ignore cache" on the web page. While the US market is closed the price does not change |
 | Windows says `python` is not found | Use `py`, e.g. `py scripts/analyze.py AAPL` |
 | A Mac says `command not found: python` | Use `python3` on a Mac |
 | On a Mac, Claude says `FMP_API_KEY is not set` although Terminal has it | The Claude desktop app did not read `~/.zshrc`. Also put the key in the `env` block of `~/.claude/settings.json` (step 5 ⑥), then quit the app with ⌘ + Q and reopen it |
