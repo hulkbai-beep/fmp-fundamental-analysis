@@ -909,7 +909,8 @@ def render(r):
             out.append("- US equity risk premium unavailable" +
                        (": DCF used the fixed default discount rate." if fixed else "."))
     else:
-        out.append("- Treasury yields unavailable" + (": DCF used the fixed default discount rate." if fixed else "."))
+        missing = "Treasury yields" + (" and US equity risk premium" if mk.get("erp") is None else "")
+        out.append(f"- {missing} unavailable" + (": DCF used the fixed default discount rate." if fixed else "."))
     if m["restricted"]:
         out.append(f"- Skipped (not in your FMP plan): {', '.join(m['restricted'])}")
     for e in dict.fromkeys(m["errors"]):

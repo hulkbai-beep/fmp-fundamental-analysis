@@ -421,7 +421,8 @@ def pe_stats(rows, today=None, max_age_days=10):
         "median": statistics.median(vals) if vals else None, "min": min(vals) if vals else None,
         "max": max(vals) if vals else None,
         "percentile": sum(1 for v in vals if v <= cur) / len(vals) if vals and cur is not None else None,
-        "since": every[0][0], "n": len(vals), "year_ago": v1, "exchange": rows[0].get("exchange"),
+        "since": series[0][0] if series else every[0][0], "n": len(vals), "year_ago": v1,
+        "exchange": rows[0].get("exchange"),
     }
 
 
@@ -689,7 +690,10 @@ def main(argv=None):
             out["calendar"] = {k: v for k, v in m["calendar"].items() if k != "all_us"}
         Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
         print(f"\n(JSON written to {args.json})")
-    if m["rates"] is None and not any(m["indicators"].values()) and not m["calendar"]["rows"]:
+    board = m.get("sector_board") or {}
+    board_data = any(row["pe"] or any(v is not None for v in row["returns"].values()) for row in board.get("rows", []))
+    if (m["rates"] is None and m["erp"] is None and not any(m["indicators"].values())
+            and not m["calendar"]["rows"] and not board_data):
         print("No rates or macro data came back; see the errors above "
               "(python scripts/fmp_client.py check tests each endpoint).", file=sys.stderr)
         return 1
