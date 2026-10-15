@@ -10,16 +10,20 @@ Usage:
   python analyze.py AAPL
   python analyze.py AAPL --peers MSFT,GOOGL,AMZN --json aapl.json
   python analyze.py AAPL --discount 0.10 --growth 0.06 --fcf-base avg3
+  python analyze.py AAPL --macro
 
 Options:
   --years N          fiscal years of history to request (default 5; Starter plan = 5)
   --peers LIST       comma-separated peer tickers, or "none" (default: FMP stock-peers)
   --max-peers N      max auto peers (default 5)
-  --discount R       DCF discount rate (default 0.09)
+  --discount R       DCF discount rate (default: CAPM = 10Y Treasury + beta x US equity risk
+                     premium, kept within 7-13%; 0.09 if rates data is unavailable)
   --terminal G       DCF terminal growth (default 0.025)
   --growth G         DCF growth for years 1-5 (default: historical revenue CAGR, clamped 0-15%)
   --fcf-base MODE    latest | avg3   starting FCF for the DCF (default latest)
   --no-ttm           skip trailing-twelve-month data (saves 3 API calls)
+  --macro            add the rates & macro backdrop (Fed funds, CPI, jobs, key releases)
+  --no-market        skip Treasury / sector / industry data (fixed 9% discount, no sector section)
   --json PATH        also write every computed number to a JSON file
   --refresh          ignore the local cache
 
@@ -40,6 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
+import macro as M  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
 REAL_ESTATE_SECTORS = {"real estate"}
@@ -408,7 +413,7 @@ def reverse_dcf(fcf0, gt, r, net_debt, minority, shares, price):
     return (lo + hi) / 2, None
 
 
-def run_dcf(years, basis, cur, args, rev_cagr, sector_kind):
+def run_dcf(years, basis, cur, args, rev_cagr, sector_kind, r, r_source):
     if sector_kind == "financial":
         return {"skipped": "Financial-sector company: FCF-based DCF is not meaningful (use P/B, ROE, P/E)."}
     if args.fcf_base == "avg3":
@@ -427,7 +432,7 @@ def run_dcf(years, basis, cur, args, rev_cagr, sector_kind):
         g1, g_src = clamp(rev_cagr, 0.0, 0.15), "historical revenue CAGR, clamped to 0-15%"
     else:
         g1, g_src = 0.05, "default (no usable revenue history)"
-    r, gt = args.discount, args.terminal
+    gt = args.terminal
     nd, mi = basis["net_debt"], basis["minority_interest"]
     base = dcf_value(fcf0, g1, gt, r, nd, mi, shares)
     if base is None:
@@ -438,9 +443,13 @@ def run_dcf(years, basis, cur, args, rev_cagr, sector_kind):
     inner = [v for i, row in enumerate(grid) for j, v in enumerate(row)
              if v is not None and abs(rs[i] - r) <= 0.0101 and abs(gs[j] - g1) <= 0.0201]
     implied, implied_note = reverse_dcf(fcf0, gt, r, nd, mi, shares, price)
+    fixed = None
+    if r_source.startswith("CAPM") and abs(r - M.FALLBACK_DISCOUNT) > 0.0005:
+        fixed = (dcf_value(fcf0, g1, gt, M.FALLBACK_DISCOUNT, nd, mi, shares) or {}).get("per_share")
     return {
         "fcf_start": fcf0, "fcf_start_basis": base_label,
         "growth_1_5": g1, "growth_source": g_src, "terminal_growth": gt, "discount_rate": r,
+        "discount_source": r_source, "value_at_fixed_rate": fixed,
         "net_debt": nd, "shares": shares,
         "value_per_share": base["per_share"], "terminal_value_share": base["tv_share"],
         "margin_of_safety": base["per_share"] / price - 1 if price else None,
@@ -804,7 +813,7 @@ def render(r):
             ["Starting FCF", f"{money(d['fcf_start'])} ({d['fcf_start_basis']})"],
             ["Growth yrs 1-5", f"{pct(d['growth_1_5'])} ({d['growth_source']})"],
             ["Growth yrs 6-10", f"fades linearly to terminal {pct(d['terminal_growth'])}"],
-            ["Discount rate", pct(d["discount_rate"])],
+            ["Discount rate", f"{pct(d['discount_rate'])} ({d['discount_source']})"],
             ["Net debt deducted", money(d["net_debt"])],
             ["Shares", money(d["shares"])],
         ]))
@@ -812,6 +821,9 @@ def render(r):
                    f"-> {pct(d['margin_of_safety'])} {'upside' if (d['margin_of_safety'] or 0) >= 0 else 'downside'}.** "
                    f"Reasonable range (discount +/-1pt, growth +/-2pt): {per_share(d['range_low'])} - {per_share(d['range_high'])}. "
                    f"Terminal value is {pct(d['terminal_value_share'])} of the total.")
+        if d.get("value_at_fixed_rate") is not None:
+            out.append(f"(At the previous fixed {pct(M.FALLBACK_DISCOUNT)} discount rate the base case would be "
+                       f"{per_share(d['value_at_fixed_rate'])} per share.)")
         grid_rows = [[pct(rr)] + [per_share(v) for v in row] for rr, row in zip(d["grid_rates"], d["grid"])]
         out.append("\nValue per share (rows = discount rate, columns = growth yrs 1-5):")
         out.append(table(["r \\ g"] + [pct(g) for g in d["grid_growths"]], grid_rows))
@@ -859,7 +871,18 @@ def render(r):
         out.append("No peers (FMP stock-peers not available on this plan, or --peers none). "
                    "Re-run with --peers TICKER1,TICKER2 to compare.")
 
-    out.append("\n## 10. Automated flags (prompts for investigation, not conclusions)")
+    sec = 10
+    mk = r.get("market") or {}
+    if mk.get("sector"):
+        out.append(f"\n## {sec}. Sector & industry context")
+        out.append(M.render_sector_context(mk["sector"], r["symbol"]))
+        sec += 1
+    if mk.get("macro"):
+        out.append(f"\n## {sec}. Rates & macro backdrop")
+        out.append(M.render_macro(mk["macro"]))
+        sec += 1
+
+    out.append(f"\n## {sec}. Automated flags (prompts for investigation, not conclusions)")
     out.append("**Positives**")
     out += [f"- {g}" for g in r["flags"]["green"]] or ["- none triggered"]
     out.append("\n**Concerns**")
@@ -876,9 +899,15 @@ def render(r):
     if not conn["tls_verify"]:
         out.append("- HTTPS certificate verification was OFF for this run.")
     out.append(f"- API calls: {m['network_calls']} network, {m['cache_hits']} from cache.")
+    if mk.get("rates"):
+        out.append(f"- Treasury yields as of {mk['rates']['date']} (FMP treasury-rates).")
+    elif not r.get("market"):
+        out.append("- Treasury, sector and industry data skipped (--no-market).")
+    else:
+        out.append("- Treasury yields unavailable: DCF used the fixed default discount rate.")
     if m["restricted"]:
         out.append(f"- Skipped (not in your FMP plan): {', '.join(m['restricted'])}")
-    for e in m["errors"]:
+    for e in dict.fromkeys(m["errors"]):
         out.append(f"- Error: {e}")
     out.append("- Source: Financial Modeling Prep. Computed figures are approximations; verify against filings before acting.")
     return "\n".join(out)
@@ -934,6 +963,13 @@ def analyze(args):
         f_est = submit(fetch_estimates, client, sym)
         f_pt = submit(client.try_get, "price-target-consensus", symbol=sym)
         f_peer_syms = submit(peer_symbols, client, sym, args.peers, args.max_peers)
+        market_reqs = {}
+        if not args.no_market:
+            market_reqs.update(M.rates_requests(client, today))
+            market_reqs.update(M.sector_requests(client, profile, today))
+            if args.macro:
+                market_reqs.update(M.macro_requests(client, today))
+        f_market = {k: submit(fn, *a, **kw) for k, (fn, a, kw) in market_reqs.items()}
 
         inc = f_inc.result()
         if not inc:
@@ -949,6 +985,7 @@ def analyze(args):
         series = f_px.result()
         est, pt = f_est.result(), f_pt.result()
         peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
+        market_res = {k: f.result() for k, f in f_market.items()}
     except BaseException:
         for f in futures:
             f.cancel()
@@ -978,6 +1015,29 @@ def analyze(args):
     hist = valuation_history(years, series)
     hist_cmp = compare_to_history(current, hist)
 
+    market, capm = None, None
+    if not args.no_market:
+        rates = M.treasury_view(M.treasury_rows(market_res))
+        erp = M.us_erp(market_res.get("erp"))
+        capm = M.capm_rate(rates, erp, num(profile, "beta"))
+        market = {"rates": rates, "erp": erp, "capm": capm,
+                  "sector": M.sector_context(market_res, profile, current["pe"], series, hist_cmp.get("pe"))}
+        if args.macro:
+            now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+            market["macro"] = {
+                "rates": rates, "erp": erp,
+                "indicators": {k: M.indicator_view(market_res.get(f"ind_{k}"))
+                               for k in ("federalFunds", "CPI", "unemploymentRate")},
+                "calendar": M.calendar_view(M.calendar_rows(market_res, client), now),
+            }
+    if args.discount is not None:
+        rate, rate_src = args.discount, "user input"
+    elif capm:
+        rate, rate_src = capm["rate"], M.capm_note(capm)
+    else:
+        rate = M.FALLBACK_DISCOUNT
+        rate_src = "fixed default; --no-market" if args.no_market else "fixed default; Treasury/risk-premium data unavailable"
+
     n = len(years) - 1
     cg = {k: cagr(years[0][k], years[-1][k], n) for k in
           ("revenue", "gross_profit", "operating_income", "net_income", "eps", "fcf", "shares")}
@@ -985,7 +1045,7 @@ def analyze(args):
 
     pio = piotroski(years)
     alt = altman(years[-1], mcap)
-    dcf = run_dcf(years, basis, current, args, cg["revenue"], sector_kind)
+    dcf = run_dcf(years, basis, current, args, cg["revenue"], sector_kind, rate, rate_src)
     analyst = analyst_view(est, pt, years[-1]["date"], price, years[-1]["revenue"])
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
 
@@ -997,6 +1057,7 @@ def analyze(args):
         "piotroski": pio, "altman": alt, "dcf": dcf, "analyst": analyst,
         "self_snapshot": lfy_snapshot(profile, years), "peers": peers,
         "flags": {"red": red, "green": green},
+        "market": market,
         "price_series": series,  # daily closes used for valuation history (the UI charts the last year)
         "meta": {"network_calls": client.stats["network_calls"], "cache_hits": client.stats["cache_hits"],
                  "restricted": client.restricted, "errors": client.errors,
@@ -1010,11 +1071,13 @@ def parse_args(argv):
     ap.add_argument("--years", type=int, default=5)
     ap.add_argument("--peers", default=None)
     ap.add_argument("--max-peers", type=int, default=5)
-    ap.add_argument("--discount", type=float, default=0.09)
+    ap.add_argument("--discount", type=float, default=None)
     ap.add_argument("--terminal", type=float, default=0.025)
     ap.add_argument("--growth", type=float, default=None)
     ap.add_argument("--fcf-base", choices=("latest", "avg3"), default="latest")
     ap.add_argument("--no-ttm", action="store_true")
+    ap.add_argument("--macro", action="store_true")
+    ap.add_argument("--no-market", action="store_true")
     ap.add_argument("--json", default=None)
     ap.add_argument("--refresh", action="store_true")
     return ap.parse_args(argv)

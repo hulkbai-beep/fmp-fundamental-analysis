@@ -89,6 +89,8 @@ def run_analysis(q):
                 return 400, {"error": f"{key} must be a number (percent)."}
     if q.get("fcf_base") in ("latest", "avg3"):
         argv += ["--fcf-base", q["fcf_base"]]
+    if q.get("macro") == "1":
+        argv.append("--macro")
     if q.get("refresh") == "1":
         argv.append("--refresh")
     args = A.parse_args(argv)

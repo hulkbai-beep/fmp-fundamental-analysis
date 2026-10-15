@@ -46,6 +46,7 @@ button:disabled { opacity: .6; cursor: wait; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .price { text-align: left; } }
 .grid2 .card { margin-top: 0; }
 h3 { margin: 0 0 8px; font-size: 15px; }
+.section h3 { margin-top: 18px; }
 ul.flags { margin: 0; padding-left: 18px; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .tab { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; }
@@ -70,10 +71,11 @@ pre { white-space: pre-wrap; font-size: 12px; }
   <form id="f">
     <label>股票代码<input id="symbol" name="symbol" placeholder="AAPL" required autofocus></label>
     <label>对比公司（可选）<input id="peers" name="peers" placeholder="MSFT,GOOGL 或 none"></label>
-    <label>折现率 %<input class="small" name="discount" placeholder="9"></label>
+    <label>折现率 %<input class="small" name="discount" placeholder="自动" title="留空 = 10 年期国债 + Beta × 股权风险溢价（7%-13%）"></label>
     <label>1-5年增速 %<input class="small" name="growth" placeholder="自动"></label>
     <label>永续增速 %<input class="small" name="terminal" placeholder="2.5"></label>
     <label>起始 FCF<select name="fcf_base"><option value="latest">最新</option><option value="avg3">3年平均</option></select></label>
+    <label class="chk"><input type="checkbox" name="macro" value="1">宏观背景</label>
     <label class="chk"><input type="checkbox" name="refresh" value="1">忽略缓存</label>
     <button id="go">分析</button>
   </form>
@@ -111,6 +113,7 @@ function md(text) {
       html += "</ul>"; continue;
     }
     if (l.startsWith("## ")) html += `<h2>${inline(l.slice(3))}</h2>`;
+    else if (l.startsWith("### ")) html += `<h3>${inline(l.slice(4))}</h3>`;
     else if (l.trim()) html += `<p>${inline(l)}</p>`;
     i++;
   }

@@ -8,8 +8,10 @@
 - 资产负债和流动性：净负债、负债率、流动比率、利息覆盖
 - 现金流质量和资本配置：FCF/净利润、股权激励、回购、分红
 - 估值：当前倍数与自身 5 年历史对比，以及与同行对比
+- 行业和板块对比：公司 P/E 与所在行业、板块的 P/E 及其历史分位对比；公司、行业、板块与标普 500 近 1 月 / 3 月 / 年初至今 / 1 年涨跌对比
 - 质量评分：Piotroski F-score、Altman Z
-- DCF 和反向 DCF：含折现率 × 增速敏感性表
+- DCF 和反向 DCF：折现率默认跟 10 年期国债挂钩（CAPM），含折现率 × 增速敏感性表
+- 利率和宏观背景（可选）：国债收益率曲线、联邦基金利率、CPI / PPI / PCE / 非农 / 美联储议息的最新公布值和未来三周日程
 - 分析师预期和目标价
 - 自动提示：列出优点和风险，作为进一步核实的线索，不是结论
 
@@ -29,7 +31,8 @@ fmp-fundamental-analysis/
 │   └── metrics.md      # 指标定义、阈值、行业注意事项
 ├── scripts/
 │   ├── fmp_client.py   # FMP API 客户端：连接、缓存、限速，以及 check / get 命令
-│   └── analyze.py      # 主分析脚本：生成完整报告
+│   ├── analyze.py      # 主分析脚本：生成完整报告
+│   └── macro.py        # 利率、宏观和板块数据：独立的宏观仪表盘，也供 analyze.py 调用
 └── ui/
     ├── server.py       # 本地网页服务器
     └── index.html      # 网页界面
@@ -118,6 +121,8 @@ $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
 - 「NVDA 现在贵不贵？」
 - 「比较 MSFT、GOOGL、AMZN 的盈利能力和估值」
 - 「COST 的护城河怎么样？现金流质量好吗？」
+- 「现在利率和通胀是什么情况？对 NVDA 这种成长股有什么影响？」
+- 「最近哪些板块强？科技板块现在估值贵吗？」
 
 Claude 会运行 `analyze.py`，然后按 SKILL.md 里的模板写一份报告。报告包括结论、增长、盈利能力、资产负债、现金流、估值、风险、关注点和数据说明。
 
@@ -145,11 +150,13 @@ $env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
 | `--peers none` | 不做同行对比 | 节省时间和 API 调用 |
 | `--max-peers 5` | 自动同行的最多数量（默认 5） | |
 | `--years 5` | 拉取几年历史（默认 5，Starter 套餐上限 5） | |
-| `--discount 0.10` | DCF 折现率（默认 0.09） | 风险高的公司用 0.10，非常稳定的用 0.08 |
+| `--discount 0.10` | DCF 折现率。默认 = 10 年期国债收益率 + Beta × 美国股权风险溢价，限制在 7%-13%；拿不到利率数据时用 9% | Beta 明显不能代表风险时（新上市、高负债、业务转型）手动指定 |
 | `--growth 0.06` | DCF 第 1-5 年增速（默认：历史营收 CAGR，限制在 0-15%） | 历史增速不能代表未来（并购、放缓、公司指引） |
 | `--terminal 0.025` | DCF 永续增速（默认 0.025） | |
 | `--fcf-base avg3` | DCF 起始 FCF 用近 3 年平均（默认 `latest`，用最新一期） | 周期性行业，或最近一年波动大 |
 | `--no-ttm` | 不用最近 12 个月（TTM）数据，可以省 3 次 API 调用 | |
+| `--macro` | 在报告里加「利率和宏观背景」一节（多 6 次 API 调用） | 想看利率、通胀、美联储对这家公司的影响 |
+| `--no-market` | 不拉国债、板块、行业数据（折现率回到固定 9%，没有行业对比一节），省 9 次 API 调用 | 这些接口出错，或想要旧版结果 |
 | `--json out.json` | 把所有计算结果另存为 JSON | 需要原始数字，或交给其他工具使用 |
 | `--refresh` | 忽略缓存，重新拉取数据 | 数据看起来过时，或公司刚发布财报 |
 
@@ -158,6 +165,16 @@ $env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
 ```bash
 python scripts/analyze.py MSFT --peers GOOGL,AMZN,ORCL --discount 0.085 --fcf-base avg3
 ```
+
+单独看利率和宏观（不针对某只股票）：
+
+```bash
+python scripts/macro.py              # 国债曲线、联邦基金利率、失业率、CPI，以及关键数据的最新公布值和未来三周日程
+python scripts/macro.py --sectors    # 再加上各板块 P/E（对比自身历史）和涨跌幅（对比标普 500）
+python scripts/macro.py --events     # 列出窗口内所有中高影响的美国经济事件
+```
+
+时间都是 UTC。各板块和行业的 P/E、涨跌幅是 FMP 按交易所（默认纳斯达克）汇总的等权数据，适合看方向和相对位置，不等同于标普 500 的板块指数。
 
 调用分析没覆盖到的任意 FMP 接口，拿原始数据：
 
@@ -178,7 +195,7 @@ python ui/server.py
 - **启动时自动处理：**
   - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
   - 连接 54.236.92.205 代理时，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`。
-- **页面上可以设置：** 股票代码、对比公司、折现率 %、1-5 年增速 %、永续增速 %、起始 FCF（最新或 3 年平均）、忽略缓存。
+- **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
 - **页面显示的内容：**
   - 顶部有黄色提示条，标明数据来自 FMP 第三方代理接口。
   - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。
@@ -194,7 +211,7 @@ python ui/server.py
 ## 三、缓存
 
 - **位置：** `~/.cache/fmp-fundamentals`（Windows 上是 `C:\Users\<用户名>\.cache\fmp-fundamentals`）
-- **有效期：** 财务数据 7 天，价格 12 小时
+- **有效期：** 财务数据 7 天，价格和板块数据 12 小时，国债收益率 6 小时，经济日历 3 小时
 - **跳过缓存：** 命令行加 `--refresh`，或在网页上勾选「忽略缓存」
 - **清空缓存：**
 
@@ -220,5 +237,7 @@ python scripts/fmp_client.py clear-cache
 | Windows 上提示找不到 `python` | 改用 `py`，例如 `py scripts/analyze.py AAPL` |
 | 网页打不开 / 端口被占用 | 确认 `server.py` 还在运行，或换个端口：`--port 9000` |
 | 金融或 REIT 公司的某些指标显示 n/a 或没有意义 | 这是正常的：银行、保险不适用毛利率、EV 倍数和 DCF。报告的 sector note 会说明 |
+| DCF 折现率显示 `fixed default` | 国债或股权风险溢价接口没拿到数据，这次用了固定 9%。运行 `fmp_client.py check` 看是哪个接口有问题 |
+| 行业对比里行业那一行是 n/a | FMP 在该交易所没有这个行业的汇总数据，可以参考板块那一行和同行对比 |
 
 指标的定义和判断阈值见 [references/metrics.md](references/metrics.md)。
