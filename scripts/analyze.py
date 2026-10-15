@@ -23,7 +23,8 @@ Options:
   --fcf-base MODE    latest | avg3   starting FCF for the DCF (default latest)
   --no-ttm           skip trailing-twelve-month data (saves 3 API calls)
   --macro            add the rates & macro backdrop (Fed funds, CPI, jobs, key releases)
-  --no-market        skip Treasury / sector / industry data (fixed 9% discount, no sector section)
+  --no-market        skip Treasury / sector / industry data (fixed 9% discount, no sector section;
+                     cannot be combined with --macro)
   --json PATH        also write every computed number to a JSON file
   --refresh          ignore the local cache
 
@@ -899,12 +900,16 @@ def render(r):
     if not conn["tls_verify"]:
         out.append("- HTTPS certificate verification was OFF for this run.")
     out.append(f"- API calls: {m['network_calls']} network, {m['cache_hits']} from cache.")
-    if mk.get("rates"):
-        out.append(f"- Treasury yields as of {mk['rates']['date']} (FMP treasury-rates).")
-    elif not r.get("market"):
+    fixed = str((r.get("dcf") or {}).get("discount_source", "")).startswith("fixed default")
+    if not r.get("market"):
         out.append("- Treasury, sector and industry data skipped (--no-market).")
+    elif mk.get("rates"):
+        out.append(f"- Treasury yields as of {mk['rates']['date']} (FMP treasury-rates).")
+        if mk.get("erp") is None:
+            out.append("- US equity risk premium unavailable" +
+                       (": DCF used the fixed default discount rate." if fixed else "."))
     else:
-        out.append("- Treasury yields unavailable: DCF used the fixed default discount rate.")
+        out.append("- Treasury yields unavailable" + (": DCF used the fixed default discount rate." if fixed else "."))
     if m["restricted"]:
         out.append(f"- Skipped (not in your FMP plan): {', '.join(m['restricted'])}")
     for e in dict.fromkeys(m["errors"]):
@@ -1017,17 +1022,16 @@ def analyze(args):
 
     market, capm = None, None
     if not args.no_market:
-        rates = M.treasury_view(M.treasury_rows(market_res))
+        rates = M.treasury_view(M.treasury_rows(market_res), today)
         erp = M.us_erp(market_res.get("erp"))
         capm = M.capm_rate(rates, erp, num(profile, "beta"))
         market = {"rates": rates, "erp": erp, "capm": capm,
-                  "sector": M.sector_context(market_res, profile, current["pe"], series, hist_cmp.get("pe"))}
+                  "sector": M.sector_context(market_res, profile, current["pe"], series, hist_cmp.get("pe"), today)}
         if args.macro:
             now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
             market["macro"] = {
                 "rates": rates, "erp": erp,
-                "indicators": {k: M.indicator_view(market_res.get(f"ind_{k}"))
-                               for k in ("federalFunds", "CPI", "unemploymentRate")},
+                "indicators": M.indicators_view(market_res),
                 "calendar": M.calendar_view(M.calendar_rows(market_res, client), now),
             }
     if args.discount is not None:
@@ -1080,7 +1084,10 @@ def parse_args(argv):
     ap.add_argument("--no-market", action="store_true")
     ap.add_argument("--json", default=None)
     ap.add_argument("--refresh", action="store_true")
-    return ap.parse_args(argv)
+    a = ap.parse_args(argv)
+    if a.macro and a.no_market:
+        ap.error("--macro needs the market data that --no-market skips; use one or the other")
+    return a
 
 
 def main(argv=None):

@@ -77,7 +77,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
    | `--growth 0.06` | Historical revenue CAGR is a poor guide (recent acquisition, slowdown, guidance) |
    | `--discount 0.10` | Override the default rate-linked discount rate (see step 4) |
    | `--macro` | User asks how rates, inflation or the Fed affect the stock, or wants the backdrop in the report |
-   | `--no-market` | Skip Treasury / sector / industry data (fixed 9% discount, no sector section); only if those calls fail or the user wants the old behaviour |
+   | `--no-market` | Skip Treasury / sector / industry data (fixed 9% discount, no sector section; cannot be combined with `--macro`); only if those calls fail or the user wants the old behaviour |
    | `--json out.json` | User wants the raw numbers, or another tool/skill will consume them |
    | `--refresh` | User says data looks stale or a company just reported |
 3. **Check the header and "Data notes"** first: which fiscal years, whether TTM was available,
@@ -221,5 +221,5 @@ sector data 12 hours, Treasury yields 6 hours, economic calendar 3 hours);
 | `Could not find a working request format` (proxy) | Token or address wrong, or the proxy uses another path/auth scheme: set `FMP_PATH_PREFIX` / `FMP_AUTH_STYLE` from the proxy's docs |
 | `cannot reach ... no response within 30s` | Proxy slow or down: retry in a few minutes; if it keeps happening set `FMP_TIMEOUT=60` and/or `FMP_MAX_WORKERS=2` |
 | Proxy worked before, now `key rejected` | Run `fmp_client.py check` to re-detect; the token may have expired |
-| "Treasury yields unavailable" / discount says fixed default | treasury-rates or market-risk-premium failed; check `fmp_client.py check`; the DCF used 9% |
+| "Treasury yields unavailable" / "risk premium unavailable" | treasury-rates (no reading in the last 10 days) or market-risk-premium failed; run `fmp_client.py check`. If the DCF table says "fixed default", the DCF used 9% |
 | Industry or sector rows show n/a | FMP has no aggregate for that industry name on that exchange; rely on the sector row and peers |

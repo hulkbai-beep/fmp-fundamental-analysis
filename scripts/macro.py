@@ -7,17 +7,20 @@ section of each report. On its own it prints a rates & macro dashboard:
 
   python macro.py                  Treasury curve, Fed funds, CPI, jobs, risk premium,
                                    latest key US releases and the next ones on the calendar
-  python macro.py --sectors        add every sector's P/E (vs its 5-year history) and returns
+  python macro.py --sectors        add every sector's P/E (vs up to 5 years of history) and returns
   python macro.py --events         add every US high/medium-impact calendar event in the window
   python macro.py --json out.json  also write the numbers to a JSON file
   python macro.py --refresh        ignore the local cache
 
 Notes on the data (what the FMP stable endpoints return, checked against the proxy):
-- treasury-rates returns at most ~3 months per request, so the 1-year-ago curve is a second call.
+- treasury-rates returns at most ~3 months per request, so the curves now / 1M ago, 3M ago and
+  1Y ago come from three short windows (three calls).
 - economic-indicators returns only the two most recent values for monthly series, so CPI/PPI/PCE
   year-over-year readings come from the economic calendar (actual / estimate / previous).
 - Sector and industry P/E and performance are FMP aggregates of companies listed on one exchange
   (NASDAQ by default); performance is the equal-weighted average daily change of those companies.
+- Units: yields, the risk premium, the Fed funds rate and the unemployment rate are fractions
+  (0.0519 = 5.19%); the CPI index is an index level; calendar values carry FMP's own unit.
 """
 from __future__ import annotations
 
@@ -85,8 +88,13 @@ def rows_of(data):
     return [r for r in (data or []) if isinstance(r, dict)]
 
 
+_ISO_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def day(r):
-    return str(r.get("date", ""))[:10]
+    """The row's date as YYYY-MM-DD, or "" if it has no usable date."""
+    d = str(r.get("date") or "")[:10]
+    return d if _ISO_DAY.match(d) else ""
 
 
 def on_or_before(series, date, max_gap_days=10):
@@ -134,10 +142,11 @@ def table(headers, rows):
 
 # ============================================================ fetching
 def fetch_hist(client, endpoint, params):
-    """try_get with an exchange-filter fallback: if the exchange-filtered request returns
-    nothing, ask again without it (the endpoint's default universe)."""
+    """try_get with an exchange-filter fallback: if the exchange-filtered request succeeds but
+    returns nothing, ask again without it (the endpoint's default universe). A failed request
+    (try_get -> None, already recorded) is not repeated."""
     data = client.try_get(endpoint, **params)
-    if not rows_of(data) and params.get("exchange"):
+    if data is not None and not rows_of(data) and params.get("exchange"):
         data = client.try_get(endpoint, **{k: v for k, v in params.items() if k != "exchange"})
     return rows_of(data)
 
@@ -180,7 +189,7 @@ def macro_requests(client, today):
     """Requests behind the macro dashboard beyond the rates (6 calls)."""
     span = {"from": iso(today - dt.timedelta(days=400)), "to": iso(today)}
     reqs = {f"ind_{name}": (client.try_get, ("economic-indicators",), dict(span, name=name))
-            for name in ("federalFunds", "CPI", "unemploymentRate")}
+            for name, _, _ in INDICATORS}
     for i, (a, b) in enumerate(CALENDAR_CHUNKS):
         reqs[f"calendar_{i}"] = (client.try_get, ("economic-calendar",),
                                  {"from": iso(today + dt.timedelta(days=a)), "to": iso(today + dt.timedelta(days=b))})
@@ -235,9 +244,18 @@ def run_requests(reqs, workers):
     """Run {name: (fn, args, kwargs)} concurrently and return {name: result}."""
     if not reqs:
         return {}
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        futures = {k: pool.submit(fn, *a, **kw) for k, (fn, a, kw) in reqs.items()}
+    pool = ThreadPoolExecutor(max_workers=max(1, workers))
+    futures = {}
+    try:
+        for k, (fn, a, kw) in reqs.items():
+            futures[k] = pool.submit(fn, *a, **kw)
         return {k: f.result() for k, f in futures.items()}
+    except BaseException:
+        for f in futures.values():  # drop queued requests (e.g. on Ctrl+C); running ones finish
+            f.cancel()
+        raise
+    finally:
+        pool.shutdown(wait=True)
 
 
 def max_workers():
@@ -248,14 +266,18 @@ def max_workers():
 
 
 # ============================================================ rates
-def treasury_view(rows):
+def treasury_view(rows, today=None, max_age_days=10):
     """Current Treasury curve, the curve ~1M / 3M / 1Y earlier, and the 10Y-2Y / 10Y-3M spreads,
-    from treasury-rates rows. All yields are fractions (0.0519 = 5.19%)."""
+    from treasury-rates rows. All yields are fractions (0.0519 = 5.19%). Returns None when there
+    is no reading within `max_age_days` of `today` (for example the recent window failed and only
+    the older windows came back), so a months-old curve is never presented as current."""
     rows = sorted({day(r): r for r in rows_of(rows) if day(r) and fnum(r.get("year10")) is not None}.items())
     if not rows:
         return None
     latest_day, latest = rows[-1]
     end = dt.date.fromisoformat(latest_day)
+    if today is not None and (today - end).days > max_age_days:
+        return None
 
     def curve(r):
         c = {label: (fnum(r.get(key)) / 100 if fnum(r.get(key)) is not None else None) for key, label in TENORS}
@@ -286,8 +308,10 @@ def capm_rate(rates, erp, beta):
         return None
     b, b_src = (beta, "profile") if beta is not None and beta > 0 else (1.0, "default (no beta)")
     raw = rf + b * erp
-    rate = min(CAPM_CAP, max(CAPM_FLOOR, raw))
-    return {"rate": rate, "raw": raw, "clamped": abs(rate - raw) > 1e-12, "rf": rf,
+    clamped = min(CAPM_CAP, max(CAPM_FLOOR, raw))
+    # rounded to 0.1% so the DCF base case, sensitivity grid and labels all use one rate
+    rate = round(clamped, 3)
+    return {"rate": rate, "raw": raw, "clamped": abs(clamped - raw) > 1e-12, "rf": rf,
             "rf_date": rates["date"], "beta": b, "beta_source": b_src, "erp": erp}
 
 
@@ -296,20 +320,35 @@ def capm_note(c):
             f"x US equity risk premium {pct(c['erp'], 2)}")
     if c["beta_source"] != "profile":
         note += " [beta defaulted to 1.0]"
+    note += f" = {pct(c['raw'], 2)}"
     if c["clamped"]:
-        note += f" = {pct(c['raw'], 2)}, kept within {pct(CAPM_FLOOR, 0)}-{pct(CAPM_CAP, 0)}"
+        note += f", kept within {pct(CAPM_FLOOR, 0)}-{pct(CAPM_CAP, 0)}"
+    elif abs(c["rate"] - c["raw"]) > 5e-5:
+        note += ", rounded"
     return note
 
 
 # ============================================================ macro indicators & calendar
-def indicator_view(data):
+INDICATORS = (("federalFunds", "Fed funds rate (effective, monthly)", "fraction"),
+              ("unemploymentRate", "Unemployment rate", "fraction"),
+              ("CPI", "CPI index (1982-84=100)", "index"))
+
+
+def indicator_view(data, unit="fraction"):
+    """Latest and previous reading of an economic-indicators series. FMP reports rates in percent;
+    with unit="fraction" they are converted (3.75 -> 0.0375) to match the Treasury yields."""
+    scale = 0.01 if unit == "fraction" else 1.0
     rows = sorted((day(r), fnum(r.get("value"))) for r in rows_of(data) if day(r) and fnum(r.get("value")) is not None)
     if not rows:
         return None
-    out = {"date": rows[-1][0], "value": rows[-1][1]}
+    out = {"date": rows[-1][0], "value": rows[-1][1] * scale, "unit": unit}
     if len(rows) > 1:
-        out["prev_date"], out["prev_value"] = rows[-2]
+        out["prev_date"], out["prev_value"] = rows[-2][0], rows[-2][1] * scale
     return out
+
+
+def indicators_view(res):
+    return {key: indicator_view(res.get(f"ind_{key}"), unit) for key, _, unit in INDICATORS}
 
 
 def _event_key(name):
@@ -357,18 +396,44 @@ def calendar_view(data, now):
 
 
 # ============================================================ sector & industry
-def pe_stats(rows):
-    series = sorted((day(r), fnum(r.get("pe"))) for r in rows if day(r) and (fnum(r.get("pe")) or 0) > 0)
-    if not series:
+def pe_stats(rows, today=None, max_age_days=10):
+    """Latest aggregate P/E of a sector/industry and where it sits in the history returned.
+    `current` is None when the latest reading is negative (the group is loss-making in aggregate,
+    status "negative") or more than `max_age_days` older than `today` (status "stale"); the
+    median / range / percentile use the positive readings only."""
+    every = sorted((day(r), fnum(r.get("pe"))) for r in rows if day(r) and fnum(r.get("pe")) is not None)
+    if not every:
         return None
+    series = [(d, v) for d, v in every if v > 0]
     vals = [v for _, v in series]
-    cur_d, cur = series[-1]
-    d1, v1 = on_or_before(series, iso(dt.date.fromisoformat(cur_d) - dt.timedelta(days=365)))
+    last_d, last_v = every[-1]
+    if today is not None and (today - dt.date.fromisoformat(last_d)).days > max_age_days:
+        status = "stale"
+    elif last_v <= 0:
+        status = "negative"
+    else:
+        status = "ok"
+    cur = last_v if status == "ok" else None
+    ref = today or dt.date.fromisoformat(last_d)
+    _, v1 = on_or_before(series, iso(ref - dt.timedelta(days=365)))
     return {
-        "date": cur_d, "current": cur, "median": statistics.median(vals), "min": min(vals), "max": max(vals),
-        "percentile": sum(1 for v in vals if v <= cur) / len(vals), "since": series[0][0], "n": len(vals),
-        "year_ago": v1, "exchange": (rows[0].get("exchange") if rows else None),
+        "date": last_d, "current": cur, "status": status, "latest_value": last_v,
+        "median": statistics.median(vals) if vals else None, "min": min(vals) if vals else None,
+        "max": max(vals) if vals else None,
+        "percentile": sum(1 for v in vals if v <= cur) / len(vals) if vals and cur is not None else None,
+        "since": every[0][0], "n": len(vals), "year_ago": v1, "exchange": rows[0].get("exchange"),
     }
+
+
+def pe_now(st):
+    """The 'Now' cell for a pe_stats() result."""
+    if not st:
+        return "n/a"
+    if st["status"] == "negative":
+        return f"negative ({st['date']})"
+    if st["status"] == "stale":
+        return f"n/a (last {st['date']})"
+    return mult(st["current"])
 
 
 def perf_index(rows):
@@ -396,11 +461,11 @@ def window_returns(series, end_day=None):
     return out
 
 
-def sector_context(res, profile, company_pe, company_prices, company_hist_pe=None):
+def sector_context(res, profile, company_pe, company_prices, company_hist_pe=None, today=None):
     """Assemble the sector & industry section from the results of sector_requests()."""
     sector, industry = profile.get("sector"), profile.get("industry")
-    s_pe = pe_stats(res.get("sector_pe") or [])
-    i_pe = pe_stats(res.get("industry_pe") or [])
+    s_pe = pe_stats(res.get("sector_pe") or [], today)
+    i_pe = pe_stats(res.get("industry_pe") or [], today)
     spy = res.get("spy") or []
     end_day = spy[-1][0] if spy else None
     returns = {
@@ -422,12 +487,12 @@ def sector_context(res, profile, company_pe, company_prices, company_hist_pe=Non
     }
 
 
-def sector_board(res, sectors):
+def sector_board(res, sectors, today=None):
     rows = []
     spy = res.get("spy") or []
     end_day = spy[-1][0] if spy else None
     for s in sectors:
-        st = pe_stats(res.get(f"pe::{s}") or [])
+        st = pe_stats(res.get(f"pe::{s}") or [], today)
         rows.append({"sector": s, "pe": st, "returns": window_returns(perf_index(res.get(f"perf::{s}") or []), end_day)})
     return {"rows": rows, "spy": window_returns(spy, end_day), "end": end_day}
 
@@ -471,20 +536,18 @@ def render_macro(m):
     out = ["### Treasury yields", render_rates(m.get("rates"), m.get("erp"))]
     out.append("\n### Policy rate, jobs and prices (economic-indicators, latest two readings)")
     rows = []
-    for key, label, kind in (("federalFunds", "Fed funds rate (effective, monthly)", "rate"),
-                             ("unemploymentRate", "Unemployment rate", "rate"),
-                             ("CPI", "CPI index (1982-84=100)", "index")):
-        ind = m.get("indicators", {}).get(key)
+    for key, label, unit in INDICATORS:
+        ind = (m.get("indicators") or {}).get(key)
         if not ind:
             rows.append([label, "n/a", "", "", ""])
             continue
         cur, prev = ind["value"], ind.get("prev_value")
-        if kind == "index":
+        if unit == "index":
             chg = f"{(cur / prev - 1) * 100:+.2f}% MoM" if prev else ""
             rows.append([label, f"{cur:,.2f}", ind["date"], f"{prev:,.2f} ({ind.get('prev_date')})" if prev else "", chg])
         else:
-            chg = f"{cur - prev:+.2f}pt" if prev is not None else ""
-            rows.append([label, f"{cur:.2f}%", ind["date"], f"{prev:.2f}% ({ind.get('prev_date')})" if prev is not None else "", chg])
+            chg = f"{(cur - prev) * 100:+.2f}pt" if prev is not None else ""
+            rows.append([label, pct(cur, 2), ind["date"], f"{pct(prev, 2)} ({ind.get('prev_date')})" if prev is not None else "", chg])
     out.append(table(["Indicator", "Latest", "Period", "Previous", "Change"], rows))
 
     cal = m.get("calendar") or {}
@@ -522,11 +585,11 @@ def render_sector_context(sc, company_label):
         if not st:
             rows.append([name, "n/a", "n/a", "n/a", "n/a", "n/a"])
             continue
-        rows.append([name, mult(st["current"]), mult(st["median"]), f"{mult(st['min'])} - {mult(st['max'])}",
+        rows.append([name, pe_now(st), mult(st["median"]), f"{mult(st['min'])} - {mult(st['max'])}",
                      pct(st["percentile"], 0), mult(st["year_ago"])])
     out.append(table(["P/E", "Now", "Hist. median", "Hist. range", "Percentile in hist.", "1y ago"], rows))
-    spans = [f"{name} daily since {st['since']}" for key, name in (("industry_pe", "industry"), ("sector_pe", "sector"))
-             for st in [sc.get(key)] if st]
+    spans = [f"{name} daily since {st['since']} (latest {st['date']})"
+             for key, name in (("industry_pe", "industry"), ("sector_pe", "sector")) for st in [sc.get(key)] if st]
     if hist.get("n"):
         spans.insert(0, f"company at its last {hist['n']} fiscal year-ends")
     out.append(f"\nCompany P/E vs industry: {pct(sc.get('vs_industry'))}; vs sector: {pct(sc.get('vs_sector'))}. "
@@ -547,7 +610,7 @@ def render_board(b):
     rows = []
     for row in sorted(b["rows"], key=lambda x: -((x["returns"] or {}).get("3M") or -9)):
         st = row["pe"] or {}
-        rows.append([row["sector"], mult(st.get("current")), mult(st.get("median")),
+        rows.append([row["sector"], pe_now(row["pe"]), mult(st.get("median")),
                      pct(st.get("percentile"), 0) if st else "n/a"] +
                     [pct((row["returns"] or {}).get(w)) for w in labels])
     rows.append(["S&P 500 (SPY)", "", "", ""] + [pct(b["spy"].get(w)) for w in labels])
@@ -566,14 +629,14 @@ def build_dashboard(client, today, now, sectors=False):
         names = sorted({str(r.get("sector")) for r in snap if r.get("sector")}) or names
         reqs.update(board_requests(client, today, names))
     res = run_requests(reqs, max_workers())
-    rates = treasury_view(treasury_rows(res))
+    rates = treasury_view(treasury_rows(res), today)
     m = {
         "as_of": iso(today), "rates": rates, "erp": us_erp(res.get("erp")),
-        "indicators": {k: indicator_view(res.get(f"ind_{k}")) for k in ("federalFunds", "CPI", "unemploymentRate")},
+        "indicators": indicators_view(res),
         "calendar": calendar_view(calendar_rows(res, client), now),
     }
     if sectors:
-        m["sector_board"] = sector_board(res, names)
+        m["sector_board"] = sector_board(res, names, today)
     return m
 
 
@@ -626,6 +689,10 @@ def main(argv=None):
             out["calendar"] = {k: v for k, v in m["calendar"].items() if k != "all_us"}
         Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
         print(f"\n(JSON written to {args.json})")
+    if m["rates"] is None and not any(m["indicators"].values()) and not m["calendar"]["rows"]:
+        print("No rates or macro data came back; see the errors above "
+              "(python scripts/fmp_client.py check tests each endpoint).", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -70,7 +70,7 @@ TTL_BY_ENDPOINT = {
     "financial-growth": 7 * DAY,
     # market-wide data used by macro.py (requests carry from/to dates, so a new day is a new key)
     "treasury-rates": DAY // 4,
-    "market-risk-premium": 7 * DAY,
+    "market-risk-premium": DAY,
     "economic-indicators": DAY // 2,
     "economic-calendar": 3 * 3600,
     "sector-performance-snapshot": DAY // 2,
