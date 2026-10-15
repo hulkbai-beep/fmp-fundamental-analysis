@@ -10,9 +10,10 @@ Benchmarks are rules of thumb for US companies; always prefer peer and own-histo
 4. Cash flow quality & capital allocation
 5. Valuation multiples
 6. Quality scores (Piotroski, Altman)
-7. DCF and reverse DCF
-8. Sector cheat sheet
-9. Known approximations in the script
+7. DCF and reverse DCF (rate-linked discount rate)
+8. Industry, sector and rates context
+9. Sector cheat sheet
+10. Known approximations in the script
 
 ---
 
@@ -117,11 +118,32 @@ Model: starting FCF grows at `g` for years 1-5, fades linearly to terminal growt
 6-10, then a Gordon-growth terminal value. Enterprise value - net debt - minority interest =
 equity value, divided by current shares (market cap / price).
 
-Defaults: discount rate 9%, terminal growth 2.5%, `g` = historical revenue CAGR clamped to 0-15%.
+Defaults: terminal growth 2.5%, `g` = historical revenue CAGR clamped to 0-15%, and a
+rate-linked discount rate (CAPM):
 
-Choosing a discount rate (rough guide): very stable mega-cap 7.5-8.5%; typical large cap 8.5-10%;
-cyclical, levered or small cap 10-12%+. Terminal growth should not exceed long-run nominal GDP
-(about 2-3%).
+    discount = 10Y Treasury yield + beta x US equity risk premium, kept within 7-13%,
+               rounded to 0.1%
+
+- 10Y yield: latest `treasury-rates` row (its date is printed). Beta: the FMP profile (1.0 if
+  missing or not positive). Risk premium: FMP `market-risk-premium`, United States
+  `totalEquityRiskPremium` (recently around 4-5%).
+- Example: 10Y 5.19% + 1.2 x 4.46% = 10.54%, used as 10.5%. When the 10-year moves 1 point, the
+  default discount rate moves 1 point too, unless it sits at the 7% floor or the 13% cap (at a 10Y
+  of 5.19% and an ERP of 4.46%, roughly beta below 0.4 or above 1.75), where it moves partly or not
+  at all; the DCF table says when the rate was capped. Long-duration (high-growth, low current
+  FCF) valuations move most.
+- If either input is unavailable the script falls back to a fixed 9% and says so; `--no-market`
+  also uses 9%. When CAPM is used, the report also shows the base case at 9% for comparison.
+- CAPM is a convention, not a fact. Beta is noisy (measured on past prices) and ignores
+  leverage changes and business shifts. Override with `--discount` when it misstates risk.
+- CAPM gives a cost of equity, while the DCF discounts free cash flow to the whole firm. For
+  companies with little debt the two are close; for heavily indebted ones the blended cost of
+  capital (WACC) is lower, so consider a lower `--discount` and say so.
+
+Choosing a discount rate by hand (rough guide): very stable mega-cap 7.5-8.5%; typical large cap
+8.5-10%; cyclical, levered or small cap 10-12%+; add roughly the change in the 10-year yield
+when rates have moved a lot. Terminal growth should not exceed long-run nominal GDP (about 2-3%)
+and must stay below the discount rate.
 
 Reading the output:
 - If terminal value is >75% of the total, the result is dominated by far-future assumptions.
@@ -132,7 +154,39 @@ Reading the output:
   (or the market expects a decline - find out why).
 - DCF is not applicable when FCF is negative, and not meaningful for banks/insurers.
 
-## 8. Sector cheat sheet
+## 8. Industry, sector and rates context
+
+**Industry / sector P/E** (FMP `historical-industry-pe`, `historical-sector-pe`):
+- An aggregate P/E of the companies in that group listed on one exchange (the company's own
+  exchange, e.g. NASDAQ; the report names it), daily. It is not a market-cap-weighted index:
+  small or loss-making members can push it around, so it often differs from S&P 500 sector P/Es
+  quoted elsewhere (FactSet, for example, uses forward earnings).
+- "Percentile in hist." = share of daily readings in the available history (up to 5 years) at or
+  below today's. Above ~80% means the group is expensive versus its own recent past.
+- "Now" shows "negative" when the group is loss-making in aggregate (its P/E is below zero), and
+  "n/a (last DATE)" when FMP has no reading in the last 10 days; history uses positive readings only.
+- Company vs industry premium is computed on the company's current P/E (TTM where available).
+  Company history in the same table uses fiscal-year-end P/Es, so it has far fewer points.
+
+**Industry / sector returns** (FMP `historical-*-performance`): FMP gives the equal-weighted
+average daily % change of the group; the script compounds it into 1M / 3M / YTD / 1Y returns.
+Equal weighting means a group can lag SPY simply because its mega-caps outperformed.
+
+**Treasury curve** (`treasury-rates`, yields in % converted to fractions):
+- 10Y-2Y and 10Y-3M spreads below zero = an inverted curve. Inversions have preceded most US
+  recessions, with long and variable lags; the re-steepening after an inversion has often come
+  closer to the downturn. Treat it as background, not a signal.
+- Rate sensitivity by business: long-duration growth stocks (high P/E, low FCF yield) to the 10Y;
+  banks' net interest margin to the curve's slope; REITs, homebuilders and utilities to long
+  yields and mortgage rates; companies with floating-rate or near-term maturing debt to
+  short-term rates (check interest coverage and net debt/EBITDA).
+
+**Inflation and Fed data** (economic calendar): actual vs consensus vs previous for CPI, PPI and
+PCE (headline and core), payrolls, GDP and Fed rate decisions. PPI running above CPI points to
+margin pressure for companies that cannot pass costs on; check the gross-margin trend.
+`economic-indicators` CPI is the index level (1982-84 = 100), so it only gives month-on-month.
+
+## 9. Sector cheat sheet
 
 | Sector | Focus on | Discount |
 |---|---|---|
@@ -146,11 +200,13 @@ Reading the output:
 | REITs | OCF as FFO proxy, occupancy, leverage, dividend coverage | net-income P/E |
 | Utilities | regulated ROE, dividend yield, leverage (net debt/EBITDA 5-6x is normal) | high growth assumptions |
 
-## 9. Known approximations in the script
+## 10. Known approximations in the script
 
 - Historical market cap = fiscal-year-end price x that year's weighted diluted shares.
 - TTM = sum of the last four quarters (EPS summed); balance sheet = latest quarter.
 - Peer table always uses the last fiscal year for every company so the rows are comparable.
+- Industry/sector returns compound FMP's equal-weighted average daily change; they ignore dividends
+  (so does the company and SPY comparison, which uses closing prices).
 - FMP standardizes statements; unusual items (e.g. lease liabilities inside debt, one-off gains)
   can differ from company-reported non-GAAP figures. Verify key numbers against the 10-K when a
   decision depends on them.

@@ -68,6 +68,16 @@ TTL_BY_ENDPOINT = {
     "key-metrics": 7 * DAY,
     "ratios": 7 * DAY,
     "financial-growth": 7 * DAY,
+    # market-wide data used by macro.py (requests carry from/to dates, so a new day is a new key)
+    "treasury-rates": DAY // 4,
+    "market-risk-premium": DAY,
+    "economic-indicators": DAY // 2,
+    "economic-calendar": 3 * 3600,
+    "sector-performance-snapshot": DAY // 2,
+    "historical-sector-pe": DAY // 2,
+    "historical-industry-pe": DAY // 2,
+    "historical-sector-performance": DAY // 2,
+    "historical-industry-performance": DAY // 2,
 }
 DEFAULT_TTL = DAY
 
@@ -486,7 +496,8 @@ MARKET_PROBES = [
     ("industry-pe-snapshot", {"date": "{last_bday}"}),
     ("historical-sector-pe", {"sector": "Technology"}),
     ("historical-sector-pe", {"sector": "Technology", "from": "{five_years_ago}", "to": "{today}"}),
-    ("historical-industry-pe", {"industry": "Consumer Electronics", "from": "{year_ago}", "to": "{today}"}),
+    ("historical-industry-pe", {"industry": "Consumer Electronics", "from": "{five_years_ago}", "to": "{today}"}),
+    ("historical-industry-performance", {"industry": "Consumer Electronics", "from": "{year_ago}", "to": "{today}"}),
     ("historical-price-eod/light", {"symbol": "SPY", "from": "{month_ago}", "to": "{today}"}),
     ("treasury-rates", {"from": "{month_ago}", "to": "{today}"}),
     ("treasury-rates", {"from": "{year_ago}", "to": "{today}"}),
