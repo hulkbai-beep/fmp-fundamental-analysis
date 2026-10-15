@@ -209,7 +209,7 @@ below-EBITDA costs (depreciation, interest, stock comp). The report flags a gap 
 FMP's EBITDA estimate for the last reported year and the reported figure (adjusted EBITDA).
 
 **Volatility range to each fiscal year end:** lognormal around today's price with no drift,
-price x e^(+/-z x sigma x sqrt(T)), T = years to that fiscal year end (1 year when there are no
+price x e^(+/-z x sigma x sqrt(T)), T = years to that fiscal year end (1 year, "In 12 months", when there are no
 estimates); z = 1 gives the 68% range, z = 1.96 the 95% range. sigma = the standard deviation of
 the last year's daily log returns x sqrt(252), or the annual implied volatility given with `--iv`
 (the "Implied vol %" box in the UI). Options-implied volatility is the market's own forward
@@ -218,10 +218,15 @@ Real returns have fat tails, so moves beyond the 95% range happen more often tha
 describes how much the price moves, not what the company is worth.
 
 **Other rows:**
-- DCF: the "reasonable range" from the DCF section (discount +/-1pt, growth +/-2pt), base case as mid.
-- Analyst price targets: FMP `price-target-consensus` low / consensus / high (12-month targets;
+- DCF (Now): the "reasonable range" from the DCF section (discount +/-1pt, growth +/-2pt), base case as mid.
+- Analyst targets (In 12 months): FMP `price-target-consensus` low / consensus / high (12-month targets;
   sell-side targets are mostly forward EPS x a chosen multiple, so they overlap the P/E rows).
-- 52-week closing range: lowest and highest daily close over the last 365 days.
+- Trading range (Past 52 weeks): lowest and highest daily close over the last 365 days.
+
+**Names:** every row is a method (Forward P/E, Forward EV/EBITDA, DCF, Analyst targets, Trading range,
+Volatility) plus a horizon (Past 52 weeks, Now, In 12 months, FY<year> end), in separate columns. Rows
+are sorted by the horizon's date, so they come grouped by horizon in time order; the UI chart uses the
+same names and groups.
 
 Reading it: the valuation rows (forward P/E, EV/EBITDA, DCF) say where the price "should" be; the
 volatility rows say how far it typically moves by then. Where the price sits against the forward

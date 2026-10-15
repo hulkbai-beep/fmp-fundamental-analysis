@@ -9,12 +9,13 @@
   --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #dde2e8;
   --accent: #2563eb; --pos: #15803d; --neg: #b91c1c; --warn-bg: #fff7e6; --warn-text: #8a5a00;
   --row: #f1f4f8;
-  --c-pe: #2563eb; --c-ev: #0284c7; --c-dcf: #7c3aed; --c-tgt: #0d9488; --c-trade: #64748b; --c-vol: #d97706;
+  /* price-range methods: a categorical order checked for color-blind separation on the card colors */
+  --c-pe: #2a78d6; --c-ev: #1baf7a; --c-dcf: #6250d6; --c-tgt: #e87ba4; --c-trade: #94a3b8; --c-vol: #eda100;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #0f1216; --card: #181c22; --text: #e6e9ee; --muted: #98a2b0; --border: #2a313a;
     --accent: #6ea0ff; --pos: #4ade80; --neg: #f87171; --warn-bg: #2b2210; --warn-text: #f5c56b; --row: #1f252d;
-    --c-pe: #6ea0ff; --c-ev: #38bdf8; --c-dcf: #a78bfa; --c-tgt: #2dd4bf; --c-trade: #94a3b8; --c-vol: #fbbf24; }
+    --c-pe: #3987e5; --c-ev: #199e70; --c-dcf: #9085e9; --c-tgt: #d55181; --c-trade: #64748b; --c-vol: #c98500; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -57,10 +58,37 @@ ul.flags { margin: 0; padding-left: 18px; }
 .section h2 { font-size: 16px; margin: 0 0 10px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
 th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: right; white-space: nowrap; }
-th:first-child, td:first-child { text-align: left; }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
 th { color: var(--muted); font-weight: 600; background: var(--row); }
-svg text { fill: var(--muted); font-size: 11px; }
-svg text.lab { fill: var(--text); font-size: 12px; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.phead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.phead h3 { margin: 0; }
+.pchg { margin-left: auto; font-size: 13px; font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; align-self: center; }
+.seg button { background: transparent; color: var(--muted); border: 0; border-radius: 0; padding: 4px 11px;
+  font-size: 12px; font-weight: 500; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.on { background: var(--row); color: var(--text); font-weight: 600; }
+.readout { display: flex; flex-wrap: wrap; gap: 2px 14px; min-height: 20px; margin: 8px 0 4px; font-size: 12px;
+  color: var(--muted); font-variant-numeric: tabular-nums; }
+.readout b { color: var(--text); font-weight: 600; }
+.chartbox { position: relative; margin: 6px 0 8px; }
+.chartbox svg { display: block; overflow: visible; }
+.chartbox svg:focus { outline: none; }
+.chartbox svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg text.chip { fill: var(--card); font-weight: 600; }
+.rangechart svg * { pointer-events: none; }
+.rangechart svg .hit { pointer-events: all; fill: transparent; }
+.rangechart svg .hit:hover { fill: var(--row); }
+svg text.gh { fill: var(--muted); font-size: 12px; font-weight: 600; }
+svg text.ml { fill: var(--text); font-size: 13px; }
+svg text.val { fill: var(--muted); font-size: 12px; }
+.tip { position: absolute; z-index: 2; pointer-events: none; background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6; white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.tip .tt { color: var(--muted); }
+.tip b { font-variant-numeric: tabular-nums; }
+.flags2 { gap: 4px 28px; }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; }
 .top h1 { margin: 0; }
 button.lang { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500;
@@ -139,9 +167,13 @@ function md(text) {
     if (l.startsWith("|")) {
       const rows = [];
       while (i < lines.length && lines[i].startsWith("|")) { rows.push(lines[i]); i++; }
-      const cells = r => r.replace(/^\||\|$/g, "").split("|").map(c => inline(tr(c.trim())));
-      html += "<table><thead><tr>" + cells(rows[0]).map(c => `<th>${c}</th>`).join("") + "</tr></thead><tbody>";
-      for (const r of rows.slice(1)) if (!/^\|[\s|:-]+\|$/.test(r)) html += "<tr>" + cells(r).map(c => `<td>${c}</td>`).join("") + "</tr>";
+      const cells = r => r.replace(/^\||\|$/g, "").split("|").map(c => tr(c.trim()));
+      const head = cells(rows[0]), body = rows.slice(1).filter(r => !/^\|[\s|:-]+\|$/.test(r)).map(cells);
+      // numbers, dates and ranges stay right-aligned; a column holding any other text is left-aligned
+      const isNum = c => /^[\s\d.,%xKMBT+\-–\/:]*$/.test(c.replace(/n\/a/g, ""));
+      const cls = head.map((_, j) => j && body.some(r => r[j] != null && !isNum(r[j])) ? ' class="l"' : "");
+      html += "<table><thead><tr>" + head.map((c, j) => `<th${cls[j]}>${inline(c)}</th>`).join("") + "</tr></thead><tbody>";
+      for (const r of body) html += "<tr>" + r.map((c, j) => `<td${cls[j] || ""}>${inline(c)}</td>`).join("") + "</tr>";
       html += "</tbody></table>"; continue;
     }
     if (l.startsWith("- ")) {
@@ -157,69 +189,244 @@ function md(text) {
   return html;
 }
 
-function chart(prices) {
-  if (!prices || prices.length < 2) return `<p class='sub'>${esc(t("no_prices"))}</p>`;
-  const W = 560, H = 200, P = 36;
-  const ys = prices.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), span = (hi - lo) || 1;
-  const x = i => P + i * (W - P - 8) / (prices.length - 1), y = v => 10 + (H - 34) * (1 - (v - lo) / span);
-  const d = prices.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(p[1]).toFixed(1)).join("");
-  const up = ys[ys.length - 1] >= ys[0];
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(t("chart_aria"))}">
-    <path d="${d}" fill="none" stroke="var(${up ? "--pos" : "--neg"})" stroke-width="1.6"/>
-    <text x="2" y="${y(hi) + 4}">${hi.toFixed(0)}</text><text x="2" y="${y(lo) + 4}">${lo.toFixed(0)}</text>
-    <text x="${P}" y="${H - 4}">${prices[0][0]}</text>
-    <text x="${W - 8}" y="${H - 4}" text-anchor="end">${prices[prices.length - 1][0]}</text></svg>`;
+// Charts are drawn at their container's real width, so text keeps its CSS size, and redrawn when that width
+// changes (including the first time a hidden tab is shown). render() disconnects the old observers.
+let observers = [];
+function mount(el, draw) {
+  const ro = new ResizeObserver(() => {
+    const w = Math.floor(el.clientWidth);
+    if (w && w !== el._w) { el._w = w; draw(el, w); }
+  });
+  ro.observe(el);
+  observers.push(ro);
+}
+const ctx2d = document.createElement("canvas").getContext("2d");
+function textW(s, px, weight = 400) {
+  ctx2d.font = `${weight} ${px}px ${getComputedStyle(document.body).fontFamily}`;
+  return ctx2d.measureText(s).width;
+}
+function niceTicks(lo, hi, n) {
+  const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= raw) * mag, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toFixed(8));
+  return out;
+}
+const fmtTick = v => String(+v.toFixed(2));
+const fmtVol = v => v >= 1e9 ? (v / 1e9).toFixed(2) + "B" : v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(0) + "K" : String(v);
+const signPct = v => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%</span>`;
+
+// Share price: daily candles (green = close above open, red = below) with volume underneath, or weekly candles
+// when the chart is too narrow for one candle a day. When the data source has no open/high/low prices, a line
+// of the daily closes. Hover or arrow keys show one candle's numbers.
+const PERIODS = [["p_3m", 63], ["p_6m", 126], ["p_1y", 260]];  // trading days
+let period = 1;
+try { const p = localStorage.getItem("period"); if (p !== null && PERIODS[+p]) period = +p; } catch (e) {}
+
+const barsOf = d => d.candles?.length ? d.candles.map(([date, o, h, l, c, v]) => ({ date, o, h, l, c, v }))
+  : (d.prices || []).map(([date, c]) => ({ date, c }));
+
+function weekly(bars) {  // one candle per Monday-Sunday week; date..end are its first and last trading days
+  const out = [];
+  for (const b of bars) {
+    const d = new Date(b.date + "T00:00:00Z"), monday = new Date(d - ((d.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
+    const w = out[out.length - 1];
+    if (w && w.week === monday) {
+      Object.assign(w, { h: Math.max(w.h, b.h), l: Math.min(w.l, b.l), c: b.c, end: b.date, v: b.v == null ? w.v : (w.v || 0) + b.v });
+    } else out.push({ ...b, week: monday, end: b.date });
+  }
+  return out;
 }
 
-const fmtPx = v => v == null ? "n/a" : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2);
-// Price range by method ("football field"): one bar per method from low to high, a tick at its mid
-// value, and a dashed line at the current price. Volatility rows add a thin line for the 95% range.
-function rangeChart(pr) {
-  const rows = (pr?.summary || []).map(s => ({ ...s, lo: s.low ?? s.mid, hi: s.high ?? s.mid }))
-    .filter(s => s.lo != null && s.hi != null);
-  if (!rows.length) return "";
-  const price = pr.price, vals = rows.flatMap(s => [s.lo, s.hi, s.low95 ?? s.lo, s.high95 ?? s.hi])
-    .concat(price != null ? [price] : []);
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = (hi - lo) * 0.05 || Math.abs(hi) * 0.05 || 1;
-  lo = Math.max(0, lo - pad); hi += pad;
-  const W = 760, L = 178, RW = 96, RH = 28, top = 24, H = top + rows.length * RH + 22;
-  const x = v => L + (v - lo) / (hi - lo) * (W - L - RW - 8);
-  const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= raw) * mag;
+function priceCard(data) {
+  const ohlc = !!data.candles?.length;
+  return `<div class="card pricecard"><div class="phead"><h3>${esc(t("chart_title"))}</h3>
+      <span class="sub psub">${esc(t(ohlc ? "chart_daily" : "chart_close"))}</span>
+      <span class="pchg"></span>
+      <div class="seg" role="group">${PERIODS.map(([k], i) =>
+        `<button type="button" data-p="${i}" class="${i === period ? "on" : ""}">${esc(t(k))}</button>`).join("")}</div></div>
+    <div class="readout"></div><div class="chartbox candles"></div>
+    ${!ohlc && data.prices?.length ? `<p class="sub" title="${esc(data.candles_note || "")}">${esc(t("no_ohlc"))}</p>` : ""}</div>`;
+}
+
+function drawPrice(el, w) {
+  const daily = barsOf(lastData), card = el.closest(".pricecard");
+  if (daily.length < 2) { el.innerHTML = `<p class="sub">${esc(t("no_prices"))}</p>`; return; }
+  const AR = 60, X0 = 2, PW = w - AR - X0, ohlc = daily[0].o != null;
+  const d0 = Math.max(0, daily.length - PERIODS[period][1]);
+  const base = d0 > 0 ? daily[d0 - 1].c : (daily[0].o ?? daily[0].c);  // close before the period starts
+  const wk = ohlc && PW / (daily.length - d0) < 3;
+  const all = wk ? weekly(daily.slice(d0)) : daily, n0 = wk ? 0 : d0, bars = all.slice(n0), n = bars.length;
+  const hasVol = ohlc && bars.some(b => b.v), slot = PW / n;
+  card.querySelector(".psub").textContent = t(!ohlc ? "chart_close" : wk ? "chart_weekly" : "chart_daily");
+  const top = 10, HP = Math.round(Math.min(260, Math.max(180, w * 0.28))), gap = 12, HV = hasVol ? 54 : 0;
+  const bottom = top + HP + (hasVol ? gap + HV : 0), H = bottom + 22;
+  let lo = Math.min(...bars.map(b => ohlc ? b.l : b.c)), hi = Math.max(...bars.map(b => ohlc ? b.h : b.c));
+  const pad = (hi - lo) * 0.06 || hi * 0.02 || 1;
+  lo -= pad; hi += pad;
+  const y = v => top + (hi - v) / (hi - lo) * HP, cx = i => X0 + slot * (i + 0.5);
+  const bw = Math.min(13, Math.max(slot >= 3 ? 2 : 1, Math.round(slot * 0.7)));  // candle body width
+  const bx = i => Math.round(cx(i) - bw / 2), wx = i => bx(i) + Math.floor(bw / 2) + 0.5;  // body left, wick
+  const last = bars[n - 1], prevLast = n > 1 ? bars[n - 2].c : base, lastY = y(last.c);
+  const lastColor = last.c >= prevLast ? "var(--pos)" : "var(--neg)";
+
   let g = "";
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
-    g += `<line x1="${x(v)}" x2="${x(v)}" y1="${top - 4}" y2="${H - 18}" stroke="var(--border)"/>` +
-         `<text x="${x(v)}" y="${H - 4}" text-anchor="middle">${+v.toFixed(2)}</text>`;
+  for (const v of niceTicks(lo, hi, HP > 220 ? 6 : 5)) {
+    const yy = Math.round(y(v)) + 0.5;
+    g += `<line x1="${X0}" x2="${X0 + PW}" y1="${yy}" y2="${yy}" stroke="var(--border)"/>`;
+    if (Math.abs(yy - lastY) > 12) g += `<text x="${w - AR + 8}" y="${yy + 4}">${fmtTick(v)}</text>`;
   }
-  const color = { fwd_pe: "--c-pe", fwd_ev: "--c-ev", dcf: "--c-dcf", targets: "--c-tgt", week52: "--c-trade", volatility: "--c-vol" };
-  const when = s => s.at === "now" ? t("rc_now") : s.at === "fy_end" ? t("rc_fy_end", s.fy) : s.at === "1y" ? t("rc_1y") : "";
-  const name = s => s.at ? `${t("rc_" + s.kind)} · ${when(s)}` : t("rc_" + s.kind);
-  rows.forEach((s, i) => {
-    const y = top + i * RH, x1 = x(s.lo), x2 = Math.max(x(s.hi), x1 + 3);
-    // rows after "now" are grouped by fiscal year end; a rule marks where each group starts
-    if (i > 0 && s.at === "fy_end" && (rows[i - 1].at !== "fy_end" || rows[i - 1].fy !== s.fy)) {
-      g += `<line x1="0" x2="${W}" y1="${y + 1}" y2="${y + 1}" stroke="var(--border)" stroke-dasharray="2 3"/>`;
-    }
-    if (s.low95 != null && s.high95 != null) {
-      g += `<line x1="${x(s.low95)}" x2="${x(s.high95)}" y1="${y + 12}" y2="${y + 12}" stroke="var(${color[s.kind]})" stroke-width="1.5"/>` +
-           [s.low95, s.high95].map(v => `<line x1="${x(v)}" x2="${x(v)}" y1="${y + 7}" y2="${y + 17}" stroke="var(${color[s.kind]})" stroke-width="1.5"/>`).join("");
-    }
-    g += `<text class="lab" x="0" y="${y + 15}">${esc(name(s))}</text>` +
-         `<rect x="${x1}" y="${y + 5}" width="${x2 - x1}" height="14" rx="3" fill="var(${color[s.kind]})" opacity="0.85"/>` +
-         (s.mid != null ? `<rect x="${x(s.mid) - 1}" y="${y + 2}" width="2.5" height="20" fill="var(--text)"/>` : "") +
-         `<text class="lab" x="${W}" y="${y + 15}" text-anchor="end">${fmtPx(s.lo)} – ${fmtPx(s.hi)}</text>`;
+  let lastX = -1e9;  // month labels at each month's first trading day
+  bars.forEach((b, i) => {
+    const prev = i ? bars[i - 1] : all[n0 - 1];
+    if (!prev || prev.date.slice(0, 7) === b.date.slice(0, 7)) return;
+    const x = cx(i);
+    if (x - lastX < 46 || x > X0 + PW - 16) return;
+    lastX = x;
+    g += `<line x1="${Math.round(x) + 0.5}" x2="${Math.round(x) + 0.5}" y1="${bottom}" y2="${bottom + 4}" stroke="var(--border)"/>` +
+         `<text x="${x}" y="${H - 4}" text-anchor="middle">${esc(t("month", b.date.slice(0, 4), +b.date.slice(5, 7)))}</text>`;
   });
-  if (price != null) {
-    g += `<line x1="${x(price)}" x2="${x(price)}" y1="${top - 6}" y2="${H - 18}" stroke="var(--neg)" stroke-dasharray="4 3" stroke-width="1.5"/>` +
-         `<text x="${x(price)}" y="${top - 10}" text-anchor="middle" style="fill:var(--neg)">${esc(t("rc_price"))} ${fmtPx(price)}</text>`;
+  g += `<line x1="${X0}" x2="${X0 + PW}" y1="${bottom + 0.5}" y2="${bottom + 0.5}" stroke="var(--border)"/>`;
+
+  let marks = "";
+  if (ohlc) {
+    const vmax = Math.max(...bars.map(b => b.v || 0)), vy = top + HP + gap;
+    bars.forEach((b, i) => {
+      const col = b.c >= b.o ? "var(--pos)" : "var(--neg)", yo = y(b.o), yc = y(b.c);
+      marks += `<line x1="${wx(i)}" x2="${wx(i)}" y1="${y(b.h).toFixed(1)}" y2="${y(b.l).toFixed(1)}" stroke="${col}"/>` +
+               `<rect x="${bx(i)}" y="${Math.min(yo, yc).toFixed(1)}" width="${bw}" height="${Math.max(1, Math.abs(yo - yc)).toFixed(1)}" fill="${col}"/>`;
+      if (hasVol && b.v) {
+        const vh = Math.max(1, b.v / vmax * HV);
+        marks += `<rect x="${bx(i)}" y="${(vy + HV - vh).toFixed(1)}" width="${bw}" height="${vh.toFixed(1)}" fill="${col}" opacity=".4"/>`;
+      }
+    });
+    if (hasVol) g += `<text x="${w - AR + 8}" y="${vy + 10}">${fmtVol(vmax)}</text>`;
+  } else {
+    const d = bars.map((b, i) => (i ? "L" : "M") + cx(i).toFixed(1) + "," + y(b.c).toFixed(1)).join("");
+    marks = `<path d="${d}" fill="none" stroke="var(${last.c >= base ? "--pos" : "--neg"})" stroke-width="2" stroke-linejoin="round"/>`;
   }
-  return `<svg viewBox="0 -4 ${W} ${H + 4}" width="100%" style="min-width:600px" role="img" aria-label="${esc(t("rc_title"))}">${g}</svg>` +
-         `<p class="sub">${esc(t("rc_note"))}</p>`;
+  const lastTag = `<line x1="${X0}" x2="${X0 + PW}" y1="${lastY}" y2="${lastY}" stroke="${lastColor}" stroke-dasharray="2 3"/>` +
+    `<rect x="${w - AR + 2}" y="${lastY - 9}" width="${AR - 2}" height="18" rx="4" fill="${lastColor}"/>` +
+    `<text class="chip" x="${w - AR + 8}" y="${lastY + 4}">${last.c.toFixed(2)}</text>`;
+  el.innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" role="img" tabindex="0" aria-label="${esc(t("chart_aria"))}">
+    ${g}<g${ohlc ? ' shape-rendering="crispEdges"' : ""}>${marks}</g>${lastTag}
+    <line class="xh" x1="0" x2="0" y1="${top}" y2="${bottom}" stroke="var(--muted)" visibility="hidden"/>
+    <rect x="${X0}" y="0" width="${PW}" height="${bottom}" fill="transparent"/></svg>`;
+
+  const chg = card.querySelector(".pchg");
+  chg.innerHTML = signPct(last.c / base - 1);
+  const ro = card.querySelector(".readout"), svg = el.querySelector("svg"), xh = svg.querySelector(".xh");
+  const show = i => {
+    const b = bars[i], prev = i ? bars[i - 1].c : base;
+    ro.innerHTML = `<span>${esc(b.end && b.end !== b.date ? `${b.date} ~ ${b.end.slice(5)}` : b.date)}</span>` +
+      (ohlc ? [["k_open", b.o], ["k_high", b.h], ["k_low", b.l]].map(([k, v]) => `<span>${esc(t(k))} <b>${v.toFixed(2)}</b></span>`).join("") : "") +
+      `<span>${esc(t("k_close"))} <b>${b.c.toFixed(2)}</b></span>` + (prev ? signPct(b.c / prev - 1) : "") +
+      (b.v ? `<span>${esc(t("k_vol"))} <b>${fmtVol(b.v)}</b></span>` : "");
+  };
+  let cur = null;
+  const point = i => {
+    cur = Math.max(0, Math.min(n - 1, i));
+    xh.setAttribute("x1", wx(cur)); xh.setAttribute("x2", wx(cur)); xh.setAttribute("visibility", "visible");
+    show(cur);
+  };
+  const leave = () => { cur = null; xh.setAttribute("visibility", "hidden"); show(n - 1); };
+  svg.onpointermove = svg.onpointerdown = e => point(Math.floor((e.clientX - svg.getBoundingClientRect().left - X0) / slot));
+  svg.onpointerleave = leave;
+  svg.onblur = leave;
+  svg.onkeydown = e => {
+    const d = { ArrowLeft: -1, ArrowRight: 1, Home: -n, End: n }[e.key];
+    if (d) { e.preventDefault(); point((cur ?? n - 1) + d); }
+  };
+  show(n - 1);
+}
+
+// Price range by method: rows grouped by horizon (past 52 weeks, now, 12 months out, each fiscal year end)
+// in time order, each a bar from low to high with a dot at the mid value. Volatility rows show the 68% range
+// on a lighter 95% range. The vertical line is the current price; hovering a row shows its numbers.
+const RC_COLOR = { fwd_pe: "--c-pe", fwd_ev: "--c-ev", dcf: "--c-dcf", targets: "--c-tgt", week52: "--c-trade", volatility: "--c-vol" };
+const rcWhen = s => s.at === "fy_end" ? t("rc_fy_end", s.fy) : t("rc_" + s.at);
+const rcRows = pr => (pr?.summary || []).map(s => ({ ...s, lo: s.low ?? s.mid, hi: s.high ?? s.mid }))
+  .filter(s => s.lo != null && s.hi != null);
+const fmtPx = v => v == null ? "n/a" : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2);
+const rangeTxt = s => `${fmtPx(s.lo)} – ${fmtPx(s.hi)}`;
+
+function rangeChart(pr) {
+  return rcRows(pr).length ? `<div class="chartbox rangechart"></div><p class="sub">${esc(t("rc_note"))}</p>` : "";
+}
+
+function drawRange(el, w) {
+  const pr = lastData.result.price_range, rows = rcRows(pr), price = pr.price;
+  const IND = 14, RH = 28, GH = 24, top = 30;
+  const L = Math.min(w * 0.4, Math.max(...rows.map(s => textW(t("rc_" + s.kind), 13))) + IND + 20);
+  const VW = w < 480 ? 0 : Math.max(...rows.map(s => textW(rangeTxt(s), 12))) + 20;
+  const x0 = L, x1 = w - VW - 10;
+  const vals = rows.flatMap(s => [s.lo, s.hi, s.low95 ?? s.lo, s.high95 ?? s.hi]).concat(price != null ? [price] : []);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.04 || Math.abs(hi) * 0.05 || 1;
+  lo = Math.max(0, lo - pad); hi += pad;
+  const x = v => x0 + (v - lo) / (hi - lo) * (x1 - x0);
+
+  let yy = top, rowsSvg = "", hits = "", grp = null;
+  const pos = [];
+  rows.forEach((s, i) => {
+    const key = s.at + (s.fy || "");
+    if (key !== grp) {
+      if (grp !== null) { yy += 6; rowsSvg += `<line x1="0" x2="${w}" y1="${yy + 0.5}" y2="${yy + 0.5}" stroke="var(--border)"/>`; }
+      rowsSvg += `<text class="gh" x="0" y="${yy + 17}">${esc(rcWhen(s))}</text>`;
+      yy += GH; grp = key;
+    }
+    const cy = yy + RH / 2, col = `var(${RC_COLOR[s.kind]})`, xa = x(s.lo), xb = Math.max(x(s.hi), xa + 4);
+    hits += `<rect class="hit" data-i="${i}" x="0" y="${yy}" width="${w}" height="${RH}" rx="4"/>`;
+    rowsSvg += `<text class="ml" x="${IND}" y="${cy + 4.5}">${esc(t("rc_" + s.kind))}</text>`;
+    if (s.low95 != null && s.high95 != null) {
+      rowsSvg += `<rect x="${x(s.low95)}" y="${cy - 5}" width="${x(s.high95) - x(s.low95)}" height="10" rx="5" fill="${col}" opacity=".3"/>`;
+    }
+    rowsSvg += `<rect x="${xa}" y="${cy - 5}" width="${xb - xa}" height="10" rx="5" fill="${col}"/>`;
+    if (s.mid != null) rowsSvg += `<circle cx="${x(s.mid)}" cy="${cy}" r="4.5" fill="var(--card)" stroke="var(--text)" stroke-width="2"/>`;
+    if (VW) rowsSvg += `<text class="val" x="${w}" y="${cy + 4}" text-anchor="end">${rangeTxt(s)}</text>`;
+    pos.push(yy);
+    yy += RH;
+  });
+  const bottom = yy + 4, H = bottom + 22;
+  let grid = "";
+  for (const v of niceTicks(lo, hi, Math.max(3, Math.round((x1 - x0) / 90)))) {
+    const xv = Math.round(x(v)) + 0.5;
+    if (xv < x0 - 1 || xv > x1 + 1) continue;
+    grid += `<line x1="${xv}" x2="${xv}" y1="${top - 4}" y2="${bottom}" stroke="var(--border)"/>` +
+            `<text x="${xv}" y="${H - 4}" text-anchor="middle">${fmtTick(v)}</text>`;
+  }
+  let now = "";
+  if (price != null) {
+    const xp = x(price), label = `${t("rc_price")} ${price.toFixed(2)}`, cw = textW(label, 11, 600) + 16;
+    const cxp = Math.min(Math.max(xp, x0 + cw / 2), w - cw / 2);
+    now = `<line x1="${xp}" x2="${xp}" y1="${top - 8}" y2="${bottom}" stroke="var(--text)" stroke-width="1.5" opacity=".7"/>` +
+          `<rect x="${cxp - cw / 2}" y="2" width="${cw}" height="20" rx="10" fill="var(--text)"/>` +
+          `<text class="chip" x="${cxp}" y="16" text-anchor="middle">${esc(label)}</text>`;
+  }
+  el.innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" role="img" aria-label="${esc(t("rc_title"))}">
+    ${hits}${grid}<g class="marks">${rowsSvg}${now}</g></svg><div class="tip" hidden></div>`;
+
+  const tip = el.querySelector(".tip");
+  el.querySelectorAll(".hit").forEach(r => {
+    const s = rows[+r.dataset.i];
+    r.onpointermove = r.onpointerdown = e => {
+      const f = v => v == null ? "-" : v.toFixed(2);
+      tip.innerHTML = `<div class="tt">${esc(t("rc_" + s.kind))} · ${esc(rcWhen(s))}</div>` +
+        `<div>${esc(t("rc_low"))} <b>${f(s.low)}</b> · ${esc(t("rc_mid"))} <b>${f(s.mid)}</b> · ${esc(t("rc_high"))} <b>${f(s.high)}</b></div>` +
+        (s.low95 != null ? `<div>95%: <b>${f(s.low95)}</b> – <b>${f(s.high95)}</b></div>` : "") +
+        (s.mid != null && price && s.kind !== "volatility" ? `<div>${esc(t("rc_vs"))} ${signPct(s.mid / price - 1)}</div>` : "");
+      tip.hidden = false;
+      const b = el.getBoundingClientRect(), tw = tip.offsetWidth;
+      tip.style.left = Math.min(Math.max(0, e.clientX - b.left + 14), w - tw) + "px";
+      tip.style.top = (pos[+r.dataset.i] + RH + 4) + "px";
+    };
+    r.onpointerleave = () => { tip.hidden = true; };
+  });
 }
 
 function render(data) {
   lastData = data;
+  observers.forEach(o => o.disconnect());
+  observers = [];
   const r = data.result, p = r.profile || {}, c = r.current || {}, dcf = r.dcf || {}, conn = r.meta.connection || {};
   const last = r.years[r.years.length - 1] || {};
   const chg = p.changePercentage;
@@ -244,14 +451,13 @@ function render(data) {
       ${stat("s_pio", `${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}`)}
       ${stat("s_dcf", dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a")}
       ${stat("s_mos", dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a", dcf.margin_of_safety >= 0 ? "pos" : "neg")}
-      ${fr ? `<div class="stat"><div class="k">${esc(t("s_range"))} (${esc(fr.at === "now" ? t("rc_now") : t("rc_fy_end", fr.fy))})</div><div class="v">${fmtPx(fr.pe.low)} – ${fmtPx(fr.pe.high)}</div></div>` : ""}
+      ${fr ? `<div class="stat"><div class="k">${esc(t("s_range"))} · ${esc(rcWhen(fr))}</div><div class="v">${fmtPx(fr.pe.low)} – ${fmtPx(fr.pe.high)}</div></div>` : ""}
     </div></div>`;
   const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
-  h += `<div class="grid2" style="margin-top:14px">
-    <div class="card"><h3>${esc(t("chart_title"))}</h3>${chart(data.prices)}</div>
-    <div class="card"><h3>${esc(t("flags_title"))}</h3>
-      <b class="pos">${esc(t("pos"))}</b><ul class="flags">${flagList(r.flags.green)}</ul>
-      <b class="neg">${esc(t("neg"))}</b><ul class="flags">${flagList(r.flags.red)}</ul></div></div>`;
+  h += priceCard(data);
+  h += `<div class="card"><h3>${esc(t("flags_title"))}</h3><div class="grid2 flags2">
+      <div><b class="pos">${esc(t("pos"))}</b><ul class="flags">${flagList(r.flags.green)}</ul></div>
+      <div><b class="neg">${esc(t("neg"))}</b><ul class="flags">${flagList(r.flags.red)}</ul></div></div></div>`;
 
   const parts = data.report.split(/\n(?=## )/).filter(s => s.startsWith("## "));
   if (curTab >= parts.length) curTab = 0;
@@ -261,6 +467,17 @@ function render(data) {
   h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i === curTab ? "" : "hidden"}>${body(s)}</div>`).join("");
   h += `<details><summary>${esc(t("full_report"))}</summary><div class="card"><pre>${esc(data.report)}</pre></div></details>`;
   $("#out").innerHTML = h;
+  const pc = $(".pricecard");
+  mount(pc.querySelector(".candles"), drawPrice);
+  pc.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    period = +b.dataset.p;
+    try { localStorage.setItem("period", period); } catch (e) {}
+    pc.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
+    const el = pc.querySelector(".candles");
+    drawPrice(el, el._w);
+  });
+  const rc = $(".rangechart");
+  if (rc) mount(rc, drawRange);
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
     curTab = +b.dataset.i;
     document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === b));

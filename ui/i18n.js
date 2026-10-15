@@ -21,10 +21,16 @@ const UI = {
     as_of: "截至", mcap: "市值",
     s_pe: "P/E", s_ev: "EV/EBITDA", s_fcfy: "FCF 收益率", s_roic: "ROIC", s_cagr: "营收 CAGR", s_pio: "Piotroski",
     s_dcf: "DCF 每股价值", s_mos: "DCF vs 股价", s_range: "前瞻 P/E 区间",
-    rc_title: "各方法的股价区间", rc_fwd_pe: "前瞻 P/E", rc_fwd_ev: "前瞻 EV/EBITDA", rc_dcf: "DCF", rc_targets: "分析师目标价（12 个月）",
-    rc_week52: "52 周区间", rc_volatility: "波动", rc_now: "现在", rc_fy_end: fy => `FY${fy} 末`, rc_1y: "1 年", rc_price: "现价",
-    rc_note: "黑色短线 = 中值（基准、共识价或现价）；波动那几行：色条 = 68% 区间，细线 = 95% 区间；红色虚线 = 当前股价。",
-    chart_title: "近一年股价", chart_aria: "一年股价走势", no_prices: "没有价格数据。",
+    rc_title: "各方法的股价区间",
+    rc_fwd_pe: "前瞻 P/E", rc_fwd_ev: "前瞻 EV/EBITDA", rc_dcf: "DCF", rc_targets: "分析师目标价", rc_week52: "交易区间", rc_volatility: "波动率",
+    rc_past: "过去 52 周", rc_now: "现在", rc_12m: "12 个月后", rc_fy_end: fy => `FY${fy} 末`,
+    rc_price: "现价", rc_low: "低", rc_mid: "中值", rc_high: "高", rc_vs: "中值 vs 现价",
+    rc_note: "圆点 = 中值（基准、共识价或现价）；波动率行：深色 = 68% 区间，浅色 = 95% 区间；竖线 = 当前股价。鼠标移到某一行可看具体数字。",
+    chart_title: "股价走势", chart_daily: "日 K 线", chart_weekly: "周 K 线", chart_close: "每日收盘价", chart_aria: "股价 K 线图",
+    p_3m: "3 个月", p_6m: "6 个月", p_1y: "1 年",
+    k_open: "开", k_high: "高", k_low: "低", k_close: "收", k_vol: "量",
+    no_ohlc: "数据源没有返回开盘、最高、最低价，这里只画收盘价。", no_prices: "没有价格数据。",
+    month: (y, m) => m === 1 ? `${y}` : `${m}月`,
     flags_title: "自动提示（需进一步核实，不是结论）", pos: "优点", neg: "风险", none: "无",
     full_report: "完整文字报告（英文原文）",
   },
@@ -41,12 +47,17 @@ const UI = {
     notice_tls: " HTTPS certificate verification was off for this run.",
     as_of: "as of", mcap: "Mkt cap",
     s_pe: "P/E", s_ev: "EV/EBITDA", s_fcfy: "FCF yield", s_roic: "ROIC", s_cagr: "Revenue CAGR", s_pio: "Piotroski",
-    s_dcf: "DCF value / share", s_mos: "DCF vs price", s_range: "Fwd P/E range",
-    rc_title: "Price range by method", rc_fwd_pe: "Fwd P/E", rc_fwd_ev: "Fwd EV/EBITDA", rc_dcf: "DCF",
-    rc_targets: "Analyst targets (12m)", rc_week52: "52-week range", rc_volatility: "Volatility",
-    rc_now: "now", rc_fy_end: fy => `FY${fy} end`, rc_1y: "1 year", rc_price: "Price",
-    rc_note: "Black tick = mid value (base case, consensus or current price); volatility rows: bar = 68% range, thin line = 95% range; red dashed line = current price.",
-    chart_title: "Share price, last 12 months", chart_aria: "One-year share price chart", no_prices: "No price data.",
+    s_dcf: "DCF value / share", s_mos: "DCF vs price", s_range: "Forward P/E range",
+    rc_title: "Price range by method",
+    rc_fwd_pe: "Forward P/E", rc_fwd_ev: "Forward EV/EBITDA", rc_dcf: "DCF", rc_targets: "Analyst targets", rc_week52: "Trading range", rc_volatility: "Volatility",
+    rc_past: "Past 52 weeks", rc_now: "Now", rc_12m: "In 12 months", rc_fy_end: fy => `FY${fy} end`,
+    rc_price: "Price", rc_low: "Low", rc_mid: "Mid", rc_high: "High", rc_vs: "Mid vs price",
+    rc_note: "Dot = mid value (base case, consensus or current price); volatility rows: dark = 68% range, light = 95% range; vertical line = current price. Hover a row for its numbers.",
+    chart_title: "Share price", chart_daily: "Daily candles", chart_weekly: "Weekly candles", chart_close: "Daily closes", chart_aria: "Share price candlestick chart",
+    p_3m: "3M", p_6m: "6M", p_1y: "1Y",
+    k_open: "O", k_high: "H", k_low: "L", k_close: "C", k_vol: "Vol",
+    no_ohlc: "The data source returned no open, high or low prices, so this shows closing prices only.", no_prices: "No price data.",
+    month: (y, m) => m === 1 ? `${y}` : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1],
     flags_title: "Automated flags (prompts for investigation, not conclusions)", pos: "Positives", neg: "Concerns", none: "None",
     full_report: "Full text report",
   },
@@ -89,7 +100,7 @@ const ZH_EXACT = new Map(Object.entries({
   "Base": "基准", "Base vs price": "基准 vs 股价", "At today's P/E": "按当前 P/E", "At today's EV/EBITDA": "按当前 EV/EBITDA",
   "When": "时点", "Now": "现在", "EPS used": "所用 EPS", "EBITDA used": "所用 EBITDA",
   "To": "截至", "Date": "日期", "Years": "年数",
-  "68% range (+/-1 sd)": "68% 区间（±1 个标准差）", "95% range (+/-1.96 sd)": "95% 区间（±1.96 个标准差）", "1 year": "1 年",
+  "68% range (+/-1 sd)": "68% 区间（±1 个标准差）", "95% range (+/-1.96 sd)": "95% 区间（±1.96 个标准差）",
   // growth / profitability / balance sheet / cash flow rows
   "Revenue": "营收", "Revenue YoY": "营收同比", "Gross profit": "毛利", "Operating income": "营业利润",
   "Net income": "净利润", "EPS (diluted)": "EPS（稀释）", "EPS YoY": "EPS 同比", "Free cash flow": "自由现金流",
@@ -122,9 +133,7 @@ const ZH_EXACT = new Map(Object.entries({
   "Financial-sector company: FCF-based DCF is not meaningful (use P/B, ROE, P/E).": "金融类公司：基于自由现金流的 DCF 没有意义（请看 P/B、ROE、P/E）。",
   "DCF inputs invalid (discount rate must exceed terminal growth).": "DCF 参数无效（折现率必须高于永续增速）。",
   // price range
-  "Analyst price targets (12-month)": "分析师目标价（12 个月）",
-  "Forward P/E, now": "前瞻 P/E，现在", "Forward EV/EBITDA, now": "前瞻 EV/EBITDA，现在", "52-week closing range": "52 周收盘价区间", "1-year volatility (68%)": "1 年波动（68%）",
-  "discount +/-1pt, growth +/-2pt": "折现率 ±1 个百分点、增速 ±2 个百分点", "low / consensus / high": "最低 / 共识 / 最高",
+  "lowest / consensus / highest target": "最低 / 共识 / 最高目标价",
   "No method had enough data for a range.": "数据不够，没有一种方法能算出区间。",
   "The price history has a one-day move of more than 50% (possibly a stock split the prices do not reflect), so no forward multiple range is shown.":
     "股价历史里有单日涨跌超过 50% 的情况（可能是股价没有按拆股调整），所以不显示前瞻倍数区间。",
@@ -217,6 +226,12 @@ function eventZh(name) {
 }
 const MULT = "(P\\/E|P\\/B|EV\\/EBITDA)";
 
+// Price-range methods and horizons: the report's summary table uses the same English names as the
+// chart (RANGE_METHODS and _when() in analyze.py), so each English name maps to the chart's Chinese one.
+for (const k of ["rc_fwd_pe", "rc_fwd_ev", "rc_dcf", "rc_targets", "rc_week52", "rc_volatility", "rc_past", "rc_now", "rc_12m"]) {
+  ZH_EXACT.set(UI.en[k], UI.zh[k]);
+}
+
 // Sentence templates and fragments, applied in order to text not matched above.
 const ZH_RULES = [
   // headings
@@ -253,21 +268,21 @@ const ZH_RULES = [
     "above 100%/yr": "高于每年 100%"}[note] || " " + note}。`],
   // analyst, price range
   [/^(\d{4}) \(ended, not yet reported\)$/, "$1（已结束，尚未公布）"],
-  [/^Forward (P\/E|EV\/EBITDA), FY(\d{4}) end$/, "前瞻 $1，FY$2 末"],
-  [/^(next-12-month|FY(\d{4})) (EPS|EBITDA) (\S+) x (\S+) \/ (\S+) \/ (\S+)(, less net debt)?$/,
-    (m, src, fy, base, v, a, b, c, nd) => `${fy ? "FY" + fy : "未来 12 个月"} ${base} ${v} × ${a} / ${b} / ${c}` + (nd ? "，扣除净债务" : "")],
+  [/^(EPS|EBITDA) (\S+) \((next 12 months|FY(\d{4}) est\.)\) x (P\/E|EV\/EBITDA) (\S+) \/ (\S+) \/ (\S+)(, less net debt)?$/,
+    (m, base, v, src, fy, k, a, b, c, nd) => `${base} ${v}（${fy ? `FY${fy} 预期` : "未来 12 个月"}）× ${k} ${a} / ${b} / ${c}` + (nd ? "，扣除净债务" : "")],
+  [/^discount rate (\S+) \+\/-1pt, growth (\S+) \+\/-2pt$/, "折现率 $1 ±1 个百分点，增速 $2 ±2 个百分点"],
+  [/^lowest \/ highest daily close, (\S+) to (\S+)$/, "最低 / 最高日收盘价，$1 至 $2"],
   [/^(\S+) \((\d+)% FY(\d{4}) \+ (\d+)% FY(\d{4})\)$/, "$1（$2% FY$3 + $4% FY$5）"],
   [/^(\S+) \(FY(\d{4}) est\.\)$/, "$1（FY$2 预期）"],
   [/^The FY(\d{4}) end row rests on the FY(\d{4}) consensus(?: \((\d+) analysts\))?, which is further out and less reliable\.$/,
     (m, a, b, n) => `FY${a} 末这一行用的是 FY${b} 的一致预期${n ? `（${n} 位分析师）` : ""}，时间更远，可靠性更低。`],
   [/^No analyst estimate for the year after FY(\d{4}), so no range at the end of FY(\d{4})\.$/, "没有 FY$1 之后那一年的分析师预期，所以没有 FY$2 末的区间。"],
-  [/^Volatility to FY(\d{4}) end \(68%\)$/, "到 FY$1 末的波动（68%）"], [/^FY(\d{4}) end$/, "FY$1 末"],
-  [/^\+\/-1 sd at (\S+) a year \((realized|implied)\); 95%: (\S+) - (\S+)$/,
-    (m, v, src, lo, hi) => `±1 个标准差，年化波动率 ${v}（${src === "implied" ? "隐含" : "过去一年实际"}）；95%：${lo} - ${hi}`],
+  [/^FY(\d{4}) end$/, "FY$1 末"],
+  [/^price \+\/-1 sd at (\S+) a year \((realized|implied)\); 95%: (\S+) - (\S+)$/,
+    (m, v, src, lo, hi) => `现价 ±1 个标准差，年化波动率 ${v}（${src === "implied" ? "隐含" : "过去一年实际"}）；95%：${lo} - ${hi}`],
   [/^Volatility (\S+) a year \(realized: standard deviation of the past year's daily moves, annualized\)\.$/,
     "波动率：年化 $1（过去一年的实际波动：日涨跌幅的标准差，年化）。"],
   [/^Volatility (\S+) a year \(implied volatility you entered\)\.$/, "波动率：年化 $1（你填入的隐含波动率）。"],
-  [/^daily closes (\S+) to (\S+)$/, "每日收盘价，$1 至 $2"],
   [/^Current price (\S+)\. Each row is the range one method gives; none of them is a forecast\.$/, "当前股价 $1。每一行是一种方法给出的区间，都不是预测。"],
   [/^(\d+)-year forward (P\/E|EV\/EBITDA) on next-12-month (EPS|EBITDA): 25th percentile (\S+), median (\S+), 75th percentile (\S+) \(10th-90th (\S+) - (\S+); (\d+) trading days, (\S+) to (\S+)\)\.$/,
     "过去 $1 年按未来 12 个月 $3 算的前瞻 $2：25 分位 $4，中位数 $5，75 分位 $6（10-90 分位 $7 - $8；$9 个交易日，$10 至 $11）。"],
