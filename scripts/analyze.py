@@ -22,6 +22,8 @@ Options:
   --no-ttm           skip trailing-twelve-month data (saves 3 API calls)
   --json PATH        also write every computed number to a JSON file
   --refresh          ignore the local cache
+
+Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
 """
 from __future__ import annotations
 
@@ -30,8 +32,10 @@ import bisect
 import datetime as dt
 import json
 import math
+import os
 import statistics
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -232,10 +236,8 @@ def build_years(inc_rows, bs_rows, cf_rows):
     return years
 
 
-def build_ttm(client, sym):
-    qi = client.statements("income-statement", sym, "quarter", 4, optional=True)
-    qc = client.statements("cash-flow-statement", sym, "quarter", 4, optional=True)
-    qb = client.statements("balance-sheet-statement", sym, "quarter", 1, optional=True)
+def build_ttm(qi, qc, qb):
+    """TTM figures from the last 4 quarterly income / cash-flow statements and the latest balance sheet."""
     if len(qi) < 4 or len(qc) < 4 or not qb:
         return None
 
@@ -484,24 +486,34 @@ def lfy_snapshot(profile, years):
     }
 
 
-def peer_snapshot(client, s):
-    prof = client.try_get("profile", symbol=s)
+def peer_requests(client, s):
+    """The four calls behind one peer row, as (function, args, kwargs) so they can run in parallel."""
+    st = client.statements
+    return [(client.try_get, ("profile",), {"symbol": s}),
+            (st, ("income-statement", s, "annual", 2), {"optional": True}),
+            (st, ("balance-sheet-statement", s, "annual", 1), {"optional": True}),
+            (st, ("cash-flow-statement", s, "annual", 1), {"optional": True})]
+
+
+def peer_snapshot(s, prof, inc, bs, cf):
     prof = prof[0] if isinstance(prof, list) and prof else (prof if isinstance(prof, dict) else None)
-    inc = client.statements("income-statement", s, "annual", 2, optional=True)
     if not prof or not inc:
         return {"symbol": s, "error": "no data (plan restriction or unknown ticker)"}
-    bs = client.statements("balance-sheet-statement", s, "annual", 1, optional=True)
-    cf = client.statements("cash-flow-statement", s, "annual", 1, optional=True)
     return lfy_snapshot(prof, build_years(inc, bs, cf))
 
 
-def analyst_view(client, sym, last_fy_date, price, basis_rev):
-    out = {}
+def fetch_estimates(client, sym):
     est = client.try_get("analyst-estimates", symbol=sym, period="annual", page=0, limit=10)
     if est is None:  # some plans cap `limit`; retry with the smaller page size
         est = client.try_get("analyst-estimates", symbol=sym, period="annual", page=0, limit=5)
         if est is not None:
-            client.restricted[:] = [x for x in client.restricted if not x.startswith("analyst-estimates")]
+            client.unrestrict("analyst-estimates")
+    return est
+
+
+def analyst_view(est, pt, last_fy_date, price, basis_rev):
+    """est: analyst-estimates rows, pt: price-target-consensus response (either may be None)."""
+    out = {}
     if isinstance(est, list):
         future = sorted((e for e in est if str(e.get("date", ""))[:10] > last_fy_date),
                         key=lambda e: str(e.get("date")))[:2]
@@ -517,7 +529,6 @@ def analyst_view(client, sym, last_fy_date, price, basis_rev):
             })
             prev_rev = rev
         out["estimates"] = rows
-    pt = client.try_get("price-target-consensus", symbol=sym)
     pt = pt[0] if isinstance(pt, list) and pt else (pt if isinstance(pt, dict) else None)
     if pt:
         cons = num(pt, "targetConsensus")
@@ -874,6 +885,21 @@ def render(r):
 
 
 # ============================================================ main
+def fetch_prices(client, sym, start, end):
+    try:
+        return client.prices(sym, start, end)
+    except FMPError as e:
+        client.add_error(f"price history: {e}")
+        return []
+
+
+def max_workers():
+    try:
+        return max(1, int(os.environ.get("FMP_MAX_WORKERS") or 6))
+    except ValueError:
+        return 6
+
+
 def analyze(args):
     sym = args.symbol.upper()
     client = FMPClient(refresh=args.refresh)
@@ -885,14 +911,51 @@ def analyze(args):
     if not profile:
         raise SystemExit(f"No profile found for {sym}. Check the ticker.")
 
-    inc = client.statements("income-statement", sym, "annual", args.years)
-    if not inc:
-        raise SystemExit(f"No income statements returned for {sym}.")
-    bs = client.statements("balance-sheet-statement", sym, "annual", args.years, optional=True)
-    cf = client.statements("cash-flow-statement", sym, "annual", args.years, optional=True)
-    years = build_years(inc, bs, cf)
+    # Everything below only depends on the ticker, so it is fetched in parallel. The client's
+    # rate limiter is shared across threads, so FMP_MAX_PER_MIN still holds.
+    today = dt.date.today()
+    st = client.statements
+    pool = ThreadPoolExecutor(max_workers=max_workers())
+    futures = []
 
-    ttm = None if args.no_ttm else build_ttm(client, sym)
+    def submit(fn, *a, **kw):
+        f = pool.submit(fn, *a, **kw)
+        futures.append(f)
+        return f
+
+    try:
+        f_inc = submit(st, "income-statement", sym, "annual", args.years)
+        f_bs = submit(st, "balance-sheet-statement", sym, "annual", args.years, optional=True)
+        f_cf = submit(st, "cash-flow-statement", sym, "annual", args.years, optional=True)
+        f_q = None if args.no_ttm else (
+            submit(st, "income-statement", sym, "quarter", 4, optional=True),
+            submit(st, "cash-flow-statement", sym, "quarter", 4, optional=True),
+            submit(st, "balance-sheet-statement", sym, "quarter", 1, optional=True))
+        f_est = submit(fetch_estimates, client, sym)
+        f_pt = submit(client.try_get, "price-target-consensus", symbol=sym)
+        f_peer_syms = submit(peer_symbols, client, sym, args.peers, args.max_peers)
+
+        inc = f_inc.result()
+        if not inc:
+            raise SystemExit(f"No income statements returned for {sym}.")
+        # price history starts just before the oldest fiscal year, so it waits for the income statements
+        start = (dt.date.fromisoformat(str(inc[0].get("date"))[:10]) - dt.timedelta(days=10)).isoformat()
+        f_px = submit(fetch_prices, client, sym, start, today.isoformat())
+        f_peers = [(s, [submit(fn, *a, **kw) for fn, a, kw in peer_requests(client, s)])
+                   for s in f_peer_syms.result()]
+
+        years = build_years(inc, f_bs.result(), f_cf.result())
+        ttm = build_ttm(*(f.result() for f in f_q)) if f_q else None
+        series = f_px.result()
+        est, pt = f_est.result(), f_pt.result()
+        peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
+    except BaseException:
+        for f in futures:
+            f.cancel()
+        raise
+    finally:
+        pool.shutdown(wait=True)
+
     if ttm and ttm["date"] <= years[-1]["date"]:
         ttm = None  # latest quarter is the fiscal year end; annual data is already current
     basis = ttm or years[-1]
@@ -912,13 +975,6 @@ def analyze(args):
     price, mcap = num(profile, "price"), num(profile, "marketCap", "mktCap")
     current = multiples(price, mcap, basis)
 
-    today = dt.date.today()
-    start = (dt.date.fromisoformat(years[0]["date"]) - dt.timedelta(days=10)).isoformat()
-    try:
-        series = client.prices(sym, start, today.isoformat())
-    except FMPError as e:
-        series = []
-        client.errors.append(f"price history: {e}")
     hist = valuation_history(years, series)
     hist_cmp = compare_to_history(current, hist)
 
@@ -930,9 +986,7 @@ def analyze(args):
     pio = piotroski(years)
     alt = altman(years[-1], mcap)
     dcf = run_dcf(years, basis, current, args, cg["revenue"], sector_kind)
-    analyst = analyst_view(client, sym, years[-1]["date"], price, years[-1]["revenue"])
-
-    peers = [peer_snapshot(client, s) for s in peer_symbols(client, sym, args.peers, args.max_peers)]
+    analyst = analyst_view(est, pt, years[-1]["date"], price, years[-1]["revenue"])
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
 
     return {
@@ -943,6 +997,7 @@ def analyze(args):
         "piotroski": pio, "altman": alt, "dcf": dcf, "analyst": analyst,
         "self_snapshot": lfy_snapshot(profile, years), "peers": peers,
         "flags": {"red": red, "green": green},
+        "price_series": series,  # daily closes used for valuation history (the UI charts the last year)
         "meta": {"network_calls": client.stats["network_calls"], "cache_hits": client.stats["cache_hits"],
                  "restricted": client.restricted, "errors": client.errors,
                  "connection": client.describe()},
@@ -979,7 +1034,8 @@ def main(argv=None):
         return 1
     print(render(result))
     if args.json:
-        Path(args.json).write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+        out = {k: v for k, v in result.items() if k != "price_series"}
+        Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
         print(f"\n(JSON written to {args.json})")
     return 0
 

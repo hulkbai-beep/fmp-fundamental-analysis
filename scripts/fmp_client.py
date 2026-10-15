@@ -18,9 +18,15 @@ Connection settings (environment variables):
                     (default "header" = FMP's apikey header; auto-detected for proxies)
   FMP_TLS_VERIFY    "0" turns off HTTPS certificate verification (needed for many
                     bare-IP proxies; less secure). Default "1".
+  FMP_MAX_PER_MIN   request rate cap shared by all threads (default 280).
+  FMP_MAX_WORKERS   parallel requests analyze.py may run (default 6; 1 = one at a time).
+  FMP_TIMEOUT       seconds to wait for each response (default 30).
 
 CLI:
   python fmp_client.py check [SYMBOL]          connection info + which endpoints work
+                                               (company, sector/industry and macro data)
+  python fmp_client.py check --peek            same, plus field names and first/last rows
+                                               of each sector/macro response
   python fmp_client.py get ENDPOINT k=v ...    raw JSON from any stable endpoint
   python fmp_client.py clear-cache             delete the local cache and saved detection
 """
@@ -32,6 +38,7 @@ import os
 import shutil
 import ssl
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -109,6 +116,11 @@ def _env_flag(name, default=True):
     return v.strip().lower() not in ("0", "false", "no", "off")
 
 
+def _is_timeout(exc):
+    reason = getattr(exc, "reason", exc)
+    return isinstance(reason, TimeoutError) or "timed out" in str(reason).lower()
+
+
 def _is_cert_error(exc):
     reason = getattr(exc, "reason", exc)
     return isinstance(reason, (ssl.SSLCertVerificationError, ssl.CertificateError)) or \
@@ -128,9 +140,14 @@ class FMPClient:
         self.use_cache = use_cache
         self.refresh = refresh
         per_min = max_per_min or int(os.environ.get("FMP_MAX_PER_MIN", "280"))
-        self.min_interval = 60.0 / max(per_min, 1)
-        self.timeout = timeout
-        self._last_call = 0.0
+        self.rate = max(per_min, 1) / 60.0  # requests per second
+        self.burst = min(10.0, float(max(per_min, 1)))
+        try:
+            self.timeout = float(os.environ.get("FMP_TIMEOUT") or timeout)
+        except ValueError:
+            self.timeout = timeout
+        self._tokens, self._refilled = self.burst, time.time()
+        self._lock = threading.Lock()  # guards the rate limiter, stats and the lists below
         self.stats = {"network_calls": 0, "cache_hits": 0}
         self.restricted = []  # endpoints skipped because the plan lacks them
         self.errors = []      # optional endpoints that failed for other reasons
@@ -215,19 +232,25 @@ class FMPClient:
 
     def detect(self, symbol="AAPL"):
         """Find the path prefix and auth style a proxy accepts, by probing `profile`."""
+        print(f"[fmp] Detecting request format for {self.host} (waits up to {self.timeout:g}s "
+              f"per try) ...", file=sys.stderr, flush=True)
         prefixes = [self.prefix] if self.prefix is not None else list(PREFIX_CANDIDATES)
         styles = [self.auth_style] if self.auth_style else list(AUTH_STYLES)
         seen = []
         for prefix in prefixes:
             for style in styles:
                 url = self._url("profile", {"symbol": symbol}, prefix, style)
-                try:
-                    status, body = self._http_get(url, style)
-                except urllib.error.URLError as e:
-                    if _is_cert_error(e):
-                        raise FMPError(self._cert_hint())
-                    raise FMPError(f"cannot reach {self.host}: {getattr(e, 'reason', e)}")
-                self.stats["network_calls"] += 1
+                for attempt in range(2):  # one retry if the server is momentarily slow
+                    try:
+                        status, body = self._http_get(url, style)
+                        break
+                    except (urllib.error.URLError, OSError) as e:  # OSError covers read timeouts
+                        if _is_cert_error(e):
+                            raise FMPError(self._cert_hint())
+                        if attempt == 0 and _is_timeout(e):
+                            continue
+                        raise FMPError(self._unreachable_hint(e))
+                self._count("network_calls")
                 ok = status == 402 or (status == 200 and _error_message(body) is None
                                        and body.strip()[:1] in ("[", "{"))
                 seen.append(f"/{prefix or ''} + {style}: HTTP {status}")
@@ -242,6 +265,13 @@ class FMPClient:
             + ". Check FMP_API_KEY / FMP_BASE_URL, or set FMP_PATH_PREFIX and FMP_AUTH_STYLE "
               "to match the proxy's documentation."
         )
+
+    def _unreachable_hint(self, exc):
+        msg = f"cannot reach {self.host}: {getattr(exc, 'reason', exc)}."
+        if _is_timeout(exc):
+            msg += (f" The server sent no response within {self.timeout:g}s (tried twice). It may be "
+                    f"down or overloaded: try again in a few minutes, or set FMP_TIMEOUT=60.")
+        return msg
 
     def _cert_hint(self):
         return (f"HTTPS certificate verification failed for {self.host}. This is common for "
@@ -275,23 +305,38 @@ class FMPClient:
         sym = "".join(c for c in str(params.get("symbol", "all")) if c.isalnum() or c in ".-_")
         return self.cache_dir / f"{safe_ep}__{sym}__{digest}.json"
 
+    def _count(self, key):
+        with self._lock:
+            self.stats[key] += 1
+
+    def _throttle(self):
+        """Token bucket shared by all threads: short bursts of up to 10 requests, and
+        about FMP_MAX_PER_MIN per minute over time. A caller that finds the bucket empty
+        reserves the next token and sleeps until it is due."""
+        with self._lock:
+            now = time.time()
+            self._tokens = min(self.burst, self._tokens + (now - self._refilled) * self.rate)
+            self._refilled = now
+            self._tokens -= 1
+            wait = -self._tokens / self.rate if self._tokens < 0 else 0.0
+        if wait > 0:
+            time.sleep(wait)
+
     def _fetch(self, endpoint, params):
         url = self._url(endpoint, params)
         last_err = None
         for attempt in range(4):
-            wait = self.min_interval - (time.time() - self._last_call)
-            if wait > 0:
-                time.sleep(wait)
-            self._last_call = time.time()
+            self._throttle()
             try:
                 status, body = self._http_get(url)
             except (urllib.error.URLError, TimeoutError, OSError) as e:
                 if _is_cert_error(e):
                     raise FMPError(self._cert_hint())
-                last_err = FMPError(f"network error on {endpoint}: {getattr(e, 'reason', e)}")
+                last_err = FMPError(f"network error on {endpoint}: {getattr(e, 'reason', e)}"
+                                    + (f" (no response within {self.timeout:g}s)" if _is_timeout(e) else ""))
                 time.sleep(2 ** attempt)
                 continue
-            self.stats["network_calls"] += 1
+            self._count("network_calls")
             if status == 429 or status >= 500:
                 last_err = FMPError(f"HTTP {status} on {endpoint} (rate limit or server error)")
                 time.sleep(2 ** attempt + 1)
@@ -327,17 +372,23 @@ class FMPClient:
             if time.time() - path.stat().st_mtime < ttl:
                 try:
                     data = json.loads(path.read_text(encoding="utf-8"))
-                    self.stats["cache_hits"] += 1
+                    self._count("cache_hits")
                     return data
                 except (OSError, ValueError):
                     pass
         data = self._fetch(endpoint, params)
         if self.use_cache:
+            # write-then-rename so a parallel reader never sees a half-written file
+            tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(data), encoding="utf-8")
+                tmp.write_text(json.dumps(data), encoding="utf-8")
+                os.replace(tmp, path)
             except OSError:
-                pass
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
         return data
 
     def try_get(self, endpoint, **params):
@@ -350,11 +401,22 @@ class FMPClient:
             extra = ", ".join(f"{k}={v}" for k, v in params.items()
                               if k not in ("symbol", "page", "from", "to"))
             label = f"{endpoint} ({extra})" if extra else endpoint
-            if label not in self.restricted:
-                self.restricted.append(label)
+            with self._lock:
+                if label not in self.restricted:
+                    self.restricted.append(label)
         except FMPError as e:
-            self.errors.append(str(e))
+            with self._lock:
+                self.errors.append(str(e))
         return None
+
+    def unrestrict(self, endpoint):
+        """Drop earlier 'not in your plan' notes for an endpoint that later succeeded."""
+        with self._lock:
+            self.restricted[:] = [x for x in self.restricted if not x.startswith(endpoint)]
+
+    def add_error(self, msg):
+        with self._lock:
+            self.errors.append(msg)
 
     # ------------------------------------------------------------------ helpers
     def profile(self, symbol):
@@ -413,7 +475,70 @@ PROBES = [
 ]
 
 
-def _cmd_check(symbol):
+# Market-wide data (no symbol): sector/industry and macro endpoints the skill may use.
+# {today}, {month_ago}, {week_ago}, {in_2w} and {last_bday} are filled in at run time.
+MARKET_PROBES = [
+    ("sector-performance-snapshot", {"date": "{last_bday}"}),
+    ("industry-performance-snapshot", {"date": "{last_bday}"}),
+    ("historical-sector-performance", {"sector": "Technology"}),
+    ("historical-sector-performance", {"sector": "Technology", "from": "{year_ago}", "to": "{today}"}),
+    ("sector-pe-snapshot", {"date": "{last_bday}"}),
+    ("industry-pe-snapshot", {"date": "{last_bday}"}),
+    ("historical-sector-pe", {"sector": "Technology"}),
+    ("historical-sector-pe", {"sector": "Technology", "from": "{five_years_ago}", "to": "{today}"}),
+    ("historical-industry-pe", {"industry": "Consumer Electronics", "from": "{year_ago}", "to": "{today}"}),
+    ("historical-price-eod/light", {"symbol": "SPY", "from": "{month_ago}", "to": "{today}"}),
+    ("treasury-rates", {"from": "{month_ago}", "to": "{today}"}),
+    ("treasury-rates", {"from": "{year_ago}", "to": "{today}"}),
+    ("market-risk-premium", {}),
+    ("economic-indicators", {"name": "federalFunds"}),
+    ("economic-indicators", {"name": "federalFunds", "from": "{two_years_ago}", "to": "{today}"}),
+    ("economic-indicators", {"name": "CPI", "from": "{two_years_ago}", "to": "{today}"}),
+    ("economic-indicators", {"name": "inflationRate"}),
+    ("economic-indicators", {"name": "unemploymentRate", "from": "{two_years_ago}", "to": "{today}"}),
+    ("economic-indicators", {"name": "realGDP", "from": "{two_years_ago}", "to": "{today}"}),
+    ("economic-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
+    ("earnings-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
+]
+
+
+def _peek(data):
+    """Field names plus the first and last rows, for working out a response's shape."""
+    rows = data if isinstance(data, list) else [data]
+    show = lambda r: json.dumps(r, ensure_ascii=False, default=str)[:400]
+    lines = [f"      fields: {', '.join(rows[0].keys()) if isinstance(rows[0], dict) else type(rows[0]).__name__}",
+             f"      first : {show(rows[0])}"]
+    if len(rows) > 1:
+        lines.append(f"      last  : {show(rows[-1])}")
+    # rows the macro features will look for: the US risk premium and key US calendar events
+    dicts = [r for r in rows if isinstance(r, dict)]
+    us = [r for r in dicts if "united states" in str(r.get("country", "")).lower()
+          or str(r.get("country", "")).upper() in ("US", "USA")]
+    if us and "event" in dicts[0]:
+        keys = ("cpi", "ppi", "pce", "fed", "fomc", "interest rate", "nonfarm", "gdp")
+        hits = [r for r in us if any(k in str(r.get("event", "")).lower() for k in keys)]
+        lines += [f"      US    : {show(r)}" for r in hits[:12]]
+    elif us:
+        lines.append(f"      US    : {show(us[0])}")
+    return "\n".join(lines)
+
+
+def _probe(client, ep, params, peek=False):
+    try:
+        data = client.get(ep, **params)
+        n = len(data) if isinstance(data, list) else (1 if data else 0)
+        if n and peek:
+            return "OK", f"{n} rows\n{_peek(data)}"
+        return ("OK", f"{n} rows") if n else ("EMPTY", "no rows returned")
+    except RestrictedEndpoint as e:
+        return "RESTRICTED", str(e).split("(", 1)[-1].rstrip(")")[:60]
+    except InvalidKey:
+        raise
+    except FMPError as e:
+        return "ERROR", str(e)[:60]
+
+
+def _cmd_check(symbol, peek=False):
     client = FMPClient(refresh=True)
     c = client.describe()
     print("Connection")
@@ -422,28 +547,37 @@ def _cmd_check(symbol):
     print(f"  path prefix : /{c['prefix'] or ''}")
     print(f"  auth style  : {c['auth_style']}  ({c['source']})")
     print(f"  TLS verify  : {'on' if c['tls_verify'] else 'OFF'}")
-    print(f"\nProbing endpoints with {symbol} ...\n")
-    print(f"{'endpoint':<28} {'params':<26} {'result':<11} detail")
-    print("-" * 90)
-    today = time.strftime("%Y-%m-%d")
-    month_ago = time.strftime("%Y-%m-%d", time.localtime(time.time() - 30 * DAY))
-    for ep, params in PROBES:
-        label = " ".join(f"{k}={v}" for k, v in params.items() if k != "page")
-        if ep.startswith("historical-price"):
-            params = dict(params, **{"from": month_ago, "to": today})
-            label = "last 30 days"
-        try:
-            data = client.get(ep, symbol=symbol, **params)
-            n = len(data) if isinstance(data, list) else (1 if data else 0)
-            result, detail = ("OK", f"{n} rows") if n else ("EMPTY", "no rows returned")
-        except InvalidKey as e:
-            print(f"\nKey problem: {e}")
-            return 2
-        except RestrictedEndpoint as e:
-            result, detail = "RESTRICTED", str(e).split("(", 1)[-1].rstrip(")")[:60]
-        except FMPError as e:
-            result, detail = "ERROR", str(e)[:60]
-        print(f"{ep:<28} {label:<26} {result:<11} {detail}")
+    print(f"\nProbing company endpoints with {symbol} ...\n")
+    print(f"{'endpoint':<30} {'params':<28} {'result':<11} detail")
+    print("-" * 92)
+    now = time.time()
+    day = lambda offset: time.strftime("%Y-%m-%d", time.localtime(now + offset * DAY))
+    last_bday = next(day(-i) for i in range(1, 8)
+                     if time.localtime(now - i * DAY).tm_wday < 5)
+    dates = {"today": day(0), "month_ago": day(-30), "week_ago": day(-7), "in_2w": day(14),
+             "last_bday": last_bday, "year_ago": day(-365), "two_years_ago": day(-730),
+             "five_years_ago": day(-1826)}
+    try:
+        for ep, params in PROBES:
+            label = " ".join(f"{k}={v}" for k, v in params.items() if k != "page")
+            if ep.startswith("historical-price"):
+                params = dict(params, **{"from": dates["month_ago"], "to": dates["today"]})
+                label = "last 30 days"
+            result, detail = _probe(client, ep, dict(params, symbol=symbol))
+            print(f"{ep:<30} {label:<28} {result:<11} {detail}")
+        print("\nProbing sector/industry and macro endpoints ...\n")
+        print(f"{'endpoint':<30} {'params':<38} {'result':<11} detail")
+        print("-" * 102)
+        for ep, params in MARKET_PROBES:
+            params = {k: v.format(**dates) for k, v in params.items()}
+            label = " ".join(f"{k}={v}" for k, v in params.items() if k not in ("from", "to"))
+            if "from" in params:
+                label = (label + f" {params['from']}..{params['to']}").strip()
+            result, detail = _probe(client, ep, params, peek)
+            print(f"{ep:<30} {label:<38} {result:<11} {detail}")
+    except InvalidKey as e:
+        print(f"\nKey problem: {e}")
+        return 2
     print(f"\nNetwork calls used: {client.stats['network_calls']}")
     return 0
 
@@ -470,7 +604,8 @@ def main(argv):
     cmd = argv[0]
     try:
         if cmd == "check":
-            return _cmd_check((argv[1] if len(argv) > 1 else "AAPL").upper())
+            rest = [a for a in argv[1:] if a != "--peek"]
+            return _cmd_check((rest[0] if rest else "AAPL").upper(), peek="--peek" in argv)
         if cmd == "get" and len(argv) >= 2:
             return _cmd_get(argv[1], argv[2:])
         if cmd == "clear-cache":

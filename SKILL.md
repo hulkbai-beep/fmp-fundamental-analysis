@@ -18,7 +18,11 @@ gave you). If something is missing, say it is missing.
 2. Python 3.8+ is the only requirement (standard library only, no pip install).
    On Windows the command is usually `python` (or `py`); elsewhere `python3`.
 3. Optional: `python scripts/fmp_client.py check` shows the connection in use and which
-   endpoints the plan allows. Run it the first time, or whenever data unexpectedly comes back missing.
+   endpoints the plan allows (company data, plus sector/industry and macro data such as
+   treasury rates and economic indicators). Run it the first time, or whenever data
+   unexpectedly comes back missing.
+4. Requests run in parallel (`FMP_MAX_WORKERS`, default 6). If a proxy returns frequent
+   HTTP 429 or connection errors, set `FMP_MAX_WORKERS=2` (or `1` for one at a time).
 
 If the script exits with "API key problem", walk the user through step 1.
 
@@ -159,4 +163,5 @@ Responses are cached under `~/.cache/fmp-fundamentals` (fundamentals 7 days, pri
 | `python` not found on Windows | Use `py scripts/analyze.py ...` |
 | `certificate verification failed` (proxy) | Proxy certificate not trusted; the user may set `FMP_TLS_VERIFY=0` |
 | `Could not find a working request format` (proxy) | Token or address wrong, or the proxy uses another path/auth scheme: set `FMP_PATH_PREFIX` / `FMP_AUTH_STYLE` from the proxy's docs |
+| `cannot reach ... no response within 30s` | Proxy slow or down: retry in a few minutes; if it keeps happening set `FMP_TIMEOUT=60` and/or `FMP_MAX_WORKERS=2` |
 | Proxy worked before, now `key rejected` | Run `fmp_client.py check` to re-detect; the token may have expired |
