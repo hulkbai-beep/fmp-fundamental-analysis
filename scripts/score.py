@@ -4,16 +4,20 @@ indicators with fixed thresholds, then weighted into one score on the same -2..+
 five labels as the technical-analysis scorecard (Bearish .. Bullish).
 
 - Each indicator maps one number to -2..+2 through the cut points below (a value equal to a cut point
-  takes the band above it). A pillar is the weighted mean of its indicators.
-- An indicator with no data counts as 0 and keeps its weight, so missing data pulls the pillar toward 0.
-  An indicator that does not apply (EV/EBITDA for a bank) is left out and the others are reweighted.
+  takes the band of higher values, e.g. exactly the 25th percentile scores +1, not +2). A pillar is the
+  weighted mean of its indicators.
+- Banks and insurers, REITs and utilities have their own indicator sets and weights (WEIGHTS); the general
+  indicators they leave out are shown as not applicable.
+- An indicator that cannot be computed (no data, a loss, a skipped DCF) counts as 0 and keeps its weight,
+  so missing data pulls the pillar toward 0 and lowers the confidence.
 - Two caps keep the total at Neutral (+0.4) at most: a balance-sheet red line, and a "value trap"
-  (cheap valuation with weak quality and growth).
+  (cheap valuation with weak quality and growth). A third caps the forward-multiple position at +1 when
+  expected EPS growth is under half the historical rate.
 - Rates enter only through the DCF's Treasury-linked discount rate; macro releases are not scored.
 
 score(r) works on the dict analyze() returns and makes no API calls. render(s) prints the report
-section. The rules are documented in references/metrics.md ("Fundamental score"); every change to a
-threshold or weight bumps RULES_VERSION. The score is a rule-based label, not a recommendation.
+section. The rules are documented in references/metrics.md section 12; every change to a threshold or
+weight bumps RULES_VERSION. The score is a rule-based label, not a recommendation.
 """
 from __future__ import annotations
 
@@ -25,8 +29,8 @@ RULES_VERSION = "1.0"
 PILLARS = ("valuation", "quality", "growth", "health")
 PILLAR_WEIGHTS = {"valuation": 0.35, "quality": 0.25, "growth": 0.20, "health": 0.20}
 
-# Indicator weights inside each pillar, by company type. An indicator listed for "general" but not for
-# "financial" is shown as not applicable for banks and insurers.
+# Indicator weights inside each pillar, by company type (analyze.py's sector_kind). An indicator listed for
+# "general" but not for the company's type is shown as not applicable.
 WEIGHTS = {
     "general": {
         "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
@@ -43,7 +47,27 @@ WEIGHTS = {
         "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
         "health": {"piotroski": 0.40, "equity_to_assets": 0.35, "dilution": 0.25},
     },
+    # REITs: depreciation makes GAAP ROIC, FCF / net income and EBIT coverage misleading; current ratio and
+    # Altman Z mean little for a landlord. Coverage is EBITDA / interest.
+    "reit": {
+        "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
+                      "dcf_margin": 0.15, "vs_industry": 0.15},
+        "quality": {"roic_trend": 0.25, "op_margin_trend": 0.30, "gross_margin_stability": 0.25, "sbc_burden": 0.20},
+        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
+    },
+    # Utilities: regulated returns are judged on ROE; capex above operating cash flow (negative FCF), a current
+    # ratio under 1 and a low Altman Z are normal.
+    "utility": {
+        "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
+                      "dcf_margin": 0.15, "vs_industry": 0.15},
+        "quality": {"roe_level": 0.35, "roe_trend": 0.20, "op_margin_trend": 0.20, "gross_margin_stability": 0.10,
+                    "sbc_burden": 0.15},
+        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
+    },
 }
+NA_NOTE = {"financial": "na_financial", "reit": "na_reit", "utility": "na_utility"}
 
 UP = (-2, -1, 0, 1, 2)    # higher is better
 DOWN = (2, 1, 0, -1, -2)  # lower is better
@@ -71,7 +95,10 @@ BANDS = {
     "eps_forward": ((0.0, 0.05, 0.10, 0.20), UP, "pct"),
     "net_debt_ebitda": ((0.0, 1.0, 2.5, 4.0), DOWN, "x"),
     "net_debt_ebitda_reit": ((0.0, 4.0, 6.0, 8.0), DOWN, "x"),
+    "net_debt_ebitda_utility": ((3.0, 4.5, 6.5, 8.0), DOWN, "x"),
     "interest_coverage": ((2.0, 4.0, 8.0, 20.0), UP, "x"),
+    "interest_coverage_reit": ((2.0, 3.0, 4.0, 6.0), UP, "x"),       # EBITDA / interest
+    "interest_coverage_utility": ((1.5, 2.0, 3.0, 4.5), UP, "x"),
     "piotroski": ((2, 4, 7, 8), UP, "num"),                           # F-score scaled to 9 tests
     "current_ratio": ((1.0, 1.5), (-1, 0, 1), "x"),
     "dilution": ((-0.02, -0.005, 0.01, 0.03), DOWN, "pct"),
@@ -86,8 +113,13 @@ VALUE_TRAP_VALUATION = 1.0    # valuation >= this ...
 VALUE_TRAP_BUSINESS = -0.5    # ... while the mean of quality and growth <= this
 SLOWDOWN_HIST_MIN = 0.15      # forward-multiple position capped at +1 when historical EPS growth > 15%
 SLOWDOWN_RATIO = 0.5          # ... and next year's expected EPS growth is under half of it
+BASIS_GAP = 0.10              # analysts' EPS / EBITDA this far from reported: the forward range mixes bases
+COVERAGE_RED_LINE = 1.5       # interest covered less than this in each of the last two fiscal years
+CYCLICAL_MARGIN_RATIO = 1.5   # latest operating margin >= 1.5x its median (and 5pt above it) while
+CYCLICAL_MARGIN_GAP = 0.05    # ... analysts expect EPS to fall: possibly a cyclical peak
 COVERAGE_LOW, COVERAGE_HIGH = 0.6, 0.85
 AGREEMENT_LOW, AGREEMENT_HIGH = 0.5, 0.7
+METHODS_HIGH = 2 / 3          # at least two of three strong valuation indicators agree with the pillar
 PILLAR_DEADBAND = 0.25        # a pillar within +-0.25 counts as neutral for agreement
 
 
@@ -147,26 +179,63 @@ def _fwd_revenue_growth(r):
     return (sum(vals) / len(vals), [e["fy"] for e in _estimates(r)[:2]]) if vals else (None, None)
 
 
+def _fwd_not_positive(r, field):
+    """True when analysts expect a loss (eps_avg) or negative EBITDA (ebitda_avg) in the fiscal year in
+    progress or the next one."""
+    return any(v is not None and v <= 0 for v in (_f(e.get(field)) for e in _estimates(r)[:2]))
+
+
+def _currency_mismatch(r):
+    """(statement currency, price currency) when they differ, e.g. an ADR of a company reporting in JPY:
+    every ratio that mixes the price with statement figures is then off by the exchange rate."""
+    years = r.get("years") or []
+    rep = years[-1].get("currency") if years else None
+    px = (r.get("profile") or {}).get("currency")
+    return (rep, px) if rep and px and rep != px else None
+
+
+def _basis_gap(r, basis_key):
+    """How far analysts' figures for the last reported year sit from the reported ones (eps_basis /
+    ebitda_basis), when the gap is large enough to mean another basis (usually adjusted, non-GAAP)."""
+    gap = _f(((r.get("analyst") or {}).get(basis_key) or {}).get("gap"))
+    return gap if gap is not None and abs(gap) > BASIS_GAP else None
+
+
 # ---------------------------------------------------------------------------- valuation
 def _position(band, key):
     return _ind(key, band["now_pct"], detail={"now": band["now"], "p25": band["p25"], "median": band["median"],
                                               "p75": band["p75"], "from": band["from"], "to": band["to"]})
 
 
-def _multiple_position(r, key, band_key, hist_key):
-    """Where today's forward multiple sits in its 3-year history, else the trailing multiple vs its
-    fiscal-year-end median."""
+def _multiple_position(r, key, band_key, hist_key, basis_key, est_field):
+    """Where today's forward multiple sits in its 3-year history. Falls back to the trailing multiple vs its
+    fiscal-year-end median when there is no forward range, or when analysts' figures are on another basis
+    than the reported ones the range's history is built from (adjusted EPS). Never falls back when the share
+    basis or the price history is broken, or when price and statements are in different currencies."""
     pr = r.get("price_range") or {}
-    band = pr.get(band_key)
-    if band and band.get("now_pct") is not None:
-        return _position(band, key)
+    band, gap, ccy = pr.get(band_key), _basis_gap(r, basis_key), _currency_mismatch(r)
+    if key == "fwd_ev_position" and ccy:  # EV adds price-currency market cap to statement-currency net debt
+        return _missing(key, "currency")
+    if band and gap is None:
+        if band.get("now_pct") is not None:
+            return _position(band, key)
+        return _missing(key, "loss_making")  # a range exists, but today's next-12-month figure is not positive
+    if _fwd_not_positive(r, est_field):
+        return _missing(key, "loss_making")
+    if pr.get("band_problem") in ("share_basis", "price_jump"):
+        return _missing(key, pr["band_problem"])
+    if ccy:
+        return _missing(key, "currency")
     h = (r.get("history_compare") or {}).get(hist_key) or {}
     if h.get("vs_median") is not None and (h.get("n") or 0) >= 3:
-        return _ind(key, h["vs_median"], band="trailing_vs_median", note="trailing_history",
-                    detail={"now": h["current"], "median": h["median"], "n": h["n"]})
-    if pr.get("band_note"):
-        return _missing(key, "no_band")
-    return _missing(key, "no_estimates" if not _estimates(r) else "loss_making")
+        return _ind(key, h["vs_median"], band="trailing_vs_median",
+                    note="adjusted_basis" if gap is not None else "trailing_history",
+                    detail={"now": h["current"], "median": h["median"], "n": h["n"], "basis_gap": gap})
+    if gap is not None:
+        return _missing(key, "adjusted_basis")
+    if not _estimates(r):
+        return _missing(key, "no_estimates")
+    return _missing(key, "no_band" if pr.get("band_note") else "no_data")
 
 
 def _slowdown_cap(ind, r):
@@ -176,41 +245,61 @@ def _slowdown_cap(ind, r):
     g, fy0, fy1 = _fwd_eps_growth(r)
     hist = _f((r.get("cagr") or {}).get("eps"))
     if g is not None and hist is not None and hist > SLOWDOWN_HIST_MIN and g < hist * SLOWDOWN_RATIO:
+        if ind["note"]:
+            ind["detail"]["base_note"] = ind["note"]  # e.g. trailing_history: keep saying what the value is
         ind["score"], ind["note"] = 1, "growth_slowdown"
         ind["detail"].update(capped_from=2, eps_growth_next=g, eps_cagr=hist, fy_from=fy0, fy_to=fy1)
 
 
 def valuation(r, kind):
     d, out = r.get("dcf") or {}, {}
-    out["fwd_pe_position"] = _multiple_position(r, "fwd_pe_position", "pe_band", "pe")
+    out["fwd_pe_position"] = _multiple_position(r, "fwd_pe_position", "pe_band", "pe", "eps_basis", "eps_avg")
     _slowdown_cap(out["fwd_pe_position"], r)
     if kind == "financial":
-        h = (r.get("history_compare") or {}).get("pb") or {}
-        out["pb_vs_history"] = (_ind("pb_vs_history", h["vs_median"], detail={"now": h["current"], "median": h["median"],
-                                                                              "n": h["n"]})
-                                if h.get("vs_median") is not None and (h.get("n") or 0) >= 3 else _missing("pb_vs_history", "short_history"))
+        out["pb_vs_history"] = _pb_vs_history(r)
     else:
-        out["fwd_ev_position"] = _multiple_position(r, "fwd_ev_position", "ev_band", "ev_ebitda")
+        out["fwd_ev_position"] = _multiple_position(r, "fwd_ev_position", "ev_band", "ev_ebitda", "ebitda_basis",
+                                                    "ebitda_avg")
         _slowdown_cap(out["fwd_ev_position"], r)
         out["implied_growth_gap"] = _implied_growth_gap(r, d)
-        mos = _f(d.get("margin_of_safety"))
-        if "skipped" in d:
-            out["dcf_margin"] = _ind("dcf_margin", status="n/a", note="no_dcf")
-        elif mos is None:
-            out["dcf_margin"] = _missing("dcf_margin", "no_data")
-        else:
-            vps = _f(d.get("value_per_share"))
-            out["dcf_margin"] = _ind("dcf_margin", mos, note="dcf_negative" if vps is not None and vps <= 0 else None,
-                                     detail={"value": vps, "low": d.get("range_low"), "high": d.get("range_high")})
+        out["dcf_margin"] = _dcf_margin(r, d)
     out["vs_industry"] = _vs_industry(r)
     return out
+
+
+def _pb_vs_history(r):
+    key, problem = "pb_vs_history", (r.get("price_range") or {}).get("band_problem")
+    if problem in ("share_basis", "price_jump"):
+        return _missing(key, problem)
+    if _currency_mismatch(r):
+        return _missing(key, "currency")
+    h = (r.get("history_compare") or {}).get("pb") or {}
+    if h.get("vs_median") is None or (h.get("n") or 0) < 3:
+        return _missing(key, "short_history")
+    return _ind(key, h["vs_median"], detail={"now": h["current"], "median": h["median"], "n": h["n"]})
+
+
+def _dcf_margin(r, d):
+    key = "dcf_margin"
+    if _currency_mismatch(r):
+        return _missing(key, "currency")
+    if "skipped" in d:  # starting FCF not positive: no DCF support for the price, so it counts as missing
+        return _missing(key, "no_dcf")
+    mos = _f(d.get("margin_of_safety"))
+    if mos is None:
+        return _missing(key, "no_data")
+    vps = _f(d.get("value_per_share"))
+    return _ind(key, mos, note="dcf_negative" if vps is not None and vps <= 0 else None,
+                detail={"value": vps, "low": d.get("range_low"), "high": d.get("range_high")})
 
 
 def _implied_growth_gap(r, d):
     """Growth the price implies (reverse DCF) minus the growth analysts expect (or history delivered)."""
     key = "implied_growth_gap"
+    if _currency_mismatch(r):
+        return _missing(key, "currency")
     if "skipped" in d:
-        return _ind(key, status="n/a", note="no_dcf")
+        return _missing(key, "no_dcf")
     ref, fys = _fwd_revenue_growth(r)
     note, src = None, "analysts"
     if ref is None:
@@ -233,6 +322,8 @@ def _vs_industry(r):
     sc = (r.get("market") or {}).get("sector")
     if not sc:
         return _missing("vs_industry", "no_market")
+    if _currency_mismatch(r):  # the company's P/E divides a price-currency market cap by statement earnings
+        return _missing("vs_industry", "currency")
     ipe = sc.get("industry_pe") or {}
     if sc.get("vs_industry") is not None:
         return _ind("vs_industry", sc["vs_industry"], detail={
@@ -270,10 +361,10 @@ def _trend(key, years, field, clip=None):
 def quality(r, kind):
     years, out = r.get("years") or [], {}
     L = years[-1] if years else {}
-    if kind == "financial":
+    if kind in ("financial", "utility"):
         out["roe_level"] = _level("roe_level", years, "roe")
         out["roe_trend"] = _trend("roe_trend", years, "roe", clip=0.5)
-    else:
+    if kind != "financial":
         out["roic_level"] = _level("roic_level", years, "roic")
         out["roic_trend"] = _trend("roic_trend", years, "roic", clip=0.5)
         out["op_margin_trend"] = _trend("op_margin_trend", years, "operating_margin")
@@ -313,12 +404,16 @@ def growth(r, kind):
     out["revenue_forward"] = (_ind("revenue_forward", fg, detail={"fys": fys}) if fg is not None
                               else _missing("revenue_forward", "no_estimates"))
     g, fy0, fy1 = _fwd_eps_growth(r)
-    if g is not None:
+    est = _estimates(r)
+    first = _f(est[0].get("eps_avg")) if est else None
+    if g is not None:  # includes a swing to an expected loss next year (growth <= -100%, scores -2)
         out["eps_forward"] = _ind("eps_forward", g, detail={"fy_from": fy0, "fy_to": fy1})
+    elif first is not None and first <= 0:  # a loss expected this year: growth is not meaningful
+        out["eps_forward"] = _missing("eps_forward", "loss_making")
     elif _f(cg.get("eps")) is not None:
         out["eps_forward"] = _ind("eps_forward", cg["eps"], note="historical_eps", detail={"years": len(years) - 1})
     else:
-        out["eps_forward"] = _missing("eps_forward", "no_estimates" if not _estimates(r) else "loss_making")
+        out["eps_forward"] = _missing("eps_forward", "no_estimates" if len(est) < 2 else "no_data")
     return out
 
 
@@ -337,9 +432,10 @@ def health(r, kind):
         out["equity_to_assets"] = _ind("equity_to_assets", eta) if eta is not None else _missing("equity_to_assets", "no_data")
     else:
         out["net_debt_ebitda"] = _net_debt_ebitda(L, kind)
-        out["interest_coverage"] = _coverage(L)
-        out["altman"] = _altman(r.get("altman"))
-        out["current_ratio"] = _current_ratio(L)
+        out["interest_coverage"] = _coverage(L, kind)
+        if kind == "general":
+            out["altman"] = _altman(r.get("altman"), _currency_mismatch(r))
+            out["current_ratio"] = _current_ratio(L)
     sh = [_f(y.get("shares_yoy")) for y in years]
     sh = [v for v in sh if v is not None]
     out["dilution"] = (_ind("dilution", sum(sh) / len(sh), detail={"years": len(sh)}) if sh
@@ -348,39 +444,56 @@ def health(r, kind):
 
 
 def _net_debt_ebitda(L, kind):
-    key, band = "net_debt_ebitda", "net_debt_ebitda_reit" if kind == "reit" else None
+    key = "net_debt_ebitda"
+    band = {"reit": "net_debt_ebitda_reit", "utility": "net_debt_ebitda_utility"}.get(kind)
+    kind_note = kind if band else None  # REITs and utilities: looser bands, say so
     nd, eb = _f(L.get("net_debt")), _f(L.get("ebitda"))
-    note = "reit" if kind == "reit" else None
     if nd is None:
         return _missing(key, "no_data", band)
     if eb is None or eb <= 0:
-        return _ind(key, band=band, score=-2 if nd > 0 else 0, note="ebitda_not_positive", detail={"net_debt": nd})
-    return _ind(key, nd / eb, band=band, note="net_cash" if nd < 0 else note, detail={"net_debt": nd, "ebitda": eb})
+        return _ind(key, band=band, score=-2 if nd > 0 else 0, note="ebitda_not_positive",
+                    detail={"net_debt": nd, "base_note": kind_note})
+    if nd < 0:
+        return _ind(key, nd / eb, band=band, note="net_cash", detail={"net_debt": nd, "ebitda": eb, "base_note": kind_note})
+    return _ind(key, nd / eb, band=band, note=kind_note, detail={"net_debt": nd, "ebitda": eb})
 
 
-def _coverage(L):
+def _coverage_ratio(y, kind):
+    """One fiscal year's interest cover: EBIT / interest, or EBITDA / interest for a REIT (its EBIT is after
+    heavy property depreciation). None without a positive interest expense."""
+    ie, num = _f(y.get("interest_expense")), _f(y.get("ebitda" if kind == "reit" else "ebit"))
+    return num / ie if ie and ie > 0 and num is not None else None
+
+
+def _coverage(L, kind):
     key = "interest_coverage"
-    ie, ebit = _f(L.get("interest_expense")), _f(L.get("ebit"))
+    band = {"reit": "interest_coverage_reit", "utility": "interest_coverage_utility"}.get(kind)
+    ie = _f(L.get("interest_expense"))
     if not ie or ie <= 0:
-        if (_f(L.get("debt")) or 0) <= 0 or (_f(L.get("net_debt")) or 0) < 0:
-            return _ind(key, score=2, note="no_interest")
-        return _missing(key, "no_data")
-    if ebit is None:
-        return _missing(key, "no_data")
-    return _ind(key, ebit / ie)
+        debt, nd = _f(L.get("debt")), _f(L.get("net_debt"))
+        if (debt is not None and debt <= 0) or (nd is not None and nd < 0):  # unknown debt is not zero debt
+            return _ind(key, band=band, score=2, note="no_interest")
+        return _missing(key, "no_data", band)
+    cov = _coverage_ratio(L, kind)
+    if cov is None:
+        return _missing(key, "no_data", band)
+    return _ind(key, cov, band=band, note={"reit": "ebitda_coverage", "utility": "utility"}.get(kind))
 
 
-def _altman(alt):
+def _altman(alt, ccy=None):
+    """Altman zone score. With statements in another currency than the price, Z (which divides market cap by
+    liabilities) is off by the exchange rate, so only Z'' (book equity) is used."""
     key = "altman"
     if not alt:
         return _missing(key, "no_data")
-    zones = [z for z in (alt.get("z_zone"), alt.get("z2_zone")) if z]
+    z, z_zone = (None, None) if ccy else (alt.get("z"), alt.get("z_zone"))
+    zones = [zz for zz in (z_zone, alt.get("z2_zone")) if zz]
     if not zones:
         return _missing(key, "no_data")
-    score = -2 if len(zones) == 2 and all(z == "distress" for z in zones) else ALTMAN_SCORES[zones[0]]
-    value = alt.get("z") if alt.get("z") is not None else alt.get("z_double_prime")
-    ind = _ind(key, _f(value), score=score, detail={"z": alt.get("z"), "z_zone": alt.get("z_zone"),
-                                                     "z2": alt.get("z_double_prime"), "z2_zone": alt.get("z2_zone")})
+    score = -2 if len(zones) == 2 and all(zz == "distress" for zz in zones) else ALTMAN_SCORES[zones[0]]
+    value = z if z is not None else alt.get("z_double_prime")
+    ind = _ind(key, _f(value), score=score, note="currency_z2" if ccy else None,
+               detail={"z": z, "z_zone": z_zone, "z2": alt.get("z_double_prime"), "z2_zone": alt.get("z2_zone")})
     ind["unit"] = "num"
     return ind
 
@@ -407,14 +520,21 @@ def red_lines(r, kind):
             out.append({"type": "negative_equity", "detail": {"equity": L["equity"]}})
         return out
     alt = r.get("altman") or {}
-    if alt.get("z_zone") == "distress" and alt.get("z2_zone") == "distress":
+    # Altman Z means little for REITs and utilities, and Z is off by the exchange rate when currencies differ
+    if (kind == "general" and not _currency_mismatch(r)
+            and alt.get("z_zone") == "distress" and alt.get("z2_zone") == "distress"):
         out.append({"type": "altman_distress", "detail": {"z": alt.get("z"), "z2": alt.get("z_double_prime")}})
-    ie, ebit, nd = _f(L.get("interest_expense")), _f(L.get("ebit")), _f(L.get("net_debt"))
-    if ie and ie > 0 and ebit is not None and nd is not None and nd > 0 and ebit / ie < 1.5:
-        out.append({"type": "interest_coverage", "detail": {"coverage": ebit / ie}})
-    fcfs = [_f(y.get("fcf")) for y in years[-2:]]
-    if len(fcfs) == 2 and all(v is not None and v < 0 for v in fcfs) and nd is not None and nd > 0:
-        out.append({"type": "cash_burn", "detail": {"fcf": fcfs, "net_debt": nd}})
+    nd = _f(L.get("net_debt"))
+    # two years running, so that a single year's one-off charge does not trip it
+    covs = [_coverage_ratio(y, kind) for y in years[-2:]]
+    if (nd is not None and nd > 0 and len(covs) == 2
+            and all(c is not None and c < COVERAGE_RED_LINE for c in covs)):
+        out.append({"type": "interest_coverage", "detail": {"coverage": covs, "basis": "ebitda" if kind == "reit" else "ebit"}})
+    # REITs and utilities fund growth capex with debt and new shares, so for them only operating cash flow counts
+    field = "fcf" if kind == "general" else "ocf"
+    flows = [_f(y.get(field)) for y in years[-2:]]
+    if len(flows) == 2 and all(v is not None and v < 0 for v in flows) and nd is not None and nd > 0:
+        out.append({"type": "cash_burn", "detail": {field: flows, "net_debt": nd}})
     return out
 
 
@@ -423,22 +543,23 @@ PILLAR_FUNCS = {"valuation": valuation, "quality": quality, "growth": growth, "h
 
 
 def _pillar(name, inds, kind):
+    """Weights the indicators of the company type's set; general-set indicators the type does not use are
+    listed as not applicable (weight 0) for display."""
     w = WEIGHTS[kind][name]
-    # indicators of the general set that do not apply to this company type, for display
-    for k in WEIGHTS["general"][name]:
-        if k not in w and k not in inds:
-            inds[k] = _ind(k, status="n/a", note="financial")
     rows = []
-    for k, ind in inds.items():
+    for k in list(w) + [k for k in WEIGHTS["general"][name] if k not in w]:
+        if k in w:
+            ind = inds.get(k) or _missing(k, "no_data")
+            ind["weight"] = w[k] if ind["status"] != "n/a" else 0.0
+        else:
+            ind = _ind(k, status="n/a", note=NA_NOTE.get(kind))
+            ind["weight"] = 0.0
         ind["pillar"] = name
-        ind["weight"] = w.get(k, 0.0) if ind["status"] != "n/a" else 0.0
         rows.append(ind)
     total_w = sum(i["weight"] for i in rows)
     for i in rows:
         i["weight_share"] = i["weight"] / total_w if total_w else 0.0
         i["contribution"] = i["weight_share"] * i["score"]
-    order = list(w) + [k for k in WEIGHTS["general"][name] if k not in w]
-    rows.sort(key=lambda i: order.index(i["key"]) if i["key"] in order else len(order))
     ok_w = sum(i["weight"] for i in rows if i["status"] == "ok")
     score = sum(i["contribution"] for i in rows)
     return {"score": round(score, 2), "weight": PILLAR_WEIGHTS[name],
@@ -457,10 +578,30 @@ def _sign(x, dead=PILLAR_DEADBAND):
     return 0 if abs(x) <= dead else (1 if x > 0 else -1)
 
 
+def _is_value_trap(v, q, g):
+    # rounded: pillar scores carry two decimals, and e.g. (0.4 - 1.4) / 2 is -0.49999999999999994 in floats
+    return v >= VALUE_TRAP_VALUATION and round((q + g) / 2, 6) <= VALUE_TRAP_BUSINESS
+
+
+def _cyclical_peak(r):
+    """The latest operating margin far above its own median while analysts expect EPS to fall: the trend,
+    growth and DCF indicators may be reading a cyclical peak."""
+    years = r.get("years") or []
+    ms = [m for m in (_f(y.get("operating_margin")) for y in years) if m is not None]
+    latest = _f(years[-1].get("operating_margin")) if years else None
+    g = _fwd_eps_growth(r)[0]
+    if latest is None or len(ms) < 4 or g is None or g >= 0:
+        return None
+    med = statistics.median(ms)
+    if latest - med >= CYCLICAL_MARGIN_GAP and (med <= 0 or latest >= med * CYCLICAL_MARGIN_RATIO):
+        return {"margin": latest, "median": med, "years": len(ms), "eps_growth_next": g}
+    return None
+
+
 def _conflicts(p, inds, r, caps):
     out = []
     v, q, g = p["valuation"]["score"], p["quality"]["score"], p["growth"]["score"]
-    if v >= VALUE_TRAP_VALUATION and (q + g) / 2 <= VALUE_TRAP_BUSINESS:
+    if _is_value_trap(v, q, g):
         out.append({"type": "value_trap", "values": {"valuation": v, "quality": q, "growth": g}})
     if q >= 1.0 and v <= -1.0:
         out.append({"type": "quality_premium", "values": {"valuation": v, "quality": q}})
@@ -482,8 +623,14 @@ def _conflicts(p, inds, r, caps):
     if vi and vi["status"] == "ok" and vi["score"] > 0 and pctl is not None and pctl >= 0.8:
         out.append({"type": "group_expensive", "values": {"percentile": pctl, "group": vi["detail"].get("group")}})
     eb = (r.get("analyst") or {}).get("eps_basis")
-    if eb and eb.get("gap") is not None and eb["gap"] > 0.10:
+    if eb and eb.get("gap") is not None and eb["gap"] > BASIS_GAP:
         out.append({"type": "adjusted_eps", "values": eb})
+    peak = _cyclical_peak(r)
+    if peak:
+        out.append({"type": "cyclical_peak", "values": peak})
+    ccy = _currency_mismatch(r)
+    if ccy:
+        out.append({"type": "currency", "values": {"statements": ccy[0], "price": ccy[1]}})
     for c in caps:
         if c["type"] != "value_trap":
             out.append({"type": "red_line", "values": c})
@@ -506,8 +653,12 @@ def _confidence(p, inds, total, r, caps):
     if len(years) < 4:
         issues.append("short_history")
     eb = (r.get("analyst") or {}).get("eps_basis")
-    if eb and eb.get("gap") is not None and eb["gap"] > 0.10:
+    if eb and eb.get("gap") is not None and eb["gap"] > BASIS_GAP:
         issues.append("adjusted_eps")
+    if _currency_mismatch(r):
+        issues.append("currency")
+    if _cyclical_peak(r):
+        issues.append("cyclical_peak")
     route = (((r.get("meta") or {}).get("connection") or {}).get("route") or "official")
     if not route.startswith("official"):
         issues.append("proxy_data")
@@ -515,7 +666,7 @@ def _confidence(p, inds, total, r, caps):
         issues.append("capped")
     if coverage < COVERAGE_LOW or agree < AGREEMENT_LOW or len(years) < 3:
         level = "low"
-    elif (coverage >= COVERAGE_HIGH and agree >= AGREEMENT_HIGH and (methods is None or methods >= 0.67)
+    elif (coverage >= COVERAGE_HIGH and agree >= AGREEMENT_HIGH and (methods is None or methods >= METHODS_HIGH - 1e-9)
           and not issues):
         level = "high"
     else:
@@ -534,7 +685,7 @@ def _value_range(r):
     now = next((pt for pt in pr.get("forward") or [] if pt.get("at") == "now"), None)
     if now and now.get("pe"):
         lo, mid, hi, basis = now["pe"]["low"], now["pe"]["base"], now["pe"]["high"], "fwd_pe"
-    elif d.get("range_low") is not None and (d.get("value_per_share") or 0) > 0:
+    elif d.get("range_low") is not None and (d.get("value_per_share") or 0) > 0 and not _currency_mismatch(r):
         lo, mid, hi, basis = d["range_low"], d["value_per_share"], d["range_high"], "dcf"
     else:
         return None
@@ -547,20 +698,20 @@ NOT_SCORED = ("analyst_targets", "week52", "volatility", "peers", "macro")
 
 def score(r):
     kind = r.get("sector_kind") or "general"
-    wkind = "financial" if kind == "financial" else "general"
+    kind = kind if kind in WEIGHTS else "general"
     pillars, inds = {}, {}
     for name in PILLARS:
         got = PILLAR_FUNCS[name](r, kind)
-        pillars[name] = _pillar(name, got, wkind)
+        pillars[name] = _pillar(name, got, kind)
         inds.update({i["key"]: i for i in pillars[name]["indicators"]})
     raw = sum(PILLAR_WEIGHTS[n] * pillars[n]["score"] for n in PILLARS)
     caps = [{"type": c["type"], "detail": c["detail"]} for c in red_lines(r, kind)]
     v, q, g = (pillars[n]["score"] for n in ("valuation", "quality", "growth"))
-    if v >= VALUE_TRAP_VALUATION and (q + g) / 2 <= VALUE_TRAP_BUSINESS:
+    if _is_value_trap(v, q, g):
         caps.append({"type": "value_trap", "detail": {"valuation": v, "quality": q, "growth": g}})
     total = round(min(raw, CAP) if caps else raw, 2)
     return {
-        "version": RULES_VERSION, "kind": wkind, "score": total, "raw_score": round(raw, 2), "label": label_of(total),
+        "version": RULES_VERSION, "kind": kind, "score": total, "raw_score": round(raw, 2), "label": label_of(total),
         "capped": bool(caps) and raw > CAP, "caps": caps, "cap_limit": CAP,
         "pillar_order": list(PILLARS), "pillars": pillars,
         "confidence": _confidence(pillars, inds, total, r, caps),
@@ -588,25 +739,44 @@ IND_NAMES = {
 }
 NOTES = {
     "trailing_history": "fallback: trailing multiple vs its fiscal-year-end median (no forward range)",
+    "adjusted_basis": "analysts' figures are on another basis than reported ones (usually adjusted), which the forward "
+                      "range's history would mix: trailing multiple vs its fiscal-year-end median used instead",
     "growth_slowdown": "capped at +1: expected EPS growth is under half the historical rate",
     "historical_growth": "compared with historical revenue CAGR (no analyst estimates)",
-    "historical_eps": "fallback: historical EPS CAGR (no analyst estimates)",
+    "historical_eps": "fallback: historical EPS CAGR (no usable analyst EPS estimates)",
     "sector_pe": "compared with the sector (no industry P/E)",
     "implied_below_range": "price implies FCF shrinking more than 50% a year",
     "implied_above_range": "price implies FCF growth above 100% a year",
     "negative_fcf": "free cash flow negative in the last fiscal year",
-    "net_cash": "net cash", "reit": "REIT thresholds (leverage is structurally higher)",
+    "net_cash": "net cash", "reit": "REIT thresholds, since leverage is structurally higher",
+    "utility": "utility thresholds, since regulated utilities carry structurally more debt",
+    "ebitda_coverage": "EBITDA / interest, since a REIT's EBIT is after property depreciation",
     "ebitda_not_positive": "EBITDA not positive", "no_interest": "no interest expense",
     "cash_rich": "below 1 but offset by net cash or FCF margin >= 10%",
-    "no_estimates": "no analyst estimates", "loss_making": "earnings not positive", "no_band": "no usable multiple history",
-    "no_dcf": "DCF not applicable", "dcf_negative": "DCF value is not positive (cash flows negative)", "no_market": "no industry data (--no-market or unavailable)",
-    "short_history": "not enough fiscal years", "no_data": "no data", "financial": "not used for banks / insurers",
+    "no_estimates": "no analyst estimates", "loss_making": "earnings not positive (reported or expected)",
+    "no_band": "no usable multiple history",
+    "share_basis": "statement share counts are not on today's basis (ADR ratio or unadjusted split), so the "
+                   "multiple history is not comparable",
+    "price_jump": "a one-day price move above 50% (possibly an unadjusted split), so the multiple history is not "
+                  "comparable",
+    "currency": "statements and price are in different currencies, so this ratio is off by the exchange rate",
+    "currency_z2": "Z'' only: statements and price are in different currencies, which distorts Z",
+    "no_dcf": "no DCF: starting FCF not positive", "dcf_negative": "DCF value is not positive (cash flows negative)",
+    "no_market": "no industry data (--no-market or unavailable)",
+    "short_history": "not enough fiscal years", "no_data": "no data",
+    "na_financial": "not used for banks and insurers",
+    "na_reit": "not used for REITs (depreciation and the business model distort it)",
+    "na_utility": "not used for utilities (regulated and capital-heavy)",
 }
+# What the value column shows for an indicator scored from a condition rather than a number.
+VALUE_TEXT = {"negative_fcf": "FCF < 0", "no_interest": "no interest", "ebitda_not_positive": "EBITDA <= 0",
+              "implied_below_range": "< -50%/yr", "implied_above_range": "> 100%/yr", "dcf_negative": "<= -100%"}
 CAP_TEXT = {
     "value_trap": "value trap: valuation is cheap while quality and growth are weak",
     "altman_distress": "Altman Z and Z'' both in the distress zone",
-    "interest_coverage": "EBIT covers interest less than 1.5x with net debt",
-    "cash_burn": "free cash flow negative two years running with net debt",
+    "interest_coverage": "interest covered less than 1.5x (EBIT; EBITDA for REITs) in each of the last two fiscal "
+                         "years, with net debt",
+    "cash_burn": "free cash flow (operating cash flow for REITs and utilities) negative two years running, with net debt",
     "negative_equity": "shareholders' equity not positive",
 }
 CONFLICT_TEXT = {
@@ -616,10 +786,34 @@ CONFLICT_TEXT = {
                         "point opposite ways; the gap usually comes from the growth assumption.",
     "growth_slowdown": "Today's multiple is low in its history, but expected EPS growth is under half the historical "
                        "rate, so the multiple may not return to its median.",
-    "group_expensive": "Cheap against its group, but the group itself sits in the top fifth of its own P/E history.",
+    "group_expensive": "Cheap against its {group}, but the {group} itself sits in the top fifth of its own P/E history.",
     "adjusted_eps": "Analysts' EPS is about {gap} above reported EPS (adjusted basis), so forward P/E looks lower than GAAP P/E.",
+    "cyclical_peak": "Operating margin ({margin}) is far above its {years}-year median ({median}) while analysts expect "
+                     "EPS to fall ({growth}): rising margins, growth and the DCF may be reading a cyclical peak.",
+    "currency": "Statements are in {statements} and the price in {price}: the DCF, reverse DCF, P/E vs industry, EV and "
+                "trailing multiples and Altman Z (Z'' kept) are left out, since they would be off by the exchange rate.",
     "red_line": "Balance-sheet red line: {what}.",
 }
+ISSUE_TEXT = {"short_history": "fewer than 4 fiscal years", "adjusted_eps": "analyst EPS on an adjusted basis",
+              "proxy_data": "data from a third-party proxy", "capped": "a cap rule triggered",
+              "currency": "statements and price in different currencies",
+              "cyclical_peak": "operating margin possibly at a cyclical peak"}
+
+
+def conflict_text(x):
+    v, t = x["values"], CONFLICT_TEXT[x["type"]]
+    if x["type"] == "adjusted_eps":
+        return t.format(gap=f"{v['gap'] * 100:.0f}%")
+    if x["type"] == "red_line":
+        return t.format(what=CAP_TEXT.get(v["type"], v["type"]))
+    if x["type"] == "group_expensive":
+        return t.format(group=v.get("group") or "group")
+    if x["type"] == "cyclical_peak":
+        return t.format(margin=f"{v['margin'] * 100:.1f}%", median=f"{v['median'] * 100:.1f}%", years=v["years"],
+                        growth=f"{v['eps_growth_next'] * 100:+.0f}%")
+    if x["type"] == "currency":
+        return t.format(**v)
+    return t
 
 
 def _sc(x):
@@ -635,15 +829,20 @@ def fmt_value(v, unit):
         return "n/a"
     if unit == "pct":
         return f"{v * 100:.1f}%"
-    if unit == "pctile":
-        return f"{_ordinal(round(v * 100))} percentile"
+    if unit == "pctile":  # as the price-range section words it
+        if v <= 0:
+            return "below every day of its 3-year range"
+        if v >= 1:
+            return "above every day of its 3-year range"
+        return f"{_ordinal(min(99, max(1, round(v * 100))))} percentile"
     if unit == "pt":
-        return f"{v * 100:+.1f}pt"
+        t = f"{abs(v) * 100:.1f}"
+        return f"{'' if float(t) == 0 else '+' if v > 0 else '-'}{t}pt"  # no sign on a change that rounds to zero
     if unit == "pp":
         return f"{v * 100:.1f}pt"
     if unit == "x":
         return f"{v:.2f}x"
-    return f"{v:g}" if float(v).is_integer() else f"{v:.2f}"
+    return f"{v:.2f}".rstrip("0").rstrip(".")
 
 
 def rule_text(ind):
@@ -674,8 +873,9 @@ def render(s):
     if s["caps"]:
         head += f" (capped at {s['cap_limit']:+.1f} from {s['raw_score']:+.2f})" if s["capped"] else " (cap rule triggered)"
     out.append(head + ". Score = 0.35 x valuation + 0.25 x quality + 0.20 x growth + 0.20 x financial health; "
-               "each pillar is -2..+2. Labels: > +1.2 Bullish, > +0.4 Moderately bullish, -0.4..+0.4 Neutral, "
-               "< -0.4 Moderately bearish, < -1.2 Bearish. A rule-based label, not a recommendation.")
+               "each pillar is -2..+2. Labels: above +1.2 Bullish, above +0.4 Moderately bullish, -0.4 to +0.4 Neutral, "
+               "below -0.4 Moderately bearish, below -1.2 Bearish; a score exactly on a bound takes the label nearer "
+               "Neutral. A rule-based label, not a recommendation.")
     out.append("")
     out.append("| Pillar | Weight | Score | Contribution | Data coverage |")
     out.append("|---|---|---|---|---|")
@@ -691,9 +891,11 @@ def render(s):
             if i["status"] == "n/a":
                 continue
             val = fmt_value(i["value"], i["unit"]) if i["status"] == "ok" else "n/a"
-            if i["note"] == "dcf_negative":
-                val = "<= -100%"
-            note = f" ({NOTES.get(i['note'], i['note'])})" if i["note"] else ""
+            val = VALUE_TEXT.get(i["note"], val) if i["status"] == "ok" else val
+            if i["key"] == "piotroski" and i["status"] == "ok" and i["detail"]["out_of"] != 9:
+                val = f"{i['detail']['score']} of {i['detail']['out_of']} tests ({val} of 9)"
+            notes = [n for n in (i["note"], i["detail"].get("base_note")) if n]
+            note = f" ({'; '.join(NOTES.get(n, n) for n in notes)})" if notes else ""
             sc = _sc(i["score"]) if i["status"] == "ok" else "0 (missing)"
             out.append(f"| {PILLAR_NAMES[n]} | {IND_NAMES[i['key']]}{note} | {val} | {sc} | "
                        f"{i['weight_share'] * 100:.0f}% | {rule_text(i)} |")
@@ -702,18 +904,11 @@ def render(s):
                    f". The total is held at {s['cap_limit']:+.1f} (Neutral) at most.")
     if s["conflicts"]:
         out.append("\n**Conflicts:**")
-        for x in s["conflicts"]:
-            t = CONFLICT_TEXT[x["type"]]
-            if x["type"] == "adjusted_eps":
-                t = t.format(gap=f"{x['values']['gap'] * 100:.0f}%")
-            elif x["type"] == "red_line":
-                t = t.format(what=CAP_TEXT.get(x["values"]["type"], x["values"]["type"]))
-            out.append(f"- {t}")
+        out += [f"- {conflict_text(x)}" for x in s["conflicts"]]
     reasons = [f"data coverage {c['coverage'] * 100:.0f}%", f"pillar agreement {c['agreement'] * 100:.0f}%"]
     if c["methods_agreement"] is not None:
         reasons.append(f"valuation methods agreeing {c['methods_agreement'] * 100:.0f}%")
-    reasons += [{"short_history": "fewer than 4 fiscal years", "adjusted_eps": "analyst EPS on an adjusted basis",
-                 "proxy_data": "data from a third-party proxy", "capped": "a cap rule triggered"}[i] for i in c["issues"]]
+    reasons += [ISSUE_TEXT[i] for i in c["issues"]]
     out.append(f"\nConfidence {c['level']}: " + "; ".join(reasons) + ".")
     vr = s.get("value_range")
     if vr:

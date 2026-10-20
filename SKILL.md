@@ -142,6 +142,10 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   - Banks / insurers: ignore EV multiples, FCF, DCF, gross margin and Altman Z. Focus on ROE,
     P/B, P/E, book-value growth and leverage.
   - REITs: use operating cash flow / P/FCF as an FFO proxy; higher leverage is normal.
+  - Utilities (not independent power producers): negative FCF and net debt of 5-6x EBITDA are
+    normal; judge earnings growth, interest cover and leverage against other utilities.
+  - Exchanges, financial data providers and insurance brokers are fee-based and analysed like
+    other companies, not as banks or insurers.
 - **Fundamental score: a summary of the numbers, not a verdict.** The report opens with a
   rule-based score (its rules version is printed): valuation 35%, quality 25%, growth 20% and
   financial health 20%, each pillar -2..+2 from fixed indicator bands, with a label on the

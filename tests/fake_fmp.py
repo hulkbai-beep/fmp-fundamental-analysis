@@ -9,6 +9,8 @@ Scenarios:
   QUAL  a growing, profitable, net-cash company whose forward P/E sits near the bottom of its range
   TRAP  a shrinking, indebted company burning cash, on a low multiple
   BANK  a regional bank (financial-sector rules)
+  EXCH  an exchange / data company: in the financial sector, but analysed like other companies
+  UTIL  a regulated utility: capex above operating cash flow (negative FCF), high leverage
 """
 from __future__ import annotations
 
@@ -121,7 +123,18 @@ def _scenarios():
                     interest=[0.0] * 5, eps_growth_est=[0.05, 0.06, 0.06], rev_growth_est=[0.04, 0.04, 0.04],
                     multiple_now=11.0, multiple_mid=12.0, sector="Financial Services", industry="Banks - Regional",
                     equity_ratio=0.10, asset_turn=15.0)
-    return {"QUAL": qual, "TRAP": trap, "BANK": bank}
+    exch = _company("EXCH", revenue=[5e9 * x for x in g], gm=[0.80] * 5, om=[0.50] * 5, shares=[0.10e9] * 5,
+                    cash=[1e9] * 5, debt=[4e9] * 5, sbc_pct=0.02, fcf_ratio=[1.1] * 5, interest=[0.15e9] * 5,
+                    eps_growth_est=[0.10, 0.10, 0.10], rev_growth_est=[0.10, 0.09, 0.09],
+                    multiple_now=28.0, multiple_mid=30.0, sector="Financial Services",
+                    industry="Financial - Data & Stock Exchanges")
+    u = [1.0, 1.04, 1.08, 1.12, 1.17]
+    util = _company("UTIL", revenue=[30e9 * x for x in u], gm=[0.45] * 5, om=[0.25] * 5, shares=[0.75e9 + 0.01e9 * i for i in range(5)],
+                    cash=[1e9] * 5, debt=[44e9, 46e9, 48e9, 50e9, 52e9], sbc_pct=0.003, fcf_ratio=[-0.2] * 5,
+                    interest=[2.2e9, 2.3e9, 2.4e9, 2.5e9, 2.6e9], eps_growth_est=[0.06, 0.06, 0.06],
+                    rev_growth_est=[0.04, 0.04, 0.04], multiple_now=16.0, multiple_mid=18.0, sector="Utilities",
+                    industry="Regulated Electric", beta=0.5, equity_ratio=0.28, asset_turn=4.5)
+    return {"QUAL": qual, "TRAP": trap, "BANK": bank, "EXCH": exch, "UTIL": util}
 
 
 SCENARIOS = _scenarios()
@@ -137,7 +150,8 @@ def _market():
            for d in _days(TODAY - dt.timedelta(days=400), TODAY)]
     group_pe = {}
     for name, mid in (("Technology", 32.0), ("Software - Application", 34.0), ("Consumer Cyclical", 22.0),
-                      ("Department Stores", 12.0), ("Financial Services", 15.0), ("Banks - Regional", 12.5)):
+                      ("Department Stores", 12.0), ("Financial Services", 15.0), ("Banks - Regional", 12.5),
+                      ("Financial - Data & Stock Exchanges", 30.0), ("Utilities", 18.0), ("Regulated Electric", 17.0)):
         rows = []
         for j, d in enumerate(_days(TODAY - dt.timedelta(days=5 * 365 + 2), TODAY)):
             rows.append({"date": d.isoformat(), "pe": round(mid * (1 + 0.15 * math.sin(j / 90)), 2), "exchange": "NASDAQ"})

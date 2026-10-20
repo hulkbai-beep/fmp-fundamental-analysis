@@ -104,16 +104,17 @@ details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); }
 .sbig { margin-left: auto; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .sval { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .slabel { font-size: 15px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--row); }
-.scale { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); margin: 14px 0 4px;
-  border-radius: 6px; overflow: hidden; font-size: 12px; text-align: center; color: var(--muted); }
+.scale { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 14px 0 4px;
+  font-size: 12px; text-align: center; color: var(--muted); }
 .scale div { padding: 4px 0; background: var(--row); border-left: 1px solid var(--card); }
-.scale div:first-child { border-left: 0; }
+.scale div:first-child { border-left: 0; border-radius: 6px 0 0 6px; }
+.scale div:nth-child(5) { border-radius: 0 6px 6px 0; }
 .scale div.on { color: var(--text); font-weight: 700; }
 .scale .mark { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; background: var(--text);
   border-radius: 2px; padding: 0; border: 0; }
-.scaleticks { display: grid; grid-template-columns: repeat(5, 1fr); font-size: 11px; color: var(--muted);
+.scaleticks { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); font-size: 11px; color: var(--muted);
   font-variant-numeric: tabular-nums; margin-bottom: 10px; }
-.scaleticks span { text-align: right; padding-right: 0; transform: translateX(50%); }
+.scaleticks span { text-align: center; transform: translateX(50%); }  /* centred on each cell's right edge */
 .prow { display: grid; grid-template-columns: minmax(84px, 1.1fr) 46px minmax(90px, 2fr) 52px 64px 64px; gap: 8px;
   align-items: center; font-variant-numeric: tabular-nums; }
 .prow > :nth-child(n+2) { text-align: right; }
@@ -137,7 +138,8 @@ details.pil > summary .prow { flex: 1; }
 .inote { display: block; font-size: 12px; color: var(--muted); white-space: normal; }
 .bands { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-start; }
 .bands span { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--row); color: var(--muted); white-space: nowrap; }
-.bands span.on { background: var(--accent); color: #fff; font-weight: 600; }
+.bands span.on { background: var(--accent); color: var(--card); font-weight: 600; }
+.bands span.over { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
 .slist { margin: 6px 0 0; padding-left: 18px; }
 .ssec { margin-top: 12px; }
 .ssec b { font-size: 13px; }
@@ -503,51 +505,78 @@ function drawRange(el, w) {
 // Fundamental score card (result.score from scripts/score.py): the total on the -2..+2 scale, each pillar's
 // weight, score and contribution, and per pillar a table of its indicators with their scoring bands.
 const LABEL_ORDER = ["Bearish", "Moderately bearish", "Neutral", "Moderately bullish", "Bullish"];
-const sgn = (v, d = 2) => v == null ? "n/a" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const sgn = (v, d = 2) => {
+  if (v == null) return "n/a";
+  const a = Math.abs(v).toFixed(d);
+  return (+a === 0 ? "" : v > 0 ? "+" : "−") + a;  // no sign on a value that rounds to zero
+};
 const sgnCls = v => v > 0.004 ? "pos" : v < -0.004 ? "neg" : "";
 const intSc = v => v > 0 ? `+${v}` : v < 0 ? `−${-v}` : "0";
+const minus = x => String(x).replace("-", "−");
+// indicators scored from a condition (no interest, FCF < 0 ...) rather than a number: the value cell says which
+const VAL_NOTES = new Set(["negative_fcf", "no_interest", "ebitda_not_positive", "implied_below_range",
+  "implied_above_range", "dcf_negative"]);
 function fmtUnit(v, unit) {
   if (v == null) return "n/a";
-  if (unit === "pct") return (v * 100).toFixed(1) + "%";
-  if (unit === "pctile") return t("pctile", Math.round(v * 100));
+  if (unit === "pct") return minus((v * 100).toFixed(1)) + "%";
+  if (unit === "pctile") return v <= 0 ? t("pctile_low") : v >= 1 ? t("pctile_high")
+    : t("pctile", Math.min(99, Math.max(1, Math.round(v * 100))));  // as the price-range section words it
   if (unit === "pt") return sgn(v * 100, 1) + "pt";
   if (unit === "pp") return (v * 100).toFixed(1) + "pt";
-  if (unit === "x") return v.toFixed(2) + "x";
-  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  if (unit === "x") return minus(v.toFixed(2)) + "x";
+  return minus(+v.toFixed(2));
 }
 function cutTxt(c, unit, bare) {
   const n = x => String(+x.toFixed(4)).replace("-", "−");
   const suf = bare ? "" : unit === "pct" || unit === "pctile" ? "%" : unit === "pt" || unit === "pp" ? "pt" : unit === "x" ? "x" : "";
   return n(["pct", "pctile", "pt", "pp"].includes(unit) ? c * 100 : c) + suf;
 }
+// The scoring bands as chips; the band the value falls in is highlighted. Where a rule overrides the band's score
+// (growth-slowdown cap, current ratio offset), that chip is outlined and shows the final score.
 function bandsHtml(i) {
   if (i.key === "altman") return `<span class="sub">${esc(t("altman_rule"))}</span>`;
   if (!i.cuts) return "";
-  const k = i.cuts.length, on = i.status === "ok" && i.value != null ? i.cuts.filter(c => c <= i.value).length : -1;
+  const k = i.cuts.length;
+  const on = i.status !== "ok" ? -1 : i.value != null && !VAL_NOTES.has(i.note) ? i.cuts.filter(c => c <= i.value).length
+    : i.scores.indexOf(i.score);
+  const over = on >= 0 && i.scores[on] !== i.score;
   const lab = j => j === 0 ? `<${cutTxt(i.cuts[0], i.unit)}` : j === k ? `≥${cutTxt(i.cuts[k - 1], i.unit)}`
     : `${cutTxt(i.cuts[j - 1], i.unit, true)}~${cutTxt(i.cuts[j], i.unit)}`;
-  return `<div class="bands">${i.scores.map((s, j) => `<span class="${j === on ? "on" : ""}">${esc(lab(j))} ${intSc(s)}</span>`).join("")}</div>`;
+  return `<div class="bands">${i.scores.map((s, j) => j !== on ? `<span>${esc(lab(j))} ${intSc(s)}</span>`
+    : `<span class="${over ? "over" : "on"}">${esc(lab(j))} ${intSc(s)}${over ? ` → ${intSc(i.score)}` : ""}</span>`).join("")}</div>`;
 }
 function indValue(i) {
   if (i.status === "n/a") return t("sc_na");
   if (i.status === "missing") return t("sc_missing");
-  if (i.key === "altman") return `${fmtUnit(i.value, "num")} (${t("zone_" + (i.detail.z_zone || i.detail.z2_zone))})`;
-  if (i.key === "piotroski") return `${i.detail.score} / ${i.detail.out_of}`;
-  if (i.note === "dcf_negative") return "≤ −100%";
+  if (VAL_NOTES.has(i.note)) return t("val_" + i.note);
+  if (i.key === "altman") {
+    const z = t("zone_" + (i.detail.z_zone || i.detail.z2_zone));
+    return LANG === "zh" ? `${fmtUnit(i.value, "num")}（${z}）` : `${fmtUnit(i.value, "num")} (${z})`;
+  }
+  if (i.key === "piotroski") return i.detail.out_of === 9 ? `${i.detail.score} / 9`
+    : t("pio_scaled", i.detail.score, i.detail.out_of, fmtUnit(i.value, "num"));
   return fmtUnit(i.value, i.unit);
+}
+function conflictText(c) {
+  const v = c.values, pct1 = x => minus((x * 100).toFixed(1)) + "%";
+  if (c.type === "adjusted_eps") return t("cf_adjusted_eps", Math.round(v.gap * 100) + "%");
+  if (c.type === "group_expensive") return t("cf_group_expensive", t("grp_" + (v.group || "industry")));
+  if (c.type === "cyclical_peak") return t("cf_cyclical_peak", pct1(v.margin), pct1(v.median), v.years, sgn(v.eps_growth_next * 100, 0) + "%");
+  if (c.type === "currency") return t("cf_currency", v.statements, v.price);
+  return t("cf_" + c.type);
 }
 function scoreCard(s) {
   const zh = LANG === "zh", colon = zh ? "：" : ": ";
   const pct0 = v => Math.round(v * 100) + "%";
-  const pos = v => Math.min(100, Math.max(0, (v + 2) / 4 * 100));
+  const pos = v => (v + 2) / 4 * 100;
   const conf = s.confidence, li = LABEL_ORDER.indexOf(s.label);
   let h = `<div class="card scorecard"><div class="shead"><h3>${esc(t("sc_title"))}</h3><span class="sub">${esc(t("sc_rules", s.version))}</span>
     <div class="sbig"><span class="sval ${sgnCls(s.score)}">${sgn(s.score)}</span><span class="slabel ${sgnCls(s.score)}">${esc(t("lbl_" + s.label))}</span>
     <span class="sub">${esc(t("sc_conf"))}${colon}${esc(t("conf_" + conf.level))}</span></div></div>`;
   h += `<div class="scale">${LABEL_ORDER.map((l, j) => `<div class="${j === li ? "on" : ""}">${esc(t("lbl_" + l))}</div>`).join("")}
-    <div class="mark" style="left:${pos(s.score)}%" title="${sgn(s.score)}"></div></div>
+    <div class="mark" style="left:clamp(1.5px, ${pos(s.score)}%, calc(100% - 1.5px))" title="${sgn(s.score)}"></div></div>
     <div class="scaleticks"><span>−1.2</span><span>−0.4</span><span>+0.4</span><span>+1.2</span></div>`;
-  h += `<p class="sub">${esc(t("sc_formula"))} ${esc(t("sc_hint"))}</p>`;
+  h += `<p class="sub">${esc(t("sc_formula"))}${zh ? "" : " "}${esc(t("sc_hint"))}</p>`;
   h += `<div class="prow hdr"><span>${esc(t("sc_pillar"))}</span><span>${esc(t("sc_weight"))}</span><span></span><span>${esc(t("sc_score"))}</span>
     <span><span class="lg">${esc(t("sc_contrib"))}</span><span class="sm">${esc(t("sc_icontrib_s"))}</span></span><span>${esc(t("sc_cov"))}</span></div>`;
   for (const n of s.pillar_order) {
@@ -560,7 +589,8 @@ function scoreCard(s) {
       <th>${esc(t("sc_score"))}</th><th>${esc(t("sc_weight"))}</th><th>${esc(t("sc_icontrib"))}</th></tr></thead><tbody>`;
     const na = p.indicators.filter(i => i.status === "n/a");
     for (const i of p.indicators.filter(i => i.status !== "n/a")) {
-      const note = i.note ? `<span class="inote">${esc(t("note_" + i.note))}</span>` : "";
+      const notes = [i.note, i.detail && i.detail.base_note].filter(Boolean).map(x => t("note_" + x));
+      const note = notes.length ? `<span class="inote">${esc(notes.join(zh ? "；" : "; "))}</span>` : "";
       const ok = i.status === "ok";
       h += `<tr><td class="l">${esc(t("ind_" + i.key))}${note}</td><td>${esc(indValue(i))}</td>
         <td class="l">${bandsHtml(i)}</td><td class="${ok ? sgnCls(i.score) : ""}"><b>${intSc(i.score)}</b></td>
@@ -578,14 +608,14 @@ function scoreCard(s) {
   }
   const cf = s.conflicts.filter(c => c.type !== "red_line");
   if (cf.length) {
-    h += `<div class="ssec"><b>${esc(t("sc_conflicts"))}</b><ul class="slist">${cf.map(c =>
-      `<li>${esc(c.type === "adjusted_eps" ? t("cf_adjusted_eps", pct0(c.values.gap)) : t("cf_" + c.type))}</li>`).join("")}</ul></div>`;
+    h += `<div class="ssec"><b>${esc(t("sc_conflicts"))}</b><ul class="slist">${cf.map(c => `<li>${esc(conflictText(c))}</li>`).join("")}</ul></div>`;
   }
   const rs = conf.reasons.map(x => x.value != null ? t("cr_" + x.code, pct0(x.value)) : t("cr_" + x.code));
   h += `<p class="sub ssec">${esc(t("sc_conf"))} ${esc(t("conf_" + conf.level))}${colon}${esc(rs.join(zh ? "；" : "; "))}</p>`;
   const vr = s.value_range;
   if (vr) {
-    h += `<p class="sub">${esc(t("sc_range"))}${zh ? "（" : " ("}${esc(t("sc_range_" + vr.basis))}${zh ? "）" : ")"}${colon}<b>${fmtPx(vr.low)} / ${fmtPx(vr.mid)} / ${fmtPx(vr.high)}</b>` +
+    const d = Math.max(Math.abs(vr.low), Math.abs(vr.high)) >= 100 ? 0 : 2;  // one precision for the three numbers
+    h += `<p class="sub">${esc(t("sc_range"))}${zh ? "（" : " ("}${esc(t("sc_range_" + vr.basis))}${zh ? "）" : ")"}${colon}<b>${[vr.low, vr.mid, vr.high].map(x => x.toFixed(d)).join(" / ")}</b>` +
       (vr.mid_vs_price != null ? `${zh ? "，" : ", "}${esc(t("sc_range_vs", sgn(vr.mid_vs_price * 100, 1) + "%"))}` : "") + `</p>`;
   }
   h += `<details><summary>${esc(t("sc_how"))}</summary><ul class="slist sub">${t("sc_how_items").map(x => `<li>${esc(x)}</li>`).join("")}</ul></details></div>`;
