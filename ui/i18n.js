@@ -98,7 +98,7 @@ const SCORE_UI = {
     note_no_interest: "没有利息支出", note_cash_rich: "低于 1，但有净现金或 FCF 利润率 ≥ 10%，不扣分",
     note_no_estimates: "没有分析师预期", note_loss_making: "盈利不为正（已公布或预期）", note_no_band: "没有可用的倍数历史",
     note_share_basis: "财报股数和现在的股数口径不一致（ADR 比例或未调整的拆股），倍数历史不可比",
-    note_price_jump: "股价历史里有单日超过 50% 的变动（可能是未调整的拆股），倍数历史不可比",
+    note_price_jump: "股价历史里有单日跌超 50% 或涨超 100%（可能是未调整的拆股），倍数历史不可比",
     note_currency: "财报和股价币种不同，这个比率会被汇率扭曲", note_currency_z2: "只看 Z''：财报和股价币种不同，Z 会被汇率扭曲",
     note_no_dcf: "没有 DCF：起始自由现金流不为正", note_dcf_negative: "DCF 估值不为正（现金流为负）",
     note_no_market: "没有行业数据", note_short_history: "财年数不够", note_no_data: "没有数据",
@@ -125,14 +125,14 @@ const SCORE_UI = {
     grp_industry: "行业", grp_sector: "板块",
     cr_coverage: v => `数据覆盖 ${v}`, cr_agreement: v => `各大项方向一致 ${v}`, cr_methods: v => `估值方法一致 ${v}`,
     cr_short_history: "财年不足 4 年", cr_adjusted_eps: "分析师 EPS 是调整后口径", cr_proxy_data: "数据来自第三方代理",
-    cr_capped: "触发了封顶规则", cr_currency: "财报和股价币种不同", cr_cyclical_peak: "利润率可能处在周期高点",
+    cr_capped: "触发了红线或价值陷阱封顶", cr_currency: "财报和股价币种不同", cr_cyclical_peak: "利润率可能处在周期高点",
     pctile: n => `第 ${n} 百分位`, pctile_low: "低于 3 年内每一天", pctile_high: "高于 3 年内每一天",
     sc_how_items: [
       "每个指标按固定区间打 −2 到 +2 分；正好落在分界点上的，算进数值更大的那一档（比如正好第 25 百分位得 +1，不是 +2）。",
       "每个大项是它下面各指标的加权平均；总分再按 35% 估值、25% 质量、20% 成长、20% 财务健康加权。",
       "银行和保险公司、REIT、公用事业各用自己的一套指标和权重（比如银行看 P/B、ROE 和股东权益 / 总资产），通用指标里它们不用的显示为不适用。",
       "算不出来的指标（缺数据、亏损、DCF 跳过、币种不一致）按 0 分计、权重不变，所以数据越少，分数越接近 0，置信度也越低。",
-      "封顶规则：碰到资产负债表红线，或者估值便宜但质量和成长都弱（价值陷阱），总分最高 +0.4（中性）；过去增长很快、但预期 EPS 增速不到过去一半时，倍数位置最多 +1。",
+      "封顶规则：碰到资产负债表红线，或者估值便宜但质量和成长都弱（价值陷阱），总分最高 +0.4（中性）。另外，过去 EPS 增速超过 15%、但预期增速不到过去一半时，前瞻倍数位置那一项最多 +1。",
       "分档：高于 +1.2 看多，+0.4 到 +1.2 偏多，−0.4 到 +0.4 中性，−1.2 到 −0.4 偏空，低于 −1.2 看空；正好在分界上的取更靠近中性的标签。和技术面打分是同一套刻度。",
       "不计分：分析师目标价（偏乐观，而且和前瞻 P/E 用的是同一份 EPS 预期）、52 周区间和波动率区间（是价格会怎么动，不是值多少）、同行（自动同行可能混有外国上市公司）、宏观数据（只作背景，利率已经通过 DCF 的折现率算进去了）。",
       "这是按固定规则算出的标签，不是买卖建议；改任何阈值或权重都会升规则版本号。",
@@ -176,7 +176,7 @@ const SCORE_UI = {
     note_no_estimates: "no analyst estimates", note_loss_making: "earnings not positive (reported or expected)",
     note_no_band: "no usable multiple history",
     note_share_basis: "statement share counts are not on today's basis (ADR ratio or unadjusted split): multiple history not comparable",
-    note_price_jump: "a one-day price move above 50% (possibly an unadjusted split): multiple history not comparable",
+    note_price_jump: "a one-day price fall above 50% or rise above 100% (possibly an unadjusted split): multiple history not comparable",
     note_currency: "statements and price in different currencies: this ratio is off by the exchange rate",
     note_currency_z2: "Z'' only: statements and price in different currencies distort Z",
     note_no_dcf: "no DCF: starting free cash flow not positive", note_dcf_negative: "DCF value not positive (negative cash flows)",
@@ -204,7 +204,7 @@ const SCORE_UI = {
     grp_industry: "industry", grp_sector: "sector",
     cr_coverage: v => `data coverage ${v}`, cr_agreement: v => `pillars agreeing ${v}`, cr_methods: v => `valuation methods agreeing ${v}`,
     cr_short_history: "fewer than 4 fiscal years", cr_adjusted_eps: "analyst EPS on an adjusted basis", cr_proxy_data: "data from a third-party proxy",
-    cr_capped: "a cap rule triggered", cr_currency: "statements and price in different currencies",
+    cr_capped: "a red-line or value-trap cap triggered", cr_currency: "statements and price in different currencies",
     cr_cyclical_peak: "operating margin possibly at a cyclical peak",
     pctile: n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th")} percentile`,
     pctile_low: "below every day of its 3-year range", pctile_high: "above every day of its 3-year range",
@@ -213,7 +213,7 @@ const SCORE_UI = {
       "A pillar is the weighted mean of its indicators; the score weights them 35% valuation, 25% quality, 20% growth, 20% financial health.",
       "Banks and insurers, REITs and utilities use their own indicator sets and weights (a bank, for example, is judged on P/B, ROE and equity / assets); general indicators their set leaves out are shown as not applicable.",
       "An indicator that cannot be computed (no data, a loss, a skipped DCF, mixed currencies) counts as 0 and keeps its weight, so less data pulls the score toward 0 and lowers the confidence.",
-      "Caps: a balance-sheet red line, or a cheap valuation with weak quality and growth (value trap), holds the score at +0.4 (Neutral) at most; after fast growth, a forward-multiple position scores at most +1 when expected EPS growth is under half the historical rate.",
+      "Caps: a balance-sheet red line, or a cheap valuation with weak quality and growth (value trap), holds the score at +0.4 (Neutral) at most. Separately, after historical EPS growth above 15%, a forward-multiple position scores at most +1 when expected EPS growth is under half of it.",
       "Labels: above +1.2 Bullish, +0.4 to +1.2 Moderately bullish, −0.4 to +0.4 Neutral, −1.2 to −0.4 Moderately bearish, below −1.2 Bearish; a score exactly on a bound takes the label nearer Neutral. The technical scorecard uses the same scale.",
       "Not scored: analyst targets (optimistic, and built from the same EPS estimates as forward P/E), the 52-week and volatility ranges (how the price moves, not what it is worth), peers (auto-peers can include foreign listings) and macro data (context; rates already enter through the DCF discount rate).",
       "A rule-based label, not a recommendation; any change to a threshold or weight bumps the rules version.",
@@ -295,8 +295,8 @@ const ZH_EXACT = new Map(Object.entries({
   // price range
   "lowest / consensus / highest target": "最低 / 共识 / 最高目标价",
   "No method had enough data for a range.": "数据不够，没有一种方法能算出区间。",
-  "The price history has a one-day move of more than 50% (possibly a stock split the prices do not reflect), so no forward multiple range is shown.":
-    "股价历史里有单日涨跌超过 50% 的情况（可能是股价没有按拆股调整），所以不显示前瞻倍数区间。",
+  "The price history has a one-day fall of more than 50% or rise of more than 100% (possibly a stock split the prices do not reflect), so no forward multiple range is shown.":
+    "股价历史里有单日跌超过 50% 或涨超过 100% 的情况（可能是股价没有按拆股调整），所以不显示前瞻倍数区间。",
   "Not enough positive-earnings price history for a P/E range (needs about 6 months).":
     "盈利为正的历史股价数据不够（约需 6 个月），算不了 P/E 区间。",
   "Not enough positive-earnings price history for a multiple range (needs about 6 months).":

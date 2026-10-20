@@ -231,6 +231,13 @@ class Indicators(unittest.TestCase):
         self.assertEqual(S._altman({"z": 4, "z_zone": "safe"})["score"], 1)
         self.assertEqual(S._altman(None)["status"], "missing")
 
+    def test_three_year_change_needs_four_years(self):
+        years = [{"label": f"FY{y}", "roic": r} for y, r in ((2022, 0.10), (2023, 0.12), (2024, 0.15), (2025, 0.16))]
+        ind = S._trend("roic_trend", years, "roic")
+        self.assertAlmostEqual(ind["value"], 0.06)
+        self.assertEqual((ind["detail"]["from"], ind["score"]), ("FY2022", 2))
+        self.assertEqual(S._trend("roic_trend", years[1:], "roic")["note"], "short_history")
+
     def test_negative_fcf_scores_minus_two(self):
         self.assertEqual(S._fcf_conversion([{"fcf": -5}], {"fcf": -5})["score"], -2)
 
@@ -406,7 +413,8 @@ class Docs(unittest.TestCase):
         for p in S.PILLARS:
             keys = dict.fromkeys(k for kind in kinds for k in S.WEIGHTS[kind][p])
             for k in keys:
-                cells = [f"{S.WEIGHTS[kind][p][k] * 100:.0f}%" if k in S.WEIGHTS[kind][p] else "n/a" for kind in kinds]
+                cells = [f"{S.WEIGHTS[kind][p][k] * 100:.0f}%" if k in S.WEIGHTS[kind][p]
+                         else "n/a" if k in S.WEIGHTS["general"][p] else "-" for kind in kinds]
                 self.assertIn(f"| {S.PILLAR_NAMES[p]} | {S.IND_NAMES[k]} | " + " | ".join(cells) + " |", self.doc, k)
 
     def test_formula_and_version(self):

@@ -632,8 +632,9 @@ def history_problem(years, window, start, cur_shares):
                                "stock split the statements do not reflect, an ADR ratio or several share classes), so "
                                "the multiple history is not comparable and no forward multiple range is shown.")
     if any(not 0.5 <= b / a <= 2.0 for (_, a), (_, b) in zip(window, window[1:])):
-        return "price_jump", ("The price history has a one-day move of more than 50% (possibly a stock split the "
-                              "prices do not reflect), so no forward multiple range is shown.")
+        return "price_jump", ("The price history has a one-day fall of more than 50% or rise of more than 100% "
+                              "(possibly a stock split the prices do not reflect), so no forward multiple range is "
+                              "shown.")
     return None, None
 
 

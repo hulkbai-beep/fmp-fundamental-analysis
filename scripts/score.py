@@ -11,8 +11,8 @@ five labels as the technical-analysis scorecard (Bearish .. Bullish).
 - An indicator that cannot be computed (no data, a loss, a skipped DCF) counts as 0 and keeps its weight,
   so missing data pulls the pillar toward 0 and lowers the confidence.
 - Two caps keep the total at Neutral (+0.4) at most: a balance-sheet red line, and a "value trap"
-  (cheap valuation with weak quality and growth). A third caps the forward-multiple position at +1 when
-  expected EPS growth is under half the historical rate.
+  (cheap valuation with weak quality and growth). Separately, a forward-multiple position scores at most
+  +1 after historical EPS growth above 15% when expected EPS growth is under half of it.
 - Rates enter only through the DCF's Treasury-linked discount rate; macro releases are not scored.
 
 score(r) works on the dict analyze() returns and makes no API calls. render(s) prints the report
@@ -154,8 +154,8 @@ def _missing(key, note, band=None):
 
 
 def _years_back(years, n=3):
-    """The fiscal year n years before the latest (or the oldest one), or None with a single year."""
-    return years[max(0, len(years) - 1 - n)] if len(years) >= 2 else None
+    """The fiscal year n years before the latest, or None when the history is shorter."""
+    return years[-1 - n] if len(years) > n else None
 
 
 def _estimates(r):
@@ -757,8 +757,8 @@ NOTES = {
     "no_band": "no usable multiple history",
     "share_basis": "statement share counts are not on today's basis (ADR ratio or unadjusted split), so the "
                    "multiple history is not comparable",
-    "price_jump": "a one-day price move above 50% (possibly an unadjusted split), so the multiple history is not "
-                  "comparable",
+    "price_jump": "a one-day price fall of more than 50% or rise of more than 100% (possibly an unadjusted split), "
+                  "so the multiple history is not comparable",
     "currency": "statements and price are in different currencies, so this ratio is off by the exchange rate",
     "currency_z2": "Z'' only: statements and price are in different currencies, which distorts Z",
     "no_dcf": "no DCF: starting FCF not positive", "dcf_negative": "DCF value is not positive (cash flows negative)",
@@ -795,7 +795,7 @@ CONFLICT_TEXT = {
     "red_line": "Balance-sheet red line: {what}.",
 }
 ISSUE_TEXT = {"short_history": "fewer than 4 fiscal years", "adjusted_eps": "analyst EPS on an adjusted basis",
-              "proxy_data": "data from a third-party proxy", "capped": "a cap rule triggered",
+              "proxy_data": "data from a third-party proxy", "capped": "a red-line or value-trap cap triggered",
               "currency": "statements and price in different currencies",
               "cyclical_peak": "operating margin possibly at a cyclical peak"}
 

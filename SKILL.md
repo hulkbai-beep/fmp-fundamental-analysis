@@ -152,7 +152,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   technical scorecard's scale (Bullish / Moderately bullish / Neutral / Moderately bearish /
   Bearish) and a confidence level. Quote it as printed and never adjust it or compute another.
   Explain what drives it: the pillars and the two or three indicators with the largest
-  contributions, any cap (a value trap or a balance-sheet red line holds it at Neutral), the
+  contributions, any cap (a value trap or a balance-sheet red line holds it at Neutral, +0.4, at most), the
   conflicts it lists, and what the confidence line flags (missing data counts as 0, so thin data
   pulls the score toward Neutral). When an input is distorted for this company (a one-off charge,
   negative equity from buybacks, a cyclical at peak margins, a recent acquisition), say so and

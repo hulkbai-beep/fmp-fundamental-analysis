@@ -198,7 +198,8 @@ year** and the **end of the next fiscal year**.
   cyclicals at peak or trough earnings.
 - Safety checks: the range is skipped when a reported year's diluted share count is outside
   0.55-1.8x today's (market cap / price; a split the statements do not reflect, an ADR ratio or
-  several share classes) or when the price history has a one-day move above 50% (possibly an
+  several share classes) or when the price history has a one-day fall of more than 50% or rise of
+  more than 100% (possibly an
   unadjusted split).
 
 **Forward EV/EBITDA on next-12-month EBITDA** (not for banks and insurers): the same method with
@@ -307,12 +308,13 @@ the same numbers with every weight and band.
 
 **Formula:** score = 0.35 x valuation + 0.25 x quality + 0.20 x growth + 0.20 x financial health.
 Each pillar is the weighted mean of its indicators, and each indicator maps one number to -2..+2
-through four cut points. A value exactly on a cut point takes the band of higher values: exactly the
+through fixed cut points (four for most; the current ratio has two and scores -1..+1, and Altman Z
+uses its zones). A value exactly on a cut point takes the band of higher values: exactly the
 25th percentile scores +1, not +2.
 
 Valuation carries the largest weight because it decides whether the price is a good entry, and the
-forward P/E position (where today's multiple sits in its own 3-year range, below the median scoring
-positive) is its largest indicator. It is still well under half the total, so cheapness alone
+forward P/E position (where today's multiple sits in its own 3-year range: below the 45th
+percentile scores +1, below the 25th +2) is its largest indicator. It is still well under half the total, so cheapness alone
 cannot make a weak business score high, and the value-trap cap below stops that case outright.
 
 **Labels:** above +1.2 Bullish, above +0.4 Moderately bullish, -0.4 to +0.4 Neutral, below -0.4
@@ -334,8 +336,8 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 | Valuation | P/E vs industry | company P/E / industry P/E - 1 (sector P/E when there is no industry P/E) | <-30%: +2 / -30% to -10%: +1 / -10% to 25%: 0 / 25% to 60%: -1 / >=60%: -2 |
 | Quality | ROIC (median) | median over the fiscal years in the report | <5%: -2 / 5% to 8%: -1 / 8% to 12%: 0 / 12% to 20%: +1 / >=20%: +2 |
 | Quality | ROE (median) | the same on ROE (banks, insurers and utilities) | <5%: -2 / 5% to 8%: -1 / 8% to 11%: 0 / 11% to 15%: +1 / >=15%: +2 |
-| Quality | ROIC / ROE change over 3 years | latest minus three fiscal years earlier, each value clipped to +/-50% | <-5pt: -2 / -5pt to -2pt: -1 / -2pt to 2pt: 0 / 2pt to 5pt: +1 / >=5pt: +2 |
-| Quality | Operating margin change over 3 years | latest minus three fiscal years earlier | <-5pt: -2 / -5pt to -2pt: -1 / -2pt to 2pt: 0 / 2pt to 5pt: +1 / >=5pt: +2 |
+| Quality | ROIC / ROE change over 3 years | latest minus three fiscal years earlier (at least 4 years), each value clipped to +/-50% | <-5pt: -2 / -5pt to -2pt: -1 / -2pt to 2pt: 0 / 2pt to 5pt: +1 / >=5pt: +2 |
+| Quality | Operating margin change over 3 years | latest minus three fiscal years earlier (at least 4 years) | <-5pt: -2 / -5pt to -2pt: -1 / -2pt to 2pt: 0 / 2pt to 5pt: +1 / >=5pt: +2 |
 | Quality | Gross margin stability | standard deviation of yearly gross margin, at least 3 years | <1.5pt: +2 / 1.5pt to 3pt: +1 / 3pt to 5pt: 0 / 5pt to 8pt: -1 / >=8pt: -2 |
 | Quality | FCF / net income | median of the last 3 fiscal years; -2 when the last year's FCF is negative | <0.5x: -2 / 0.5x to 0.8x: -1 / 0.8x to 1x: 0 / 1x to 1.2x: +1 / >=1.2x: +2 |
 | Quality | Stock comp % revenue | last fiscal year | <2%: +2 / 2% to 5%: +1 / 5% to 10%: 0 / 10% to 20%: -1 / >=20%: -2 |
@@ -361,8 +363,9 @@ The company type is the report's sector classification. Banks and insurers are t
 Services sector plus bank, insurance and capital-markets industries, except fee-based ones
 (exchanges, financial data providers, insurance brokers), which are scored like other companies.
 REITs are the Real Estate sector and REIT industries. Utilities are the Utilities sector except
-independent power producers. Weights are shares of their pillar; n/a means the indicator is shown
-as not applicable for that type and carries no weight.
+independent power producers. Weights are shares of their pillar. n/a means a general indicator the
+type does not use: it is listed as not applicable and carries no weight. A dash means an indicator of
+another type's set, which is not listed at all.
 
 | Pillar | Indicator | General | Banks & insurers | REITs | Utilities |
 |---|---|---|---|---|---|
@@ -371,15 +374,15 @@ as not applicable for that type and carries no weight.
 | Valuation | Reverse DCF: implied minus expected growth | 20% | n/a | 20% | 20% |
 | Valuation | DCF value vs price | 15% | n/a | 15% | 15% |
 | Valuation | P/E vs industry | 15% | 30% | 15% | 15% |
-| Valuation | P/B vs its fiscal-year-end median | n/a | 30% | n/a | n/a |
+| Valuation | P/B vs its fiscal-year-end median | - | 30% | - | - |
 | Quality | ROIC (median) | 30% | n/a | n/a | n/a |
 | Quality | ROIC change over 3 years | 15% | n/a | 25% | n/a |
 | Quality | Operating margin change over 3 years | 15% | n/a | 30% | 20% |
 | Quality | Gross margin stability (std. dev.) | 10% | n/a | 25% | 10% |
 | Quality | FCF / net income (3-yr median) | 20% | n/a | n/a | n/a |
 | Quality | Stock comp % revenue | 10% | 20% | 20% | 15% |
-| Quality | ROE (median) | n/a | 50% | n/a | 35% |
-| Quality | ROE change over 3 years | n/a | 30% | n/a | 20% |
+| Quality | ROE (median) | - | 50% | - | 35% |
+| Quality | ROE change over 3 years | - | 30% | - | 20% |
 | Growth | Revenue CAGR | 30% | 30% | 30% | 30% |
 | Growth | Revenue growth, last FY | 20% | 20% | 20% | 20% |
 | Growth | Expected revenue growth (analysts) | 30% | 30% | 30% | 30% |
@@ -390,7 +393,7 @@ as not applicable for that type and carries no weight.
 | Financial health | Piotroski F-score (of 9) | 20% | 40% | 25% | 25% |
 | Financial health | Current ratio | 10% | n/a | n/a | n/a |
 | Financial health | Share count change per year | 10% | 25% | 20% | 20% |
-| Financial health | Equity / assets | n/a | 35% | n/a | n/a |
+| Financial health | Equity / assets | - | 35% | - | - |
 
 Why: EV, FCF, gross margin, DCF, Altman Z and the current ratio mean little for a balance sheet of
 loans or policies. For REITs, property depreciation makes ROIC level, FCF / net income and EBIT
@@ -411,8 +414,8 @@ The forward-multiple positions have fallbacks and stops, checked in this order:
 - Forward range available and analysts' EPS (or EBITDA) for the last reported year within 10% of the
   reported figure: the forward position is used.
 - A loss (or negative EBITDA) expected in the fiscal year in progress or the next: missing.
-- Share counts not on today's basis (ADR ratio, unadjusted split) or a one-day price move above 50%:
-  missing, with no fallback, since the trailing history has the same problem. P/B as well.
+- Share counts not on today's basis (ADR ratio, unadjusted split) or a one-day price fall of more
+  than 50% or rise of more than 100%: missing, with no fallback, since the trailing history has the same problem. P/B as well.
 - No forward range, or analysts' figures more than 10% from reported ones (usually adjusted,
   non-GAAP), so the range's history would mix two bases: the trailing multiple vs its fiscal-year-end
   median, when at least 3 years exist and currencies match.
@@ -423,7 +426,7 @@ only (book equity instead of market cap), and the value range does not use the D
 
 ### Caps
 
-Caps hold the total, not the pillars, so the pillar table still shows what each pillar scored.
+Two caps hold the total, not the pillars, so the pillar table still shows what each pillar scored.
 When the score is already below the cap, the cap is listed but changes nothing.
 - **Value trap:** valuation +1.0 or more while the mean of quality and growth is -0.5 or less. The
   total is held at +0.4 (Neutral) at most: cheap stocks are often cheap for a reason.
@@ -431,11 +434,14 @@ When the score is already below the cap, the cap is listed but changes nothing.
   each of the last two fiscal years, with net debt; free cash flow negative two years running with
   net debt (operating cash flow for REITs and utilities, which fund growth capex with debt and
   shares); Altman Z and Z'' both in the distress zone (general companies only, and not when
-  currencies differ). For banks and insurers the only red line is equity not positive. Two years
-  are required so that one year's one-off charge does not trip a red line.
-- **Growth slowdown:** the forward P/E and EV/EBITDA positions are capped at +1 (from +2) when
-  historical EPS CAGR is above 15% and next year's expected EPS growth is under half of it. A cheap
-  multiple after fast growth often prices a slowdown that lasts.
+  currencies differ). For banks and insurers the only red line is equity not positive. The coverage
+  and cash-flow red lines need two years so that one year's one-off charge does not trip them; the
+  Altman one uses the latest fiscal year.
+
+**Growth slowdown** (an indicator rule, not a cap): the forward P/E and EV/EBITDA positions score at
+most +1 (instead of +2) when historical EPS CAGR is above 15% and next year's expected EPS growth is
+under half of it. A cheap multiple after fast growth often prices a slowdown that lasts. It is listed
+as a conflict and does not by itself change the confidence.
 
 ### Confidence
 
@@ -449,7 +455,7 @@ When the score is already below the cap, the cap is listed but changes nothing.
   than 3 fiscal years. Otherwise **medium**.
 - **Issues** (each rules out high): fewer than 4 fiscal years; analysts' EPS more than 10% above
   reported (adjusted basis); statements and price in different currencies; operating margin possibly
-  at a cyclical peak; data from a third-party proxy; a cap rule triggered.
+  at a cyclical peak; data from a third-party proxy; a red-line or value-trap cap triggered.
 
 ### Conflicts
 
@@ -482,8 +488,8 @@ enter through the DCF's Treasury-linked discount rate).
 - Cyclicals at peak earnings: margins, growth and the DCF look best just before the cycle turns.
   The cyclical-peak check flags it and rules out high confidence but does not change the score;
   read energy, materials and semiconductors with section 10.
-- A single year's one-off charge still moves the trend and coverage indicators; only the red lines
-  require two years.
+- A single year's one-off charge still moves the trend and coverage indicators and the Altman
+  zone; only the coverage and cash-flow red lines require two years.
 - The reverse DCF shares the section 7 model's horizon, terminal growth and discount rate.
 
 To change a rule, edit the weights (`PILLAR_WEIGHTS`, `WEIGHTS`), the cut points (`BANDS`) or the
