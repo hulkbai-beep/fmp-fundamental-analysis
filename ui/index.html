@@ -98,6 +98,69 @@ button.lang { background: var(--card); color: var(--text); border: 1px solid var
   border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes s { to { transform: rotate(360deg); } }
 details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); }
+/* fundamental score card */
+.shead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.shead h3 { margin: 0; }
+.sbig { margin-left: auto; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sval { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.slabel { font-size: 15px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--row); }
+.scale { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); margin: 14px 0 4px;
+  border-radius: 6px; overflow: hidden; font-size: 12px; text-align: center; color: var(--muted); }
+.scale div { padding: 4px 0; background: var(--row); border-left: 1px solid var(--card); }
+.scale div:first-child { border-left: 0; }
+.scale div.on { color: var(--text); font-weight: 700; }
+.scale .mark { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; background: var(--text);
+  border-radius: 2px; padding: 0; border: 0; }
+.scaleticks { display: grid; grid-template-columns: repeat(5, 1fr); font-size: 11px; color: var(--muted);
+  font-variant-numeric: tabular-nums; margin-bottom: 10px; }
+.scaleticks span { text-align: right; padding-right: 0; transform: translateX(50%); }
+.prow { display: grid; grid-template-columns: minmax(84px, 1.1fr) 46px minmax(90px, 2fr) 52px 64px 64px; gap: 8px;
+  align-items: center; font-variant-numeric: tabular-nums; }
+.prow > :nth-child(n+2) { text-align: right; }
+.prow.hdr { font-size: 12px; color: var(--muted); padding: 0 0 2px 18px; }
+.prow.hdr .sm { display: none; }
+details.pil { margin-top: 0; border-top: 1px solid var(--border); }
+details.pil > summary { list-style: none; padding: 7px 0; color: var(--text); display: flex; align-items: center; gap: 4px; }
+details.pil > summary::-webkit-details-marker { display: none; }
+details.pil > summary::before { content: "▸"; width: 14px; color: var(--muted); flex: none; }
+details.pil[open] > summary::before { content: "▾"; }
+details.pil > summary .prow { flex: 1; }
+.pname { font-weight: 600; }
+.track { position: relative; height: 10px; background: var(--row); border-radius: 5px; }
+.track::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--muted); }
+.fill { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+.fill.pos { background: var(--pos); } .fill.neg { background: var(--neg); }
+.itable { overflow-x: auto; margin: 0 0 8px 18px; }
+.itable table { margin: 4px 0 6px; }
+.itable td.l { white-space: normal; min-width: 150px; }
+.itable tr.na td { color: var(--muted); font-size: 12px; white-space: normal; }
+.inote { display: block; font-size: 12px; color: var(--muted); white-space: normal; }
+.bands { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-start; }
+.bands span { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--row); color: var(--muted); white-space: nowrap; }
+.bands span.on { background: var(--accent); color: #fff; font-weight: 600; }
+.slist { margin: 6px 0 0; padding-left: 18px; }
+.ssec { margin-top: 12px; }
+.ssec b { font-size: 13px; }
+@media (max-width: 760px) {
+  .prow { grid-template-columns: minmax(56px, 1fr) 36px minmax(36px, 1fr) 46px 48px; gap: 6px; }
+  .prow > :nth-child(6) { display: none; }
+  .prow.hdr .lg { display: none; } .prow.hdr .sm { display: inline; }
+  .sbig { margin-left: 0; }
+  /* indicator rows as cards: name, value and score on top, the bands under them, weight and contribution last */
+  .itable { margin-left: 0; overflow: visible; }
+  .itable thead { display: none; }
+  .itable table, .itable tbody { display: block; }
+  .itable tr { display: grid; grid-template-columns: 1fr auto 34px; grid-template-areas: "n v s" "b b b" "w c c";
+    column-gap: 10px; row-gap: 4px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .itable td { border: 0; padding: 0; min-width: 0; }
+  .itable td.l { min-width: 0; }
+  .itable td:nth-child(1) { grid-area: n; } .itable td:nth-child(2) { grid-area: v; }
+  .itable td:nth-child(3) { grid-area: b; } .itable td:nth-child(4) { grid-area: s; }
+  .itable td:nth-child(5) { grid-area: w; text-align: left; } .itable td:nth-child(6) { grid-area: c; }
+  .itable td:nth-child(n+5) { font-size: 12px; color: var(--muted); }
+  .itable td[data-l]::before { content: attr(data-l) " "; }
+  .itable tr.na { display: block; }
+}
 pre { white-space: pre-wrap; font-size: 12px; }
 </style>
 </head>
@@ -437,6 +500,98 @@ function drawRange(el, w) {
   });
 }
 
+// Fundamental score card (result.score from scripts/score.py): the total on the -2..+2 scale, each pillar's
+// weight, score and contribution, and per pillar a table of its indicators with their scoring bands.
+const LABEL_ORDER = ["Bearish", "Moderately bearish", "Neutral", "Moderately bullish", "Bullish"];
+const sgn = (v, d = 2) => v == null ? "n/a" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const sgnCls = v => v > 0.004 ? "pos" : v < -0.004 ? "neg" : "";
+const intSc = v => v > 0 ? `+${v}` : v < 0 ? `−${-v}` : "0";
+function fmtUnit(v, unit) {
+  if (v == null) return "n/a";
+  if (unit === "pct") return (v * 100).toFixed(1) + "%";
+  if (unit === "pctile") return t("pctile", Math.round(v * 100));
+  if (unit === "pt") return sgn(v * 100, 1) + "pt";
+  if (unit === "pp") return (v * 100).toFixed(1) + "pt";
+  if (unit === "x") return v.toFixed(2) + "x";
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+function cutTxt(c, unit, bare) {
+  const n = x => String(+x.toFixed(4)).replace("-", "−");
+  const suf = bare ? "" : unit === "pct" || unit === "pctile" ? "%" : unit === "pt" || unit === "pp" ? "pt" : unit === "x" ? "x" : "";
+  return n(["pct", "pctile", "pt", "pp"].includes(unit) ? c * 100 : c) + suf;
+}
+function bandsHtml(i) {
+  if (i.key === "altman") return `<span class="sub">${esc(t("altman_rule"))}</span>`;
+  if (!i.cuts) return "";
+  const k = i.cuts.length, on = i.status === "ok" && i.value != null ? i.cuts.filter(c => c <= i.value).length : -1;
+  const lab = j => j === 0 ? `<${cutTxt(i.cuts[0], i.unit)}` : j === k ? `≥${cutTxt(i.cuts[k - 1], i.unit)}`
+    : `${cutTxt(i.cuts[j - 1], i.unit, true)}~${cutTxt(i.cuts[j], i.unit)}`;
+  return `<div class="bands">${i.scores.map((s, j) => `<span class="${j === on ? "on" : ""}">${esc(lab(j))} ${intSc(s)}</span>`).join("")}</div>`;
+}
+function indValue(i) {
+  if (i.status === "n/a") return t("sc_na");
+  if (i.status === "missing") return t("sc_missing");
+  if (i.key === "altman") return `${fmtUnit(i.value, "num")} (${t("zone_" + (i.detail.z_zone || i.detail.z2_zone))})`;
+  if (i.key === "piotroski") return `${i.detail.score} / ${i.detail.out_of}`;
+  if (i.note === "dcf_negative") return "≤ −100%";
+  return fmtUnit(i.value, i.unit);
+}
+function scoreCard(s) {
+  const zh = LANG === "zh", colon = zh ? "：" : ": ";
+  const pct0 = v => Math.round(v * 100) + "%";
+  const pos = v => Math.min(100, Math.max(0, (v + 2) / 4 * 100));
+  const conf = s.confidence, li = LABEL_ORDER.indexOf(s.label);
+  let h = `<div class="card scorecard"><div class="shead"><h3>${esc(t("sc_title"))}</h3><span class="sub">${esc(t("sc_rules", s.version))}</span>
+    <div class="sbig"><span class="sval ${sgnCls(s.score)}">${sgn(s.score)}</span><span class="slabel ${sgnCls(s.score)}">${esc(t("lbl_" + s.label))}</span>
+    <span class="sub">${esc(t("sc_conf"))}${colon}${esc(t("conf_" + conf.level))}</span></div></div>`;
+  h += `<div class="scale">${LABEL_ORDER.map((l, j) => `<div class="${j === li ? "on" : ""}">${esc(t("lbl_" + l))}</div>`).join("")}
+    <div class="mark" style="left:${pos(s.score)}%" title="${sgn(s.score)}"></div></div>
+    <div class="scaleticks"><span>−1.2</span><span>−0.4</span><span>+0.4</span><span>+1.2</span></div>`;
+  h += `<p class="sub">${esc(t("sc_formula"))} ${esc(t("sc_hint"))}</p>`;
+  h += `<div class="prow hdr"><span>${esc(t("sc_pillar"))}</span><span>${esc(t("sc_weight"))}</span><span></span><span>${esc(t("sc_score"))}</span>
+    <span><span class="lg">${esc(t("sc_contrib"))}</span><span class="sm">${esc(t("sc_icontrib_s"))}</span></span><span>${esc(t("sc_cov"))}</span></div>`;
+  for (const n of s.pillar_order) {
+    const p = s.pillars[n], v = p.score;
+    const fill = v >= 0 ? `left:50%;width:${v / 4 * 100}%` : `left:${50 + v / 4 * 100}%;width:${-v / 4 * 100}%`;
+    h += `<details class="pil"><summary><div class="prow"><span class="pname">${esc(t("p_" + n))}</span><span>${pct0(p.weight)}</span>
+      <span class="track"><span class="fill ${v >= 0 ? "pos" : "neg"}" style="${fill}"></span></span>
+      <span class="${sgnCls(v)}"><b>${sgn(v)}</b></span><span class="${sgnCls(p.contribution)}">${sgn(p.contribution)}</span><span>${pct0(p.coverage)}</span></div></summary>
+      <div class="itable"><table><thead><tr><th>${esc(t("sc_ind"))}</th><th>${esc(t("sc_value"))}</th><th class="l">${esc(t("sc_rule"))}</th>
+      <th>${esc(t("sc_score"))}</th><th>${esc(t("sc_weight"))}</th><th>${esc(t("sc_icontrib"))}</th></tr></thead><tbody>`;
+    const na = p.indicators.filter(i => i.status === "n/a");
+    for (const i of p.indicators.filter(i => i.status !== "n/a")) {
+      const note = i.note ? `<span class="inote">${esc(t("note_" + i.note))}</span>` : "";
+      const ok = i.status === "ok";
+      h += `<tr><td class="l">${esc(t("ind_" + i.key))}${note}</td><td>${esc(indValue(i))}</td>
+        <td class="l">${bandsHtml(i)}</td><td class="${ok ? sgnCls(i.score) : ""}"><b>${intSc(i.score)}</b></td>
+        <td data-l="${esc(t("sc_weight"))}">${pct0(i.weight_share)}</td><td data-l="${esc(t("sc_icontrib"))}">${sgn(i.contribution)}</td></tr>`;
+    }
+    for (const note of [...new Set(na.map(i => i.note))]) {
+      const names = na.filter(i => i.note === note).map(i => t("ind_" + i.key)).join(zh ? "、" : ", ");
+      h += `<tr class="na"><td class="l" colspan="6">${esc(t("sc_na_group", t("note_" + note)))}${colon}${esc(names)}</td></tr>`;
+    }
+    h += `</tbody></table></div></details>`;
+  }
+  if (s.caps.length) {
+    h += `<div class="ssec"><b>${esc(t("sc_caps"))}</b>${s.capped ? ` <span class="sub">${esc(t("sc_raw", sgn(s.raw_score), sgn(s.cap_limit, 1)))}</span>` : ""}
+      <ul class="slist">${s.caps.map(c => `<li>${esc(t("cap_" + c.type))}</li>`).join("")}</ul><p class="sub">${esc(t("cap_note"))}</p></div>`;
+  }
+  const cf = s.conflicts.filter(c => c.type !== "red_line");
+  if (cf.length) {
+    h += `<div class="ssec"><b>${esc(t("sc_conflicts"))}</b><ul class="slist">${cf.map(c =>
+      `<li>${esc(c.type === "adjusted_eps" ? t("cf_adjusted_eps", pct0(c.values.gap)) : t("cf_" + c.type))}</li>`).join("")}</ul></div>`;
+  }
+  const rs = conf.reasons.map(x => x.value != null ? t("cr_" + x.code, pct0(x.value)) : t("cr_" + x.code));
+  h += `<p class="sub ssec">${esc(t("sc_conf"))} ${esc(t("conf_" + conf.level))}${colon}${esc(rs.join(zh ? "；" : "; "))}</p>`;
+  const vr = s.value_range;
+  if (vr) {
+    h += `<p class="sub">${esc(t("sc_range"))}${zh ? "（" : " ("}${esc(t("sc_range_" + vr.basis))}${zh ? "）" : ")"}${colon}<b>${fmtPx(vr.low)} / ${fmtPx(vr.mid)} / ${fmtPx(vr.high)}</b>` +
+      (vr.mid_vs_price != null ? `${zh ? "，" : ", "}${esc(t("sc_range_vs", sgn(vr.mid_vs_price * 100, 1) + "%"))}` : "") + `</p>`;
+  }
+  h += `<details><summary>${esc(t("sc_how"))}</summary><ul class="slist sub">${t("sc_how_items").map(x => `<li>${esc(x)}</li>`).join("")}</ul></details></div>`;
+  return h;
+}
+
 function render(data) {
   lastData = data;
   observers.forEach(o => o.disconnect());
@@ -469,12 +624,14 @@ function render(data) {
       ${fr ? `<div class="stat"><div class="k">${esc(t("s_range"))} · ${esc(rcWhen(fr))}</div><div class="v">${fmtPx(fr.pe.low)} – ${fmtPx(fr.pe.high)}</div></div>` : ""}
     </div></div>`;
   const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
+  if (r.score) h += scoreCard(r.score);
   h += priceCard(data);
   h += `<div class="card"><h3>${esc(t("flags_title"))}</h3><div class="grid2 flags2">
       <div><b class="pos">${esc(t("pos"))}</b><ul class="flags">${flagList(r.flags.green)}</ul></div>
       <div><b class="neg">${esc(t("neg"))}</b><ul class="flags">${flagList(r.flags.red)}</ul></div></div></div>`;
 
-  const parts = data.report.split(/\n(?=## )/).filter(s => s.startsWith("## "));
+  // the score section is shown by the card above, so it gets no tab of its own
+  const parts = data.report.split(/\n(?=## )/).filter(s => s.startsWith("## ") && !s.startsWith("## Fundamental score"));
   if (curTab >= parts.length) curTab = 0;
   const tabName = s => tr(s.split("\n")[0].slice(3)).replace(/\s*[(（].*$/, "");
   h += `<div class="tabs">` + parts.map((s, i) => `<button class="tab${i === curTab ? " on" : ""}" data-i="${i}">${esc(tabName(s))}</button>`).join("") + `</div>`;

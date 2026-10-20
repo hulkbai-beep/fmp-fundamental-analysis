@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
 import macro as M  # noqa: E402
+import score as S  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
 REAL_ESTATE_SECTORS = {"real estate"}
@@ -1111,6 +1112,8 @@ def render(r):
     desc = (pr.get("description") or "").strip()
     if desc:
         out.append("\n" + (desc[:600] + ("..." if len(desc) > 600 else "")))
+    if r.get("score"):
+        out.append(S.render(r["score"]))
 
     cg = r["cagr"]
     out.append(f"\n## 1. Growth ({len(years) - 1}-year CAGR in last column)")
@@ -1551,7 +1554,7 @@ def analyze(args):
                          sector_kind=sector_kind)
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
 
-    return {
+    result = {
         "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
         "sector_kind": sector_kind, "sector_note": sector_note,
         "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg, "peg": peg,
@@ -1566,6 +1569,8 @@ def analyze(args):
                  "restricted": client.restricted, "errors": client.errors,
                  "connection": client.describe()},
     }
+    result["score"] = S.score(result)
+    return result
 
 
 def parse_args(argv):
