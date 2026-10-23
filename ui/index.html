@@ -537,8 +537,9 @@ function bandsHtml(i) {
   if (i.key === "altman") return `<span class="sub">${esc(t("altman_rule"))}</span>`;
   if (!i.cuts) return "";
   const k = i.cuts.length;
-  const on = i.status !== "ok" ? -1 : i.value != null && !VAL_NOTES.has(i.note) ? i.cuts.filter(c => c <= i.value).length
-    : i.scores.indexOf(i.score);
+  // EBITDA <= 0 with net cash scores 0 without falling in any band
+  const on = i.status !== "ok" || (i.note === "ebitda_not_positive" && i.score === 0) ? -1
+    : i.value != null && !VAL_NOTES.has(i.note) ? i.cuts.filter(c => c <= i.value).length : i.scores.indexOf(i.score);
   const over = on >= 0 && i.scores[on] !== i.score;
   const lab = j => j === 0 ? `<${cutTxt(i.cuts[0], i.unit)}` : j === k ? `≥${cutTxt(i.cuts[k - 1], i.unit)}`
     : `${cutTxt(i.cuts[j - 1], i.unit, true)}~${cutTxt(i.cuts[j], i.unit)}`;
@@ -561,7 +562,7 @@ function conflictText(c) {
   const v = c.values, pct1 = x => minus((x * 100).toFixed(1)) + "%";
   if (c.type === "adjusted_eps") return t("cf_adjusted_eps", Math.round(v.gap * 100) + "%");
   if (c.type === "group_expensive") return t("cf_group_expensive", t("grp_" + (v.group || "industry")));
-  if (c.type === "cyclical_peak") return t("cf_cyclical_peak", pct1(v.margin), pct1(v.median), v.years, sgn(v.eps_growth_next * 100, 0) + "%");
+  if (c.type === "cyclical_peak") return t("cf_cyclical_peak", pct1(v.margin), pct1(v.median), v.years, sgn(v.eps_growth_next * 100, 1) + "%");
   if (c.type === "currency") return t("cf_currency", v.statements, v.price);
   return t("cf_" + c.type);
 }
@@ -592,7 +593,8 @@ function scoreCard(s) {
       const notes = [i.note, i.detail && i.detail.base_note].filter(Boolean).map(x => t("note_" + x));
       const note = notes.length ? `<span class="inote">${esc(notes.join(zh ? "；" : "; "))}</span>` : "";
       const ok = i.status === "ok";
-      h += `<tr><td class="l">${esc(t("ind_" + i.key))}${note}</td><td>${esc(indValue(i))}</td>
+      const name = t("ind_" + i.key + (i.detail && i.detail.basis === "ebitda" ? "_ebitda" : ""));
+      h += `<tr><td class="l">${esc(name)}${note}</td><td>${esc(indValue(i))}</td>
         <td class="l">${bandsHtml(i)}</td><td class="${ok ? sgnCls(i.score) : ""}"><b>${intSc(i.score)}</b></td>
         <td data-l="${esc(t("sc_weight"))}">${pct0(i.weight_share)}</td><td data-l="${esc(t("sc_icontrib"))}">${sgn(i.contribution)}</td></tr>`;
     }

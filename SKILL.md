@@ -145,7 +145,8 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   - Utilities (not independent power producers): negative FCF and net debt of 5-6x EBITDA are
     normal; judge earnings growth, interest cover and leverage against other utilities.
   - Exchanges, financial data providers and insurance brokers are fee-based and analysed like
-    other companies, not as banks or insurers.
+    other companies, not as banks or insurers; so are real-estate developers and services firms,
+    not as REITs. Mortgage REITs lend against their balance sheet and are analysed like banks.
 - **Fundamental score: a summary of the numbers, not a verdict.** The report opens with a
   rule-based score (its rules version is printed): valuation 35%, quality 25%, growth 20% and
   financial health 20%, each pillar -2..+2 from fixed indicator bands, with a label on the

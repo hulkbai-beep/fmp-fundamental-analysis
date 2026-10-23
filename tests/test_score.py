@@ -231,6 +231,51 @@ class Indicators(unittest.TestCase):
         self.assertEqual(S._altman({"z": 4, "z_zone": "safe"})["score"], 1)
         self.assertEqual(S._altman(None)["status"], "missing")
 
+    def test_old_share_basis_break_blocks_the_trailing_fallback(self):
+        # the forward range's 3 years are fine, but an older fiscal year in the trailing history is not
+        hist = {"pe": {"vs_median": -0.77, "n": 5, "current": 5, "median": 22},
+                "pb": {"vs_median": -0.8, "n": 5, "current": 1, "median": 5}}
+        r = dict(self.est(1.0, 1.1), price_range={"band_problem": None, "trailing_problem": "share_basis"},
+                 history_compare=hist)
+        ind = S._multiple_position(r, "fwd_pe_position", "pe_band", "pe", "eps_basis", "eps_avg")
+        self.assertEqual((ind["status"], ind["note"]), ("missing", "share_basis"))
+        self.assertEqual(S._pb_vs_history(r)["note"], "share_basis")
+
+    def test_forward_range_without_a_point_for_today_falls_back(self):
+        band = {"now_pct": None, "now": None, "p25": 18, "median": 20, "p75": 22, "from": "a", "to": "b"}
+        r = dict(self.est(1.0, None), price_range={"pe_band": band},
+                 history_compare={"pe": {"vs_median": 0.0, "n": 5, "current": 20, "median": 20}})
+        ind = S._multiple_position(r, "fwd_pe_position", "pe_band", "pe", "eps_basis", "eps_avg")
+        self.assertEqual((ind["status"], ind["note"]), ("ok", "trailing_history"))
+
+    def test_unknown_ebitda_is_missing(self):
+        self.assertEqual(S._net_debt_ebitda({"net_debt": 50, "ebitda": None}, "general")["status"], "missing")
+        self.assertEqual(S._net_debt_ebitda({"net_debt": 50, "ebitda": -1}, "general")["score"], -2)
+
+    def test_piotroski_with_too_few_tests(self):
+        self.assertEqual(S.health({"piotroski": {"score": 4, "out_of": 6}}, "financial")["piotroski"]["note"], "few_tests")
+        self.assertEqual(S.health({}, "financial")["piotroski"]["note"], "short_history")
+
+    def test_clipped_trend_is_flagged(self):
+        years = [{"label": f"FY{y}", "roic": v} for y, v in ((2022, 0.8), (2023, 1.0), (2024, 1.2), (2025, 1.5))]
+        ind = S._trend("roic_trend", years, "roic", clip=0.5)
+        self.assertEqual((ind["value"], ind["note"]), (0.0, "clipped"))
+        self.assertIsNone(S._trend("roic_trend", years, "roic")["note"])
+
+    def test_value_range_skips_forward_pe_on_adjusted_eps(self):
+        r = {"price_range": {"forward": [{"at": "now", "pe": {"low": 90, "base": 100, "high": 110}}]},
+             "dcf": {"range_low": 70, "value_per_share": 80, "range_high": 95}, "current": {"price": 100},
+             "analyst": {"eps_basis": {"gap": 0.25}}}
+        self.assertEqual(S._value_range(r)["basis"], "dcf")
+        r["analyst"]["eps_basis"]["gap"] = 0.05
+        self.assertEqual(S._value_range(r)["basis"], "fwd_pe")
+
+    def test_reit_coverage_is_named_for_ebitda(self):
+        L = {"interest_expense": 10, "ebit": 15, "ebitda": 40, "net_debt": 100}
+        self.assertEqual(S._coverage(L, "reit")["detail"]["basis"], "ebitda")
+        self.assertEqual(S._coverage(L, "general")["detail"]["basis"], "ebit")
+        self.assertIn("interest_coverage_ebitda", S.IND_NAMES)
+
     def test_three_year_change_needs_four_years(self):
         years = [{"label": f"FY{y}", "roic": r} for y, r in ((2022, 0.10), (2023, 0.12), (2024, 0.15), (2025, 0.16))]
         ind = S._trend("roic_trend", years, "roic")
@@ -485,6 +530,25 @@ class EndToEnd(unittest.TestCase):
         self.check_consistent(r["score"])
         self.assertNotIn("skipped", r["dcf"])
         self.assertFalse(r["score"]["caps"])
+
+    def test_company_type_from_the_industry(self):
+        import fake_fmp
+        prof = fake_fmp.SCENARIOS["QUAL"]["profile"]
+        for sector, industry, kind in (("Real Estate", "Real Estate - Services", "general"),
+                                       ("Real Estate", "REIT - Office", "reit"),
+                                       ("Real Estate", "REIT - Mortgage", "financial")):
+            with mock.patch.dict(prof, sector=sector, industry=industry):
+                r = self.A.analyze(self.A.parse_args(["QUAL", "--peers", "none", "--no-market"]))
+            self.assertEqual((r["sector_kind"], r["score"]["kind"]), (kind, kind), industry)
+
+    def test_share_basis_is_checked_over_every_fiscal_year(self):
+        import fake_fmp
+        oldest = fake_fmp.SCENARIOS["QUAL"]["inc"][0]             # outside the forward range's 3 years
+        with mock.patch.dict(oldest, weightedAverageShsOutDil=oldest["weightedAverageShsOutDil"] / 4):
+            r = self.A.analyze(self.A.parse_args(["QUAL", "--peers", "none", "--no-market"]))
+        pr = r["price_range"]
+        self.assertEqual((pr["band_problem"], pr["trailing_problem"]), (None, "share_basis"))
+        self.assertIsNone(self.results["QUAL"]["price_range"]["trailing_problem"])
 
     def test_utility_is_not_capped_for_normal_utility_finances(self):
         r = self.results["UTIL"]

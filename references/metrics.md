@@ -352,7 +352,7 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 | Health | Interest coverage, REITs | EBITDA / interest, since a REIT's EBIT is after heavy property depreciation | <2x: -2 / 2x to 3x: -1 / 3x to 4x: 0 / 4x to 6x: +1 / >=6x: +2 |
 | Health | Interest coverage, utilities | EBIT / interest | <1.5x: -2 / 1.5x to 2x: -1 / 2x to 3x: 0 / 3x to 4.5x: +1 / >=4.5x: +2 |
 | Health | Altman Z zone | section 6 zones: safe +1, grey 0, distress -1, Z and Z'' both in distress -2 | zones, not cut points |
-| Health | Piotroski F-score | section 6, rescaled to 9 when only 7 or 8 tests have data | <2: -2 / 2 to 4: -1 / 4 to 7: 0 / 7 to 8: +1 / >=8: +2 |
+| Health | Piotroski F-score | section 6, rescaled to 9 when only 7 or 8 tests have data (fewer: missing) | <2: -2 / 2 to 4: -1 / 4 to 7: 0 / 7 to 8: +1 / >=8: +2 |
 | Health | Current ratio | last fiscal year; below 1 scores 0 instead of -1 with net cash or an FCF margin of 10% or more | <1x: -1 / 1x to 1.5x: 0 / >=1.5x: +1 |
 | Health | Share count change per year | average yearly change in diluted shares | <-2%: +2 / -2% to -0.5%: +1 / -0.5% to 1%: 0 / 1% to 3%: -1 / >=3%: -2 |
 | Health | Equity / assets | last fiscal year (banks and insurers) | <5%: -2 / 5% to 7%: -1 / 7% to 10%: 0 / 10% to 13%: +1 / >=13%: +2 |
@@ -362,10 +362,11 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 The company type is the report's sector classification. Banks and insurers are the Financial
 Services sector plus bank, insurance and capital-markets industries, except fee-based ones
 (exchanges, financial data providers, insurance brokers), which are scored like other companies.
-REITs are the Real Estate sector and REIT industries. Utilities are the Utilities sector except
-independent power producers. Weights are shares of their pillar. n/a means a general indicator the
-type does not use: it is listed as not applicable and carries no weight. A dash means an indicator of
-another type's set, which is not listed at all.
+Mortgage REITs lend against their balance sheet, so they join banks and insurers. Other REIT
+industries are REITs; real-estate developers and services firms are scored like other companies.
+Utilities are the Utilities sector except independent power producers. Weights are shares of their
+pillar. n/a means a general indicator the type does not use: it is listed as not applicable and
+carries no weight. A dash means an indicator of another type's set, which is not listed at all.
 
 | Pillar | Indicator | General | Banks & insurers | REITs | Utilities |
 |---|---|---|---|---|---|
@@ -411,14 +412,16 @@ The forward-multiple positions have fallbacks and stops, checked in this order:
   since EV adds a price-currency market cap to statement-currency debt. The forward P/E position is
   kept when its range exists, since a percentile against its own history is not moved by the
   exchange rate's level.
-- Forward range available and analysts' EPS (or EBITDA) for the last reported year within 10% of the
-  reported figure: the forward position is used.
+- Forward range available, today's next-12-month figure usable, and analysts' EPS (or EBITDA) for
+  the last reported year within 10% of the reported figure: the forward position is used.
 - A loss (or negative EBITDA) expected in the fiscal year in progress or the next: missing.
 - Share counts not on today's basis (ADR ratio, unadjusted split) or a one-day price fall of more
-  than 50% or rise of more than 100%: missing, with no fallback, since the trailing history has the same problem. P/B as well.
-- No forward range, or analysts' figures more than 10% from reported ones (usually adjusted,
-  non-GAAP), so the range's history would mix two bases: the trailing multiple vs its fiscal-year-end
-  median, when at least 3 years exist and currencies match.
+  than 50% or rise of more than 100%, anywhere in the fiscal years the trailing history uses (the
+  forward range checks only its 3 years): missing, with no fallback, since the trailing history has
+  the same problem. P/B as well.
+- Otherwise (no forward range, no usable figure for today, or analysts' figures more than 10% from
+  reported ones, usually adjusted non-GAAP, so the range's history would mix two bases): the trailing
+  multiple vs its fiscal-year-end median, when at least 3 years exist and currencies match.
 
 With statements and price in different currencies, every ratio that mixes the two is left out as
 missing: the DCF, the reverse DCF, P/E vs industry, P/B and the trailing fallbacks. Altman uses Z''
@@ -470,8 +473,9 @@ EPS to fall); a currency mismatch; each red line.
 ### Value range
 
 Today's next-12-month EPS x the 25th percentile / median / 75th percentile of the 3-year forward
-P/E (the "Forward P/E, Now" rows of section 8), or the DCF reasonable range when there is no forward
-range (and currencies match). It shows where the price would be if the multiple returned to its own
+P/E (the "Forward P/E, Now" rows of section 8). The DCF reasonable range replaces it when there is
+no forward range or analysts' EPS is more than 10% from reported (adjusted EPS times multiples built
+on reported EPS would run high), and nothing is shown when currencies differ as well. It shows where the price would be if the multiple returned to its own
 history, not a target.
 
 ### Not scored

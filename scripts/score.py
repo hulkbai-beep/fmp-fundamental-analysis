@@ -216,14 +216,13 @@ def _multiple_position(r, key, band_key, hist_key, basis_key, est_field):
     band, gap, ccy = pr.get(band_key), _basis_gap(r, basis_key), _currency_mismatch(r)
     if key == "fwd_ev_position" and ccy:  # EV adds price-currency market cap to statement-currency net debt
         return _missing(key, "currency")
-    if band and gap is None:
-        if band.get("now_pct") is not None:
-            return _position(band, key)
-        return _missing(key, "loss_making")  # a range exists, but today's next-12-month figure is not positive
+    if band and gap is None and band.get("now_pct") is not None:
+        return _position(band, key)
     if _fwd_not_positive(r, est_field):
         return _missing(key, "loss_making")
-    if pr.get("band_problem") in ("share_basis", "price_jump"):
-        return _missing(key, pr["band_problem"])
+    problem = _trailing_problem(pr)
+    if problem:
+        return _missing(key, problem)
     if ccy:
         return _missing(key, "currency")
     h = (r.get("history_compare") or {}).get(hist_key) or {}
@@ -232,10 +231,17 @@ def _multiple_position(r, key, band_key, hist_key, basis_key, est_field):
                     note="adjusted_basis" if gap is not None else "trailing_history",
                     detail={"now": h["current"], "median": h["median"], "n": h["n"], "basis_gap": gap})
     if gap is not None:
-        return _missing(key, "adjusted_basis")
+        return _missing(key, "adjusted_basis_short")
     if not _estimates(r):
         return _missing(key, "no_estimates")
     return _missing(key, "no_band" if pr.get("band_note") else "no_data")
+
+
+def _trailing_problem(pr):
+    """share_basis / price_jump when the fiscal-year-end multiple history can't be trusted. analyze.py checks every
+    fiscal year for this (trailing_problem); band_problem covers only the forward range's 3 years."""
+    problem = pr.get("trailing_problem", pr.get("band_problem"))
+    return problem if problem in ("share_basis", "price_jump") else None
 
 
 def _slowdown_cap(ind, r):
@@ -268,8 +274,8 @@ def valuation(r, kind):
 
 
 def _pb_vs_history(r):
-    key, problem = "pb_vs_history", (r.get("price_range") or {}).get("band_problem")
-    if problem in ("share_basis", "price_jump"):
+    key, problem = "pb_vs_history", _trailing_problem(r.get("price_range") or {})
+    if problem:
         return _missing(key, problem)
     if _currency_mismatch(r):
         return _missing(key, "currency")
@@ -354,8 +360,9 @@ def _trend(key, years, field, clip=None):
     if a0 is None or b0 is None:
         return _missing(key, "short_history" if b is None else "no_data")
     lim = (lambda v: max(-clip, min(clip, v))) if clip else (lambda v: v)
-    return _ind(key, lim(a0) - lim(b0), detail={"latest": a0, "earlier": b0, "from": b["label"],
-                                                "to": years[-1]["label"]})
+    clipped = lim(a0) != a0 or lim(b0) != b0
+    return _ind(key, lim(a0) - lim(b0), note="clipped" if clipped else None,
+                detail={"latest": a0, "earlier": b0, "from": b["label"], "to": years[-1]["label"]})
 
 
 def quality(r, kind):
@@ -426,7 +433,7 @@ def health(r, kind):
         out["piotroski"] = _ind("piotroski", round(pio["score"] / pio["out_of"] * 9, 1),
                                 detail={"score": pio["score"], "out_of": pio["out_of"], "fy": pio.get("year")})
     else:
-        out["piotroski"] = _missing("piotroski", "short_history")
+        out["piotroski"] = _missing("piotroski", "few_tests" if pio else "short_history")
     if kind == "financial":
         eta = None if not L.get("total_assets") or L.get("equity") is None else L["equity"] / L["total_assets"]
         out["equity_to_assets"] = _ind("equity_to_assets", eta) if eta is not None else _missing("equity_to_assets", "no_data")
@@ -448,9 +455,9 @@ def _net_debt_ebitda(L, kind):
     band = {"reit": "net_debt_ebitda_reit", "utility": "net_debt_ebitda_utility"}.get(kind)
     kind_note = kind if band else None  # REITs and utilities: looser bands, say so
     nd, eb = _f(L.get("net_debt")), _f(L.get("ebitda"))
-    if nd is None:
+    if nd is None or eb is None:
         return _missing(key, "no_data", band)
-    if eb is None or eb <= 0:
+    if eb <= 0:
         return _ind(key, band=band, score=-2 if nd > 0 else 0, note="ebitda_not_positive",
                     detail={"net_debt": nd, "base_note": kind_note})
     if nd < 0:
@@ -472,12 +479,15 @@ def _coverage(L, kind):
     if not ie or ie <= 0:
         debt, nd = _f(L.get("debt")), _f(L.get("net_debt"))
         if (debt is not None and debt <= 0) or (nd is not None and nd < 0):  # unknown debt is not zero debt
-            return _ind(key, band=band, score=2, note="no_interest")
-        return _missing(key, "no_data", band)
-    cov = _coverage_ratio(L, kind)
-    if cov is None:
-        return _missing(key, "no_data", band)
-    return _ind(key, cov, band=band, note={"reit": "ebitda_coverage", "utility": "utility"}.get(kind))
+            ind = _ind(key, band=band, score=2, note="no_interest")
+        else:
+            ind = _missing(key, "no_data", band)
+    else:
+        cov = _coverage_ratio(L, kind)
+        ind = (_ind(key, cov, band=band, note={"reit": "ebitda_coverage", "utility": "utility"}.get(kind))
+               if cov is not None else _missing(key, "no_data", band))
+    ind["detail"]["basis"] = "ebitda" if kind == "reit" else "ebit"  # names the row (IND_NAMES interest_coverage_ebitda)
+    return ind
 
 
 def _altman(alt, ccy=None):
@@ -683,7 +693,7 @@ def _value_range(r):
     pr, d = r.get("price_range") or {}, r.get("dcf") or {}
     price = _f((r.get("current") or {}).get("price"))
     now = next((pt for pt in pr.get("forward") or [] if pt.get("at") == "now"), None)
-    if now and now.get("pe"):
+    if now and now.get("pe") and _basis_gap(r, "eps_basis") is None:  # adjusted EPS x GAAP multiples runs high
         lo, mid, hi, basis = now["pe"]["low"], now["pe"]["base"], now["pe"]["high"], "fwd_pe"
     elif d.get("range_low") is not None and (d.get("value_per_share") or 0) > 0 and not _currency_mismatch(r):
         lo, mid, hi, basis = d["range_low"], d["value_per_share"], d["range_high"], "dcf"
@@ -734,23 +744,28 @@ IND_NAMES = {
     "sbc_burden": "Stock comp % revenue", "revenue_cagr": "Revenue CAGR", "revenue_recent": "Revenue growth, last FY",
     "revenue_forward": "Expected revenue growth (analysts)", "eps_forward": "Expected EPS growth next FY (analysts)",
     "net_debt_ebitda": "Net debt / EBITDA", "interest_coverage": "Interest coverage (EBIT / interest)",
+    "interest_coverage_ebitda": "Interest coverage (EBITDA / interest)",
     "altman": "Altman Z zone", "piotroski": "Piotroski F-score (of 9)", "current_ratio": "Current ratio",
     "dilution": "Share count change per year", "equity_to_assets": "Equity / assets",
 }
 NOTES = {
-    "trailing_history": "fallback: trailing multiple vs its fiscal-year-end median (no forward range)",
+    "trailing_history": "fallback to the trailing multiple vs its fiscal-year-end median (no forward range)",
     "adjusted_basis": "analysts' figures are on another basis than reported ones (usually adjusted), which the forward "
-                      "range's history would mix: trailing multiple vs its fiscal-year-end median used instead",
-    "growth_slowdown": "capped at +1: expected EPS growth is under half the historical rate",
+                      "range's history would mix, so the trailing multiple vs its fiscal-year-end median is used",
+    "adjusted_basis_short": "analysts' figures are on another basis than reported ones (usually adjusted), and fewer "
+                            "than 3 fiscal years for the trailing fallback",
+    "clipped": "each end clipped to +-50%, so a change in a very high return reads as noise",
+    "few_tests": "fewer than 7 of the 9 tests have data",
+    "growth_slowdown": "capped at +1, since expected EPS growth is under half the historical rate",
     "historical_growth": "compared with historical revenue CAGR (no analyst estimates)",
-    "historical_eps": "fallback: historical EPS CAGR (no usable analyst EPS estimates)",
+    "historical_eps": "fallback to historical EPS CAGR (no usable analyst EPS estimates)",
     "sector_pe": "compared with the sector (no industry P/E)",
     "implied_below_range": "price implies FCF shrinking more than 50% a year",
     "implied_above_range": "price implies FCF growth above 100% a year",
     "negative_fcf": "free cash flow negative in the last fiscal year",
     "net_cash": "net cash", "reit": "REIT thresholds, since leverage is structurally higher",
     "utility": "utility thresholds, since regulated utilities carry structurally more debt",
-    "ebitda_coverage": "EBITDA / interest, since a REIT's EBIT is after property depreciation",
+    "ebitda_coverage": "a REIT's EBIT is after heavy property depreciation",
     "ebitda_not_positive": "EBITDA not positive", "no_interest": "no interest expense",
     "cash_rich": "below 1 but offset by net cash or FCF margin >= 10%",
     "no_estimates": "no analyst estimates", "loss_making": "earnings not positive (reported or expected)",
@@ -760,8 +775,8 @@ NOTES = {
     "price_jump": "a one-day price fall of more than 50% or rise of more than 100% (possibly an unadjusted split), "
                   "so the multiple history is not comparable",
     "currency": "statements and price are in different currencies, so this ratio is off by the exchange rate",
-    "currency_z2": "Z'' only: statements and price are in different currencies, which distorts Z",
-    "no_dcf": "no DCF: starting FCF not positive", "dcf_negative": "DCF value is not positive (cash flows negative)",
+    "currency_z2": "Z'' only, since statements and price are in different currencies, which distorts Z",
+    "no_dcf": "no DCF, since starting FCF is not positive", "dcf_negative": "DCF value not positive, since net debt exceeds the discounted cash flows",
     "no_market": "no industry data (--no-market or unavailable)",
     "short_history": "not enough fiscal years", "no_data": "no data",
     "na_financial": "not used for banks and insurers",
@@ -772,7 +787,7 @@ NOTES = {
 VALUE_TEXT = {"negative_fcf": "FCF < 0", "no_interest": "no interest", "ebitda_not_positive": "EBITDA <= 0",
               "implied_below_range": "< -50%/yr", "implied_above_range": "> 100%/yr", "dcf_negative": "<= -100%"}
 CAP_TEXT = {
-    "value_trap": "value trap: valuation is cheap while quality and growth are weak",
+    "value_trap": "value trap: valuation is cheap while quality and growth average -0.5 or less",
     "altman_distress": "Altman Z and Z'' both in the distress zone",
     "interest_coverage": "interest covered less than 1.5x (EBIT; EBITDA for REITs) in each of the last two fiscal "
                          "years, with net debt",
@@ -780,7 +795,8 @@ CAP_TEXT = {
     "negative_equity": "shareholders' equity not positive",
 }
 CONFLICT_TEXT = {
-    "value_trap": "Cheap valuation with weak quality and growth: cheap stocks are often cheap for a reason.",
+    "value_trap": "Cheap valuation while quality and growth are weak on average: cheap stocks are often cheap for a "
+                  "reason.",
     "quality_premium": "Strong quality but expensive valuation: a good business already priced as one.",
     "methods_disagree": "Relative methods (multiples vs own history and industry) and absolute methods (DCF, reverse DCF) "
                         "point opposite ways; the gap usually comes from the growth assumption.",
@@ -810,7 +826,7 @@ def conflict_text(x):
         return t.format(group=v.get("group") or "group")
     if x["type"] == "cyclical_peak":
         return t.format(margin=f"{v['margin'] * 100:.1f}%", median=f"{v['median'] * 100:.1f}%", years=v["years"],
-                        growth=f"{v['eps_growth_next'] * 100:+.0f}%")
+                        growth=f"{v['eps_growth_next'] * 100:+.1f}%")
     if x["type"] == "currency":
         return t.format(**v)
     return t
@@ -895,9 +911,10 @@ def render(s):
             if i["key"] == "piotroski" and i["status"] == "ok" and i["detail"]["out_of"] != 9:
                 val = f"{i['detail']['score']} of {i['detail']['out_of']} tests ({val} of 9)"
             notes = [n for n in (i["note"], i["detail"].get("base_note")) if n]
-            note = f" ({'; '.join(NOTES.get(n, n) for n in notes)})" if notes else ""
+            note = f": {'; '.join(NOTES.get(n, n) for n in notes)}" if notes else ""  # notes have parentheses of their own
             sc = _sc(i["score"]) if i["status"] == "ok" else "0 (missing)"
-            out.append(f"| {PILLAR_NAMES[n]} | {IND_NAMES[i['key']]}{note} | {val} | {sc} | "
+            name = IND_NAMES[i["key"] + ("_ebitda" if i["detail"].get("basis") == "ebitda" else "")]
+            out.append(f"| {PILLAR_NAMES[n]} | {name}{note} | {val} | {sc} | "
                        f"{i['weight_share'] * 100:.0f}% | {rule_text(i)} |")
     if s["caps"]:
         out.append("\n**Caps:** " + "; ".join(CAP_TEXT.get(x["type"], x["type"]) for x in s["caps"]) +

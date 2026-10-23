@@ -52,7 +52,6 @@ import macro as M  # noqa: E402
 import score as S  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
-REAL_ESTATE_SECTORS = {"real estate"}
 # Fee-based financial industries (exchanges, data providers, insurance brokers) run on cash flow like other
 # companies, so they get the general analysis rather than the bank / insurer one.
 FEE_FINANCIAL_INDUSTRIES = ("data & stock exchanges", "financial data", "stock exchanges", "insurance brokers",
@@ -681,7 +680,7 @@ def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=Non
     estimates = analyst.get("estimates") or []
     cur, nxt, after = ([e for e in estimates if not e["ended"]] + [None, None, None])[:3]
     out = {"price": price, "lookback_years": lookback_years, "pe_band": None, "ev_band": None, "band_note": None,
-           "band_problem": None, "forward": [], "summary": []}
+           "band_problem": None, "trailing_problem": None, "forward": [], "summary": []}
     nd, mi = basis.get("net_debt"), basis.get("minority_interest") or 0.0
     ev_ok = sector_kind != "financial" and nd is not None and bool(cur_shares)
     today_iso = today.isoformat()
@@ -689,6 +688,10 @@ def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=Non
     start = (today - dt.timedelta(days=round(365.25 * lookback_years))).isoformat()
     window = [(d, px) for d, px in series if d >= start and px]
     out["band_problem"], problem_note = history_problem(years, window, start, cur_shares)
+    # the trailing multiples vs their fiscal-year-end median (history_compare) use every fiscal year
+    first = min((y["date"] for y in years), default=start)
+    out["trailing_problem"] = history_problem(years, [(d, px) for d, px in series if d >= first and px], first,
+                                              cur_shares)[0]
 
     def ntm(rep_key, est_key):
         return _ntm([(y["date"], y[rep_key]) for y in years if y.get(rep_key) is not None] +
@@ -1515,11 +1518,12 @@ def analyze(args):
         sector_note = ("Fee-based financial company (exchange, data provider or insurance broker): analysed like "
                        "other companies, since its earnings and cash flow do not depend on a balance sheet of loans "
                        "or policies.")
-    elif sector in FINANCIAL_SECTORS or any(w in industry for w in ("bank", "insurance", "capital markets")):
+    elif (sector in FINANCIAL_SECTORS or any(w in industry for w in ("bank", "insurance", "capital markets"))
+          or ("reit" in industry and "mortgage" in industry)):  # mortgage REITs lend: judged like banks
         sector_kind = "financial"
         sector_note = ("Financial company: gross margin, EV-based multiples, FCF, DCF and Altman Z are not "
                        "meaningful. Focus on ROE, P/B, P/E, book-value growth and leverage.")
-    elif sector in REAL_ESTATE_SECTORS or "reit" in industry:
+    elif "reit" in industry:  # developers and real-estate services are analysed like other companies
         sector_kind = "reit"
         sector_note = ("REIT: net income understates cash earnings (depreciation). Use P/FCF or operating "
                        "cash flow as an FFO proxy; leverage is structurally higher.")
