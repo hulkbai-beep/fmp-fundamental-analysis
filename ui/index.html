@@ -141,6 +141,12 @@ details.pil > summary .prow { flex: 1; }
 .bands span.on { background: var(--accent); color: var(--card); font-weight: 600; }
 .bands span.over { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
 .slist { margin: 6px 0 0; padding-left: 18px; }
+.views { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 4px 0 12px; }
+.views svg { flex: none; }
+.views .frame { fill: none; stroke: var(--border); } .views .axis { stroke: var(--muted); stroke-width: 1; }
+.views .qon { fill: var(--accent); opacity: 0.14; } .views .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+.views .vtext { flex: 1; min-width: 180px; font-variant-numeric: tabular-nums; }
+.views .vtext div { margin: 2px 0; } .views .qname { font-weight: 700; margin-top: 6px; }
 .ssec { margin-top: 12px; }
 .ssec b { font-size: 13px; }
 @media (max-width: 760px) {
@@ -510,6 +516,7 @@ const sgn = (v, d = 2) => {
   const a = Math.abs(v).toFixed(d);
   return (+a === 0 ? "" : v > 0 ? "+" : "−") + a;  // no sign on a value that rounds to zero
 };
+const NAMED_BASES = new Set(["ebitda", "ocf"]);  // detail.basis values that name a row variant (score.py NAMED_BASES)
 const sgnCls = v => v > 0.004 ? "pos" : v < -0.004 ? "neg" : "";
 const intSc = v => v > 0 ? `+${v}` : v < 0 ? `−${-v}` : "0";
 const minus = x => String(x).replace("-", "−");
@@ -530,6 +537,24 @@ function cutTxt(c, unit, bare) {
   const n = x => String(+x.toFixed(4)).replace("-", "−");
   const suf = bare ? "" : unit === "pct" || unit === "pctile" ? "%" : unit === "pt" || unit === "pp" ? "pt" : unit === "x" ? "x" : "";
   return n(["pct", "pctile", "pt", "pp"].includes(unit) ? c * 100 : c) + suf;
+}
+// Business quality (y) against price attractiveness (x), both -2..+2, with the stock's quadrant shaded.
+function viewsHtml(vw) {
+  const S = 136, X0 = 22, Y0 = 4, px = v => X0 + (Math.max(-2, Math.min(2, v)) + 2) / 4 * S;
+  const py = v => Y0 + (2 - Math.max(-2, Math.min(2, v))) / 4 * S;
+  const qx = vw.price >= 0 ? X0 + S / 2 : X0, qy = vw.business >= 0 ? Y0 : Y0 + S / 2;
+  const svg = `<svg width="${X0 + S + 4}" height="${Y0 + S + 18}" role="img" aria-label="${esc(t("q_" + vw.quadrant))}">
+    <rect class="qon" x="${qx}" y="${qy}" width="${S / 2}" height="${S / 2}"/>
+    <rect class="frame" x="${X0}" y="${Y0}" width="${S}" height="${S}"/>
+    <line class="axis" x1="${X0 + S / 2}" y1="${Y0}" x2="${X0 + S / 2}" y2="${Y0 + S}"/>
+    <line class="axis" x1="${X0}" y1="${Y0 + S / 2}" x2="${X0 + S}" y2="${Y0 + S / 2}"/>
+    <circle class="dot" cx="${px(vw.price)}" cy="${py(vw.business)}" r="5"/>
+    <text x="${X0 + S / 2}" y="${Y0 + S + 14}" text-anchor="middle">${esc(t("sc_price"))} →</text>
+    <text transform="translate(14 ${Y0 + S / 2}) rotate(-90)" text-anchor="middle">${esc(t("sc_business"))} →</text></svg>`;
+  return `<div class="views">${svg}<div class="vtext"><b>${esc(t("sc_views"))}</b>
+    <div>${esc(t("sc_business"))} <b class="${sgnCls(vw.business)}">${sgn(vw.business)}</b></div>
+    <div>${esc(t("sc_price"))} <b class="${sgnCls(vw.price)}">${sgn(vw.price)}</b></div>
+    <div class="qname">${esc(t("q_" + vw.quadrant))}</div><p class="sub">${esc(t("sc_views_note"))}</p></div></div>`;
 }
 // The scoring bands as chips; the band the value falls in is highlighted. Where a rule overrides the band's score
 // (growth-slowdown cap, current ratio offset), that chip is outlined and shows the final score.
@@ -554,6 +579,7 @@ function indValue(i) {
     const z = t("zone_" + (i.detail.z_zone || i.detail.z2_zone));
     return LANG === "zh" ? `${fmtUnit(i.value, "num")}（${z}）` : `${fmtUnit(i.value, "num")} (${z})`;
   }
+  if (i.key === "fcf_yield_spread") return `${fmtUnit(i.detail.yield, "pct")} − ${fmtUnit(i.detail.treasury, "pct")} = ${fmtUnit(i.value, i.unit)}`;
   if (i.key === "piotroski") return i.detail.out_of === 9 ? `${i.detail.score} / 9`
     : t("pio_scaled", i.detail.score, i.detail.out_of, fmtUnit(i.value, "num"));
   return fmtUnit(i.value, i.unit);
@@ -563,6 +589,8 @@ function conflictText(c) {
   if (c.type === "adjusted_eps") return t("cf_adjusted_eps", Math.round(v.gap * 100) + "%");
   if (c.type === "group_expensive") return t("cf_group_expensive", t("grp_" + (v.group || "industry")));
   if (c.type === "cyclical_peak") return t("cf_cyclical_peak", pct1(v.margin), pct1(v.median), v.years, sgn(v.eps_growth_next * 100, 1) + "%");
+  if (c.type === "optimistic_estimates") return t("cf_optimistic_estimates", sgn(v.eps_growth_next * 100, 1) + "%",
+    sgn(v.eps_cagr * 100, 1) + "%", ((v.eps_growth_next - v.eps_cagr) * 100).toFixed(1) + (LANG === "zh" ? " 个百分点" : "pt"));
   if (c.type === "currency") return t("cf_currency", v.statements, v.price);
   return t("cf_" + c.type);
 }
@@ -577,6 +605,7 @@ function scoreCard(s) {
   h += `<div class="scale">${LABEL_ORDER.map((l, j) => `<div class="${j === li ? "on" : ""}">${esc(t("lbl_" + l))}</div>`).join("")}
     <div class="mark" style="left:clamp(1.5px, ${pos(s.score)}%, calc(100% - 1.5px))" title="${sgn(s.score)}"></div></div>
     <div class="scaleticks"><span>−1.2</span><span>−0.4</span><span>+0.4</span><span>+1.2</span></div>`;
+  if (s.views) h += viewsHtml(s.views);
   h += `<p class="sub">${esc(t("sc_formula"))}${zh ? "" : " "}${esc(t("sc_hint"))}</p>`;
   h += `<div class="prow hdr"><span>${esc(t("sc_pillar"))}</span><span>${esc(t("sc_weight"))}</span><span></span><span>${esc(t("sc_score"))}</span>
     <span><span class="lg">${esc(t("sc_contrib"))}</span><span class="sm">${esc(t("sc_icontrib_s"))}</span></span><span>${esc(t("sc_cov"))}</span></div>`;
@@ -593,7 +622,7 @@ function scoreCard(s) {
       const notes = [i.note, i.detail && i.detail.base_note].filter(Boolean).map(x => t("note_" + x));
       const note = notes.length ? `<span class="inote">${esc(notes.join(zh ? "；" : "; "))}</span>` : "";
       const ok = i.status === "ok";
-      const name = t("ind_" + i.key + (i.detail && i.detail.basis === "ebitda" ? "_ebitda" : ""));
+      const name = t("ind_" + i.key + (i.detail && NAMED_BASES.has(i.detail.basis) ? "_" + i.detail.basis : ""));
       h += `<tr><td class="l">${esc(name)}${note}</td><td>${esc(indValue(i))}</td>
         <td class="l">${bandsHtml(i)}</td><td class="${ok ? sgnCls(i.score) : ""}"><b>${intSc(i.score)}</b></td>
         <td data-l="${esc(t("sc_weight"))}">${pct0(i.weight_share)}</td><td data-l="${esc(t("sc_icontrib"))}">${sgn(i.contribution)}</td></tr>`;

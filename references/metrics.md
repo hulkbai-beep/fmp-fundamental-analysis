@@ -303,7 +303,7 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 `scripts/score.py` turns the numbers above into one score from -2 to +2 and a label, on the same
 scale and with the same five labels as the technical-analysis scorecard. The rules are fixed and
 deterministic: Python computes the score, and the write-up explains it without changing it. Rules
-version 1.1 (`RULES_VERSION`). The report's "Fundamental score" section and the UI's score card show
+version 1.3 (`RULES_VERSION`). The report's "Fundamental score" section and the UI's score card show
 the same numbers with every weight and band.
 
 **Formula:** score = 0.35 x valuation + 0.25 x quality + 0.20 x growth + 0.20 x financial health.
@@ -321,6 +321,13 @@ cannot make a weak business score high, and the value-trap cap below stops that 
 Moderately bearish, below -1.2 Bearish. A score exactly on a bound takes the label nearer Neutral
 (+0.40 is Neutral, -1.20 is Moderately bearish). It is a rule-based label, not a recommendation.
 
+**Two views** (shown beside the total; they do not change it, the label or the caps): business
+quality = quality, growth and financial health at their total weights (25 : 20 : 20, so 38% / 31% /
+31%), and price attractiveness = the valuation pillar, each -2..+2. Their signs place the stock in
+one of four quadrants: good business at a good price, good business priced high, cheap but a weak
+business, weak business priced high (0 counts as the good side). A total of +0.5 can be a strong
+business that is expensive or a weak one that is cheap; the two views tell them apart.
+
 ### Indicators and bands
 
 Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is percentage points.
@@ -331,7 +338,8 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 | Valuation | Forward EV/EBITDA vs its 3-year range | the same on next-12-month EV/EBITDA | <25%: +2 / 25% to 45%: +1 / 45% to 55%: 0 / 55% to 75%: -1 / >=75%: -2 |
 | Valuation | Trailing fallback for both | trailing (TTM) multiple / median of its fiscal-year-end multiples - 1, at least 3 years | <-25%: +2 / -25% to -10%: +1 / -10% to 10%: 0 / 10% to 25%: -1 / >=25%: -2 |
 | Valuation | P/B vs its fiscal-year-end median | the same on P/B (banks and insurers) | <-25%: +2 / -25% to -10%: +1 / -10% to 10%: 0 / 10% to 25%: -1 / >=25%: -2 |
-| Valuation | Reverse DCF: implied minus expected growth | FCF growth the price implies (section 7) minus analysts' revenue growth for the two fiscal years ahead (historical revenue CAGR without estimates); +2 when the price implies FCF shrinking more than 50% a year, -2 above 100% a year | <-5pt: +2 / -5pt to -2pt: +1 / -2pt to 2pt: 0 / 2pt to 8pt: -1 / >=8pt: -2 |
+| Valuation | Reverse DCF: implied minus expected growth | FCF growth the price implies (section 7) minus the lower of analysts' revenue growth for the two fiscal years ahead and historical revenue CAGR (the CAGR alone without estimates); +2 when the price implies FCF shrinking more than 50% a year, -2 above 100% a year | <-5pt: +2 / -5pt to -2pt: +1 / -2pt to 2pt: 0 / 2pt to 8pt: -1 / >=8pt: -2 |
+| Valuation | FCF yield minus 10Y Treasury | free cash flow (TTM, else the last fiscal year) / market cap, minus the latest 10-year Treasury yield (section 9); operating cash flow for REITs, whose capex is mostly growth | <-2pt: -2 / -2pt to 0pt: -1 / 0pt to 2pt: 0 / 2pt to 4pt: +1 / >=4pt: +2 |
 | Valuation | DCF value vs price | DCF value per share / price - 1 (margin of safety) | <-30%: -2 / -30% to -10%: -1 / -10% to 10%: 0 / 10% to 30%: +1 / >=30%: +2 |
 | Valuation | P/E vs industry | company P/E / industry P/E - 1 (sector P/E when there is no industry P/E) | <-30%: +2 / -30% to -10%: +1 / -10% to 25%: 0 / 25% to 60%: -1 / >=60%: -2 |
 | Quality | ROIC (median) | median over the fiscal years in the report | <5%: -2 / 5% to 8%: -1 / 8% to 12%: 0 / 12% to 20%: +1 / >=20%: +2 |
@@ -371,11 +379,12 @@ carries no weight. A dash means an indicator of another type's set, which is not
 
 | Pillar | Indicator | General | Banks & insurers | REITs | Utilities | Fee-based financials |
 |---|---|---|---|---|---|---|
-| Valuation | Forward P/E vs its 3-year range | 30% | 40% | 30% | 30% | 30% |
+| Valuation | Forward P/E vs its 3-year range | 25% | 40% | 25% | 30% | 25% |
 | Valuation | Forward EV/EBITDA vs its 3-year range | 20% | n/a | 20% | 20% | 20% |
 | Valuation | Reverse DCF: implied minus expected growth | 20% | n/a | 20% | 20% | 20% |
-| Valuation | DCF value vs price | 15% | n/a | 15% | 15% | 15% |
-| Valuation | P/E vs industry | 15% | 30% | 15% | 15% | 15% |
+| Valuation | FCF yield minus 10Y Treasury | 15% | n/a | 15% | n/a | 15% |
+| Valuation | DCF value vs price | 10% | n/a | 10% | 15% | 10% |
+| Valuation | P/E vs industry | 10% | 30% | 10% | 15% | 10% |
 | Valuation | P/B vs its fiscal-year-end median | - | 30% | - | - | - |
 | Quality | ROIC (median) | 30% | n/a | n/a | n/a | 30% |
 | Quality | ROIC change over 3 years | 15% | n/a | 25% | n/a | 15% |
@@ -385,9 +394,9 @@ carries no weight. A dash means an indicator of another type's set, which is not
 | Quality | Stock comp % revenue | 10% | 20% | 20% | 15% | 10% |
 | Quality | ROE (median) | - | 50% | - | 35% | - |
 | Quality | ROE change over 3 years | - | 30% | - | 20% | - |
-| Growth | Revenue CAGR | 30% | 30% | 30% | 30% | 30% |
-| Growth | Revenue growth, last FY | 20% | 20% | 20% | 20% | 20% |
-| Growth | Expected revenue growth (analysts) | 30% | 30% | 30% | 30% | 30% |
+| Growth | Revenue CAGR | 35% | 35% | 35% | 35% | 35% |
+| Growth | Revenue growth, last FY | 25% | 25% | 25% | 25% | 25% |
+| Growth | Expected revenue growth (analysts) | 20% | 20% | 20% | 20% | 20% |
 | Growth | Expected EPS growth next FY (analysts) | 20% | 20% | 20% | 20% | 20% |
 | Financial health | Net debt / EBITDA | 25% | n/a | 30% | 30% | 30% |
 | Financial health | Interest coverage (EBIT / interest) | 20% | n/a | 25% | 25% | 25% |
@@ -400,7 +409,8 @@ carries no weight. A dash means an indicator of another type's set, which is not
 Why: EV, FCF, gross margin, DCF, Altman Z and the current ratio mean little for a balance sheet of
 loans or policies. For REITs, property depreciation makes ROIC level, FCF / net income and EBIT
 misleading. Utilities fund capex with debt and new shares, so FCF is often negative by design and
-leverage runs higher; their ROE is what regulators set returns on. Exchanges, data providers and
+leverage runs higher; their ROE is what regulators set returns on, and an FCF yield would only
+measure the capex cycle, so they keep the valuation weights from before it was added. Exchanges, data providers and
 insurance brokers hold clearing margin or client money on their balance sheet, which swells current
 assets and liabilities alike, so Altman Z and the current ratio say nothing about their health.
 
@@ -430,7 +440,7 @@ The forward-multiple positions have fallbacks and stops, checked in this order:
   multiple vs its fiscal-year-end median, when at least 3 years exist and currencies match.
 
 With statements and price in different currencies, every ratio that mixes the two is left out as
-missing: the DCF, the reverse DCF, P/E vs industry, P/B and the trailing fallbacks. Altman uses Z''
+missing: the DCF, the reverse DCF, the FCF yield, P/E vs industry, P/B and the trailing fallbacks. Altman uses Z''
 only (book equity instead of market cap), and the value range does not use the DCF.
 
 ### Caps
@@ -470,11 +480,12 @@ as a conflict and does not by itself change the confidence.
 
 Listed with the score and never change it: value trap; quality premium (quality +1 or more with
 valuation -1 or less: a good business already priced as one); relative methods (multiples vs own
-history and industry) and absolute methods (DCF, reverse DCF) each averaging +/-1 or more on
+history and industry) and absolute methods (DCF, reverse DCF, FCF yield vs Treasury) each averaging +/-1 or more on
 opposite sides; growth slowdown; cheap against the industry while the industry's own P/E sits in
 the top fifth of its history; adjusted EPS; a possible cyclical peak (latest operating margin at
 least 5 points above its median and at least 1.5x it, over 4 or more years, while analysts expect
-EPS to fall); a currency mismatch; each red line.
+EPS to fall); optimistic estimates (next year's expected EPS growth 10 points or more above the
+historical EPS CAGR); a currency mismatch; each red line.
 
 ### Value range
 
@@ -489,7 +500,8 @@ history, not a target.
 Analyst price targets (optimistic, and mostly forward EPS x a chosen multiple, so they repeat the
 forward P/E), the 52-week and volatility ranges (how the price moves, not what the company is
 worth), peers (auto-peers can include foreign listings) and macro releases (context; rates already
-enter through the DCF's Treasury-linked discount rate).
+enter through the DCF's Treasury-linked discount rate and the FCF yield's spread over the 10-year
+Treasury).
 
 ### Known limits
 
@@ -501,6 +513,25 @@ enter through the DCF's Treasury-linked discount rate).
 - A single year's one-off charge still moves the trend and coverage indicators and the Altman
   zone; only the coverage and cash-flow red lines require two years.
 - The reverse DCF shares the section 7 model's horizon, terminal growth and discount rate.
+
+### Rule changes
+
+- **1.3:** FCF yield minus the 10-year Treasury yield joins valuation at 15% (forward P/E 30% to
+  25%, DCF and P/E vs industry 15% to 10% each), with operating cash flow for REITs and not for banks,
+  insurers or utilities. Why: the multiple positions compare a stock only with its own last 3 years,
+  so one that has always been expensive scored as cheap when it dipped a little below its usual
+  multiple (Costco on the first real-data run). The yield is an anchor outside the stock's history,
+  and it makes valuation stricter when rates rise. The bands are a first guess, to be checked on the
+  validation set.
+- **1.2:** analysts' estimates count for less. Within growth, expected revenue growth goes from 30%
+  to 20% and history gains it (revenue CAGR 35%, last FY 25%). The reverse DCF compares the implied
+  growth with the lower of expected and historical revenue growth. Optimistic estimates are listed
+  as a conflict. Why: one consensus fed five indicators (both forward positions, the reverse DCF and
+  both expected-growth indicators), and on the first real-data run a single jump in the consensus
+  (JPMorgan and ICE, +12% to +14% in one fiscal year) moved growth and valuation together.
+- **1.1:** fee-based financials as their own type; expected revenue growth from the analysts' own
+  basis; share-basis check between consecutive years only; dilution as the median yearly change.
+  Each fixed a wrong score on the first real-data run.
 
 To change a rule, edit the weights (`PILLAR_WEIGHTS`, `WEIGHTS`), the cut points (`BANDS`) or the
 named thresholds at the top of `score.py`, bump `RULES_VERSION`, and update this section;

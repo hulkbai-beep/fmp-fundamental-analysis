@@ -85,15 +85,15 @@ class Pillars(unittest.TestCase):
         for k in S.WEIGHTS["general"]["valuation"]:
             inds.setdefault(k, S._missing(k, "no_data"))
         p = S._pillar("valuation", inds, "general")
-        self.assertAlmostEqual(p["score"], 0.6)          # 30% x +2, the rest count as 0
-        self.assertAlmostEqual(p["coverage"], 0.30)
+        self.assertAlmostEqual(p["score"], 0.5)          # 25% x +2, the rest count as 0
+        self.assertAlmostEqual(p["coverage"], 0.25)
 
     def test_not_applicable_is_dropped_and_the_rest_reweighted(self):
         inds = {"fwd_pe_position": ok("fwd_pe_position", 2), "pb_vs_history": ok("pb_vs_history", 0),
                 "vs_industry": ok("vs_industry", -1)}
         p = S._pillar("valuation", inds, "financial")
         na = [i["key"] for i in p["indicators"] if i["status"] == "n/a"]
-        self.assertEqual(sorted(na), ["dcf_margin", "fwd_ev_position", "implied_growth_gap"])
+        self.assertEqual(sorted(na), ["dcf_margin", "fcf_yield_spread", "fwd_ev_position", "implied_growth_gap"])
         self.assertAlmostEqual(p["score"], 0.4 * 2 + 0.3 * 0 + 0.3 * -1)
         self.assertAlmostEqual(sum(i["weight_share"] for i in p["indicators"]), 1.0)
         self.assertEqual(p["coverage"], 1.0)
@@ -103,6 +103,17 @@ class Pillars(unittest.TestCase):
         self.assertAlmostEqual(s["score"], 0.35 * 1 + 0.25 * 2 + 0.20 * -1)
         self.assertFalse(s["caps"])
         self.assertEqual(s["label"], "Moderately bullish")
+
+    def test_two_views_leave_the_total_alone(self):
+        s = stubbed_score({"valuation": -1, "quality": 2, "growth": 1, "health": 0})
+        self.assertAlmostEqual(s["score"], 0.35 * -1 + 0.25 * 2 + 0.20 * 1)
+        self.assertEqual(s["views"]["business"], round((0.25 * 2 + 0.20 * 1) / 0.65, 2))
+        self.assertEqual((s["views"]["price"], s["views"]["quadrant"]), (-1, "good_business_pricey"))
+        for scores, quadrant in (((1, 1), "good_business_good_price"), ((1, -1), "cheap_weak_business"),
+                                 ((-1, -1), "weak_and_pricey"), ((0, 0), "good_business_good_price")):
+            v, b = scores
+            s = stubbed_score({"valuation": v, "quality": b, "growth": b, "health": b})
+            self.assertEqual(s["views"]["quadrant"], quadrant, scores)
 
     def test_no_negative_zero(self):
         s = stubbed_score({"valuation": -0.004, "quality": 0, "growth": 0, "health": 0})
@@ -300,6 +311,43 @@ class Indicators(unittest.TestCase):
         g = S._implied_growth_gap(r, {"implied_growth": 0.10})
         self.assertEqual((g["note"], round(g["value"], 4)), ("historical_growth", 0.05))
 
+    def test_implied_growth_compares_with_the_lower_of_analysts_and_history(self):
+        def r(cagr, *growth):
+            return {"analyst": {"estimates": [{"fy": 2026 + i, "revenue_growth": g, "ended": False}
+                                              for i, g in enumerate(growth)]}, "cagr": {"revenue": cagr}}
+        g = S._implied_growth_gap(r(0.05, 0.12, 0.10), {"implied_growth": 0.10})
+        self.assertEqual((g["note"], g["detail"]["reference_source"], round(g["value"], 4)), ("history_lower", "history", 0.05))
+        g = S._implied_growth_gap(r(0.15, 0.12, 0.10), {"implied_growth": 0.10})
+        self.assertEqual((g["note"], g["detail"]["reference_source"], round(g["value"], 4)), (None, "analysts", -0.01))
+        g = S._implied_growth_gap(r(None, 0.12, 0.10), {"implied_growth": 0.10})
+        self.assertEqual((g["note"], round(g["value"], 4)), (None, -0.01))
+
+    def test_optimistic_estimates_are_a_conflict(self):
+        r = dict(self.est(1.0, 1.20), cagr={"eps": 0.10})      # exactly 10 points above history
+        self.assertIsNotNone(S._optimistic_estimates(r))
+        s = stubbed_score({"valuation": 0, "quality": 0, "growth": 0, "health": 0}, r)
+        c = [x for x in s["conflicts"] if x["type"] == "optimistic_estimates"]
+        self.assertEqual(len(c), 1)
+        self.assertIn("+20.0%", S.conflict_text(c[0]))
+        self.assertEqual(s["score"], 0)                          # listed only, the score does not move
+        self.assertIsNone(S._optimistic_estimates(dict(self.est(1.0, 1.15), cagr={"eps": 0.10})))
+        self.assertIsNone(S._optimistic_estimates(self.est(1.0, 1.5)))   # no history to compare with
+
+    def test_fcf_yield_spread(self):
+        rates = {"rates": {"date": "2026-10-23", "points": {"now": {"10Y": 0.042}}}}
+        r = {"basis": {"fcf": 50.0, "ocf": 80.0, "label": "TTM"}, "current": {"market_cap": 1000.0}, "market": rates}
+        g = S._fcf_yield_spread(r, "general")
+        self.assertEqual((round(g["value"], 4), g["score"], g["detail"]["basis"]), (0.008, 0, "fcf"))   # 5.0% - 4.2%
+        g = S._fcf_yield_spread(r, "reit")                     # REITs: operating cash flow
+        self.assertEqual((round(g["value"], 4), g["score"], g["detail"]["basis"]), (0.038, 1, "ocf"))
+        self.assertEqual(S._fcf_yield_spread(dict(r, basis={"fcf": -10.0}), "general")["score"], -2)
+        self.assertEqual(S._fcf_yield_spread(dict(r, market=None), "general")["note"], "no_treasury")
+        self.assertEqual(S._fcf_yield_spread(dict(r, current={}), "general")["note"], "no_data")
+        r["years"], r["profile"] = [{"currency": "JPY"}], {"currency": "USD"}
+        self.assertEqual(S._fcf_yield_spread(r, "general")["note"], "currency")
+        self.assertNotIn("fcf_yield_spread", S.valuation(dict(r, years=[]), "utility"))
+        self.assertIn("fcf_yield_spread", S.valuation(dict(r, years=[]), "reit"))
+
     def test_negative_dcf_value_is_flagged(self):
         r = {"dcf": {"margin_of_safety": -1.5, "value_per_share": -5}}
         ind = S.valuation(r, "general")["dcf_margin"]
@@ -495,6 +543,9 @@ class TextsAndUI(unittest.TestCase):
             self.both(f'lbl_{name}')
         for n in S.PILLARS:
             self.both("p_" + n)
+        for q in S.QUADRANTS.values():
+            self.both("q_" + q)
+            self.assertIn(q, S.QUADRANT_TEXT)
 
 
 class Docs(unittest.TestCase):

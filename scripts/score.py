@@ -14,7 +14,8 @@ five labels as the technical-analysis scorecard (Bearish .. Bullish).
 - Two caps keep the total at Neutral (+0.4) at most: a balance-sheet red line, and a "value trap"
   (cheap valuation with weak quality and growth). Separately, a forward-multiple position scores at most
   +1 after historical EPS growth above 15% when expected EPS growth is under half of it.
-- Rates enter only through the DCF's Treasury-linked discount rate; macro releases are not scored.
+- Rates enter through the DCF's Treasury-linked discount rate and the FCF yield's spread over the 10-year
+  Treasury; macro releases are not scored.
 
 score(r) works on the dict analyze() returns and makes no API calls. render(s) prints the report
 section. The rules are documented in references/metrics.md section 12; every change to a threshold or
@@ -25,56 +26,61 @@ from __future__ import annotations
 import bisect
 import statistics
 
-RULES_VERSION = "1.1"
+RULES_VERSION = "1.3"
 
 PILLARS = ("valuation", "quality", "growth", "health")
 PILLAR_WEIGHTS = {"valuation": 0.35, "quality": 0.25, "growth": 0.20, "health": 0.20}
+# Two views shown beside the total (they do not change it): business quality is the non-valuation pillars at their
+# total weights, price attractiveness is the valuation pillar. Each view's sign picks one of four quadrants.
+BUSINESS_PILLARS = ("quality", "growth", "health")
+QUADRANTS = {(True, True): "good_business_good_price", (True, False): "good_business_pricey",
+             (False, True): "cheap_weak_business", (False, False): "weak_and_pricey"}
 
 # Indicator weights inside each pillar, by company type (analyze.py's sector_kind). An indicator listed for
 # "general" but not for the company's type is shown as not applicable.
 WEIGHTS = {
     "general": {
-        "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
-                      "dcf_margin": 0.15, "vs_industry": 0.15},
+        "valuation": {"fwd_pe_position": 0.25, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
+                      "fcf_yield_spread": 0.15, "dcf_margin": 0.10, "vs_industry": 0.10},
         "quality": {"roic_level": 0.30, "roic_trend": 0.15, "op_margin_trend": 0.15,
                     "gross_margin_stability": 0.10, "fcf_conversion": 0.20, "sbc_burden": 0.10},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.25, "interest_coverage": 0.20, "altman": 0.15, "piotroski": 0.20,
                    "current_ratio": 0.10, "dilution": 0.10},
     },
     "financial": {
         "valuation": {"fwd_pe_position": 0.40, "pb_vs_history": 0.30, "vs_industry": 0.30},
         "quality": {"roe_level": 0.50, "roe_trend": 0.30, "sbc_burden": 0.20},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"piotroski": 0.40, "equity_to_assets": 0.35, "dilution": 0.25},
     },
     # REITs: depreciation makes GAAP ROIC, FCF / net income and EBIT coverage misleading; current ratio and
     # Altman Z mean little for a landlord. Coverage is EBITDA / interest.
     "reit": {
-        "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
-                      "dcf_margin": 0.15, "vs_industry": 0.15},
+        "valuation": {"fwd_pe_position": 0.25, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
+                      "fcf_yield_spread": 0.15, "dcf_margin": 0.10, "vs_industry": 0.10},
         "quality": {"roic_trend": 0.25, "op_margin_trend": 0.30, "gross_margin_stability": 0.25, "sbc_burden": 0.20},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
-    # Utilities: regulated returns are judged on ROE; capex above operating cash flow (negative FCF), a current
-    # ratio under 1 and a low Altman Z are normal.
+    # Utilities: regulated returns are judged on ROE; capex above operating cash flow (negative FCF, so no FCF
+    # yield), a current ratio under 1 and a low Altman Z are normal.
     "utility": {
         "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
                       "dcf_margin": 0.15, "vs_industry": 0.15},
         "quality": {"roe_level": 0.35, "roe_trend": 0.20, "op_margin_trend": 0.20, "gross_margin_stability": 0.10,
                     "sbc_burden": 0.15},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
     # Exchanges, data providers and insurance brokers: scored like other companies, except that clearing
     # margin and client money held on the balance sheet make Altman Z and the current ratio meaningless.
     "fee_financial": {
-        "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
-                      "dcf_margin": 0.15, "vs_industry": 0.15},
+        "valuation": {"fwd_pe_position": 0.25, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
+                      "fcf_yield_spread": 0.15, "dcf_margin": 0.10, "vs_industry": 0.10},
         "quality": {"roic_level": 0.30, "roic_trend": 0.15, "op_margin_trend": 0.15,
                     "gross_margin_stability": 0.10, "fcf_conversion": 0.20, "sbc_burden": 0.10},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
 }
@@ -90,6 +96,7 @@ BANDS = {
     "trailing_vs_median": ((-0.25, -0.10, 0.10, 0.25), DOWN, "pct"),  # fallback: multiple vs own FY-end median
     "pb_vs_history": ((-0.25, -0.10, 0.10, 0.25), DOWN, "pct"),
     "implied_growth_gap": ((-0.05, -0.02, 0.02, 0.08), DOWN, "pt"),
+    "fcf_yield_spread": ((-0.02, 0.0, 0.02, 0.04), UP, "pt"),       # FCF (REITs: OCF) yield minus 10Y Treasury
     "dcf_margin": ((-0.30, -0.10, 0.10, 0.30), UP, "pct"),
     "vs_industry": ((-0.30, -0.10, 0.25, 0.60), DOWN, "pct"),
     "roic_level": ((0.05, 0.08, 0.12, 0.20), UP, "pct"),
@@ -128,6 +135,7 @@ BASIS_GAP = 0.10              # analysts' EPS / EBITDA this far from reported: t
 COVERAGE_RED_LINE = 1.5       # interest covered less than this in each of the last two fiscal years
 CYCLICAL_MARGIN_RATIO = 1.5   # latest operating margin >= 1.5x its median (and 5pt above it) while
 CYCLICAL_MARGIN_GAP = 0.05    # ... analysts expect EPS to fall: possibly a cyclical peak
+OPTIMISTIC_GAP = 0.10         # next year's expected EPS growth this far above historical EPS CAGR: listed as a conflict
 COVERAGE_LOW, COVERAGE_HIGH = 0.6, 0.85
 AGREEMENT_LOW, AGREEMENT_HIGH = 0.5, 0.7
 METHODS_HIGH = 2 / 3          # at least two of three strong valuation indicators agree with the pillar
@@ -279,6 +287,8 @@ def valuation(r, kind):
                                                     "ebitda_avg")
         _slowdown_cap(out["fwd_ev_position"], r)
         out["implied_growth_gap"] = _implied_growth_gap(r, d)
+        if kind != "utility":
+            out["fcf_yield_spread"] = _fcf_yield_spread(r, kind)
         out["dcf_margin"] = _dcf_margin(r, d)
     out["vs_industry"] = _vs_industry(r)
     return out
@@ -311,18 +321,22 @@ def _dcf_margin(r, d):
 
 
 def _implied_growth_gap(r, d):
-    """Growth the price implies (reverse DCF) minus the growth analysts expect (or history delivered)."""
+    """Growth the price implies (reverse DCF) minus the lower of the growth analysts expect and the growth history
+    delivered, so that one optimistic estimate does not make the price look cheap here as well."""
     key = "implied_growth_gap"
     if _currency_mismatch(r):
         return _missing(key, "currency")
     if "skipped" in d:
         return _missing(key, "no_dcf")
-    ref, fys = _fwd_revenue_growth(r)
-    note, src = None, "analysts"
-    if ref is None:
-        ref, note, src = _f((r.get("cagr") or {}).get("revenue")), "historical_growth", "history"
+    fwd, fys = _fwd_revenue_growth(r)
+    hist = _f((r.get("cagr") or {}).get("revenue"))
+    ref, note, src = fwd, None, "analysts"
+    if fwd is None:
+        ref, note, src = hist, "historical_growth", "history"
+    elif hist is not None and hist < fwd:
+        ref, note, src = hist, "history_lower", "history"
     ig = _f(d.get("implied_growth"))
-    detail = {"implied": ig, "reference": ref, "reference_source": src, "fys": fys}
+    detail = {"implied": ig, "reference": ref, "reference_source": src, "fys": fys, "analysts": fwd, "history": hist}
     if ig is None:
         why = str(d.get("implied_growth_note") or "")
         if why.startswith("below"):
@@ -333,6 +347,26 @@ def _implied_growth_gap(r, d):
     if ref is None:
         return _missing(key, "no_data")
     return _ind(key, ig - ref, note=note, detail=detail)
+
+
+def _fcf_yield_spread(r, kind):
+    """FCF yield (operating cash flow for REITs, whose capex is mostly growth) minus the 10-year Treasury yield:
+    an anchor that does not depend on the stock's own history, so a stock that has always been expensive does not
+    score as cheap for being a little below its usual multiple."""
+    key = "fcf_yield_spread"
+    if _currency_mismatch(r):  # statement-currency cash flow over a price-currency market cap
+        return _missing(key, "currency")
+    rf = _f((((r.get("market") or {}).get("rates") or {}).get("points", {}).get("now") or {}).get("10Y"))
+    if rf is None:
+        return _missing(key, "no_treasury")
+    field = "ocf" if kind == "reit" else "fcf"
+    b = r.get("basis") or {}
+    cash, mcap = _f(b.get(field)), _f((r.get("current") or {}).get("market_cap"))
+    if cash is None or not mcap or mcap <= 0:
+        return _missing(key, "no_data")
+    y = cash / mcap
+    return _ind(key, y - rf, detail={"basis": field, "yield": y, "treasury": rf, "period": b.get("label"),
+                                     "treasury_date": ((r.get("market") or {}).get("rates") or {}).get("date")})
 
 
 def _vs_industry(r):
@@ -622,6 +656,16 @@ def _cyclical_peak(r):
     return None
 
 
+def _optimistic_estimates(r):
+    """Next year's expected EPS growth far above the historical EPS CAGR: the forward multiples, the growth pillar
+    and (through revenue) the reverse DCF lean on an estimate the company has not delivered before."""
+    g, fy0, fy1 = _fwd_eps_growth(r)
+    hist = _f((r.get("cagr") or {}).get("eps"))
+    if g is not None and hist is not None and round(g - hist, 6) >= OPTIMISTIC_GAP:  # 1.20 / 1.0 - 1 is 0.1999...
+        return {"eps_growth_next": g, "eps_cagr": hist, "fy_from": fy0, "fy_to": fy1}
+    return None
+
+
 def _conflicts(p, inds, r, caps):
     out = []
     v, q, g = p["valuation"]["score"], p["quality"]["score"], p["growth"]["score"]
@@ -635,7 +679,7 @@ def _conflicts(p, inds, r, caps):
         tw = sum(w for w, _ in xs)
         return sum(w * s for w, s in xs) / tw if tw else None
     rel = wmean(("fwd_pe_position", "fwd_ev_position", "vs_industry", "pb_vs_history"))
-    absv = wmean(("implied_growth_gap", "dcf_margin"))
+    absv = wmean(("implied_growth_gap", "fcf_yield_spread", "dcf_margin"))
     if rel is not None and absv is not None and abs(rel) >= 1 and abs(absv) >= 1 and rel * absv < 0:
         out.append({"type": "methods_disagree", "values": {"relative": round(rel, 2), "absolute": round(absv, 2)}})
     for k in ("fwd_pe_position", "fwd_ev_position"):
@@ -652,6 +696,9 @@ def _conflicts(p, inds, r, caps):
     peak = _cyclical_peak(r)
     if peak:
         out.append({"type": "cyclical_peak", "values": peak})
+    opt = _optimistic_estimates(r)
+    if opt:
+        out.append({"type": "optimistic_estimates", "values": opt})
     ccy = _currency_mismatch(r)
     if ccy:
         out.append({"type": "currency", "values": {"statements": ccy[0], "price": ccy[1]}})
@@ -703,6 +750,16 @@ def _confidence(p, inds, total, r, caps):
             "issues": issues, "reasons": reasons}
 
 
+def _views(pillars):
+    """Business quality (quality, growth and health at 25 : 20 : 20) and price attractiveness (valuation), each -2..+2,
+    and the quadrant their signs fall in (0 counts as the good side)."""
+    tw = sum(PILLAR_WEIGHTS[n] for n in BUSINESS_PILLARS)
+    business = round(sum(PILLAR_WEIGHTS[n] * pillars[n]["score"] for n in BUSINESS_PILLARS) / tw, 2) + 0.0
+    price = pillars["valuation"]["score"]
+    return {"business": business, "price": price, "quadrant": QUADRANTS[(business >= 0, price >= 0)],
+            "business_weights": {n: PILLAR_WEIGHTS[n] / tw for n in BUSINESS_PILLARS}}
+
+
 def _value_range(r):
     pr, d = r.get("price_range") or {}, r.get("dcf") or {}
     price = _f((r.get("current") or {}).get("price"))
@@ -737,7 +794,7 @@ def score(r):
     return {
         "version": RULES_VERSION, "kind": kind, "score": total, "raw_score": round(raw, 2) + 0.0, "label": label_of(total),
         "capped": bool(caps) and raw > CAP, "caps": caps, "cap_limit": CAP,
-        "pillar_order": list(PILLARS), "pillars": pillars,
+        "pillar_order": list(PILLARS), "pillars": pillars, "views": _views(pillars),
         "confidence": _confidence(pillars, inds, total, r, caps),
         "conflicts": _conflicts(pillars, inds, r, caps),
         "value_range": _value_range(r),
@@ -752,6 +809,7 @@ IND_NAMES = {
     "fwd_pe_position": "Forward P/E vs its 3-year range", "fwd_ev_position": "Forward EV/EBITDA vs its 3-year range",
     "pb_vs_history": "P/B vs its fiscal-year-end median", "implied_growth_gap": "Reverse DCF: implied minus expected growth",
     "dcf_margin": "DCF value vs price", "vs_industry": "P/E vs industry",
+    "fcf_yield_spread": "FCF yield minus 10Y Treasury", "fcf_yield_spread_ocf": "Operating cash flow yield minus 10Y Treasury",
     "roic_level": "ROIC (median)", "roe_level": "ROE (median)", "roic_trend": "ROIC change over 3 years",
     "roe_trend": "ROE change over 3 years", "op_margin_trend": "Operating margin change over 3 years",
     "gross_margin_stability": "Gross margin stability (std. dev.)", "fcf_conversion": "FCF / net income (3-yr median)",
@@ -772,6 +830,8 @@ NOTES = {
     "few_tests": "fewer than 7 of the 9 tests have data",
     "growth_slowdown": "capped at +1, since expected EPS growth is under half the historical rate",
     "historical_growth": "compared with historical revenue CAGR (no analyst estimates)",
+    "history_lower": "compared with historical revenue CAGR, which is below analysts' expected growth (the lower of "
+                     "the two is used)",
     "historical_eps": "fallback to historical EPS CAGR (no usable analyst EPS estimates)",
     "sector_pe": "compared with the sector (no industry P/E)",
     "implied_below_range": "price implies FCF shrinking more than 50% a year",
@@ -792,6 +852,7 @@ NOTES = {
     "currency_z2": "Z'' only, since statements and price are in different currencies, which distorts Z",
     "no_dcf": "no DCF, since starting FCF is not positive", "dcf_negative": "DCF value not positive, since net debt exceeds the discounted cash flows",
     "no_market": "no industry data (--no-market or unavailable)",
+    "no_treasury": "no 10-year Treasury yield (--no-market or unavailable)",
     "short_history": "not enough fiscal years", "no_data": "no data",
     "na_financial": "not used for banks and insurers",
     "na_reit": "not used for REITs (depreciation and the business model distort it)",
@@ -801,6 +862,8 @@ NOTES = {
     "revenue_basis": "measured from analysts' own figure for the last reported year, since theirs is on another "
                      "revenue basis than the statements (for example net instead of gross revenue)",
 }
+# detail.basis values that name a variant of the indicator's row (interest_coverage_ebitda, fcf_yield_spread_ocf).
+NAMED_BASES = ("ebitda", "ocf")
 # What the value column shows for an indicator scored from a condition rather than a number.
 VALUE_TEXT = {"negative_fcf": "FCF < 0", "no_interest": "no interest", "ebitda_not_positive": "EBITDA <= 0",
               "implied_below_range": "< -50%/yr", "implied_above_range": "> 100%/yr", "dcf_negative": "<= -100%"}
@@ -816,18 +879,23 @@ CONFLICT_TEXT = {
     "value_trap": "Cheap valuation while quality and growth are weak on average: cheap stocks are often cheap for a "
                   "reason.",
     "quality_premium": "Strong quality but expensive valuation: a good business already priced as one.",
-    "methods_disagree": "Relative methods (multiples vs own history and industry) and absolute methods (DCF, reverse DCF) "
-                        "point opposite ways; the gap usually comes from the growth assumption.",
+    "methods_disagree": "Relative methods (multiples vs own history and industry) and absolute methods (DCF, reverse DCF, "
+                        "FCF yield vs Treasury) point opposite ways; the gap usually comes from the growth assumption.",
     "growth_slowdown": "Today's multiple is low in its history, but expected EPS growth is under half the historical "
                        "rate, so the multiple may not return to its median.",
     "group_expensive": "Cheap against its {group}, but the {group} itself sits in the top fifth of its own P/E history.",
     "adjusted_eps": "Analysts' EPS is about {gap} above reported EPS (adjusted basis), so forward P/E looks lower than GAAP P/E.",
     "cyclical_peak": "Operating margin ({margin}) is far above its {years}-year median ({median}) while analysts expect "
                      "EPS to fall ({growth}): rising margins, growth and the DCF may be reading a cyclical peak.",
+    "optimistic_estimates": "Analysts expect EPS to grow {growth} next fiscal year, {gap} above the historical EPS CAGR "
+                            "({cagr}): the forward multiples and the growth pillar lean on that estimate.",
     "currency": "Statements are in {statements} and the price in {price}: the DCF, reverse DCF, P/E vs industry, EV and "
                 "trailing multiples and Altman Z (Z'' kept) are left out, since they would be off by the exchange rate.",
     "red_line": "Balance-sheet red line: {what}.",
 }
+QUADRANT_TEXT = {"good_business_good_price": "good business at a good price",
+                 "good_business_pricey": "good business, priced high", "cheap_weak_business": "cheap, but a weak business",
+                 "weak_and_pricey": "weak business and priced high"}
 ISSUE_TEXT = {"short_history": "fewer than 4 fiscal years", "adjusted_eps": "analyst EPS on an adjusted basis",
               "proxy_data": "data from a third-party proxy", "capped": "a red-line or value-trap cap triggered",
               "currency": "statements and price in different currencies",
@@ -845,6 +913,9 @@ def conflict_text(x):
     if x["type"] == "cyclical_peak":
         return t.format(margin=f"{v['margin'] * 100:.1f}%", median=f"{v['median'] * 100:.1f}%", years=v["years"],
                         growth=f"{v['eps_growth_next'] * 100:+.1f}%")
+    if x["type"] == "optimistic_estimates":
+        return t.format(growth=f"{v['eps_growth_next'] * 100:+.1f}%", cagr=f"{v['eps_cagr'] * 100:+.1f}%",
+                        gap=f"{(v['eps_growth_next'] - v['eps_cagr']) * 100:.1f}pt")
     if x["type"] == "currency":
         return t.format(**v)
     return t
@@ -917,6 +988,10 @@ def render(s):
         p = s["pillars"][n]
         out.append(f"| {PILLAR_NAMES[n]} | {p['weight'] * 100:.0f}% | {p['score']:+.2f} | {p['contribution']:+.2f} | "
                    f"{p['coverage'] * 100:.0f}% |")
+    vw = s["views"]
+    out.append(f"\n**Two views** (beside the total, which they do not change): business quality {vw['business']:+.2f} "
+               f"(quality, growth and financial health at 25 : 20 : 20), price attractiveness {vw['price']:+.2f} "
+               f"(the valuation pillar): {QUADRANT_TEXT[vw['quadrant']]}.")
     out.append("")
     out.append("| Pillar | Indicator | Value | Score | Weight | Rule |")
     out.append("|---|---|---|---|---|---|")
@@ -926,12 +1001,15 @@ def render(s):
                 continue
             val = fmt_value(i["value"], i["unit"]) if i["status"] == "ok" else "n/a"
             val = VALUE_TEXT.get(i["note"], val) if i["status"] == "ok" else val
+            if i["key"] == "fcf_yield_spread" and i["status"] == "ok":
+                val = f"{fmt_value(i['detail']['yield'], 'pct')} - {fmt_value(i['detail']['treasury'], 'pct')} = {val}"
             if i["key"] == "piotroski" and i["status"] == "ok" and i["detail"]["out_of"] != 9:
                 val = f"{i['detail']['score']} of {i['detail']['out_of']} tests ({val} of 9)"
             notes = [n for n in (i["note"], i["detail"].get("base_note")) if n]
             note = f": {'; '.join(NOTES.get(n, n) for n in notes)}" if notes else ""  # notes have parentheses of their own
             sc = _sc(i["score"]) if i["status"] == "ok" else "0 (missing)"
-            name = IND_NAMES[i["key"] + ("_ebitda" if i["detail"].get("basis") == "ebitda" else "")]
+            b = i["detail"].get("basis")
+            name = IND_NAMES[i["key"] + (f"_{b}" if b in NAMED_BASES else "")]
             out.append(f"| {PILLAR_NAMES[n]} | {name}{note} | {val} | {sc} | "
                        f"{i['weight_share'] * 100:.0f}% | {rule_text(i)} |")
     if s["caps"]:
@@ -952,5 +1030,6 @@ def render(s):
         out.append(f"Value range from the {src}: {vr['low']:,.2f} / {vr['mid']:,.2f} / {vr['high']:,.2f}{vs}.")
     out.append("Not scored: analyst price targets (optimistic, and built from the same forward EPS), the 52-week and "
                "volatility ranges (price moves, not value), peers (auto-peers can include foreign listings) and macro "
-               "releases (context; rates already enter through the DCF discount rate). Missing data counts as 0.")
+               "releases (context; rates already enter through the DCF discount rate and the FCF yield spread). Missing "
+               "data counts as 0.")
     return "\n".join(out)
