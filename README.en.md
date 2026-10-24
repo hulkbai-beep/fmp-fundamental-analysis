@@ -33,11 +33,13 @@ fmp-fundamental-analysis/
 ├── README.md           # Usage guide for people (Chinese)
 ├── README.en.md        # This file: usage guide for people (English)
 ├── references/
+│   ├── validation-set.txt  # About 20 stocks of every company type for checking the score
 │   └── metrics.md      # Metric definitions, thresholds, sector caveats
 ├── scripts/
 │   ├── fmp_client.py   # FMP API client: connection, cache, rate limiting, plus the check / get commands
 │   ├── analyze.py      # Main analysis script: builds the full report
 │   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
+│   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
 └── ui/
     ├── server.py       # Local web server

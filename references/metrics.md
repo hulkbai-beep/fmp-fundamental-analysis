@@ -498,4 +498,6 @@ enter through the DCF's Treasury-linked discount rate).
 
 To change a rule, edit the weights (`PILLAR_WEIGHTS`, `WEIGHTS`), the cut points (`BANDS`) or the
 named thresholds at the top of `score.py`, bump `RULES_VERSION`, and update this section;
-`tests/test_score.py` checks that the band and weight tables here match the code.
+`tests/test_score.py` checks that the band and weight tables here match the code. Check the change on
+real data with `scripts/score_batch.py --file references/validation-set.txt`, run before and after
+(`--compare <earlier output folder>` lists the stocks whose score or label moved).

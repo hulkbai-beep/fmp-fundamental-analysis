@@ -33,11 +33,13 @@ fmp-fundamental-analysis/
 ├── README.md           # 本文件：给人看的使用说明（中文）
 ├── README.en.md        # 英文版使用说明
 ├── references/
+│   ├── validation-set.txt  # 验证打分用的约 20 只股票，各类公司都有
 │   └── metrics.md      # 指标定义、阈值、行业注意事项
 ├── scripts/
 │   ├── fmp_client.py   # FMP API 客户端：连接、缓存、限速，以及 check / get 命令
 │   ├── analyze.py      # 主分析脚本：生成完整报告
 │   ├── score.py        # 基本面打分：四大项、打分区间、封顶规则和置信度
+│   ├── score_batch.py  # 批量打分：一串股票的分数写成 CSV，改规则前后可对比
 │   └── macro.py        # 利率、宏观和板块数据：独立的宏观仪表盘，也供 analyze.py 调用
 └── ui/
     ├── server.py       # 本地网页服务器

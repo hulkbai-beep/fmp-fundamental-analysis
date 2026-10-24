@@ -597,3 +597,30 @@ class EndToEnd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Batch(unittest.TestCase):
+    """scripts/score_batch.py on the synthetic companies."""
+
+    def test_batch_writes_scores_indicators_and_diff(self):
+        import csv
+        import tempfile
+        import analyze as A
+        import fake_fmp
+        import score_batch as B
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(A, "FMPClient", fake_fmp.FakeClient), \
+                mock.patch("sys.stdout"):
+            tickers = Path(tmp) / "t.txt"
+            tickers.write_text("QUAL, BANK  # two types\nnope\n", encoding="utf-8")
+            self.assertEqual(B.main(["--file", str(tickers), "--out", f"{tmp}/a"]), 0)
+            with open(f"{tmp}/a/scores.csv", encoding="utf-8") as f:
+                rows = {r["symbol"]: r for r in csv.DictReader(f)}
+            self.assertEqual(list(rows), ["QUAL", "BANK", "NOPE"])
+            self.assertEqual((rows["BANK"]["kind"], rows["BANK"]["error"]), ("financial", ""))
+            self.assertTrue(rows["NOPE"]["error"])
+            with open(f"{tmp}/a/indicators.csv", encoding="utf-8") as f:
+                inds = list(csv.DictReader(f))
+            self.assertIn("fwd_pe_position", {r["indicator"] for r in inds if r["symbol"] == "QUAL"})
+            self.assertEqual(B.main(["QUAL", "BANK", "--out", f"{tmp}/b", "--compare", f"{tmp}/a"]), 0)
+            with open(f"{tmp}/b/diff.csv", encoding="utf-8") as f:
+                self.assertEqual(list(csv.DictReader(f)), [])
