@@ -6,8 +6,9 @@ five labels as the technical-analysis scorecard (Bearish .. Bullish).
 - Each indicator maps one number to -2..+2 through the cut points below (a value equal to a cut point
   takes the band of higher values, e.g. exactly the 25th percentile scores +1, not +2). A pillar is the
   weighted mean of its indicators.
-- Banks and insurers, REITs and utilities have their own indicator sets and weights (WEIGHTS); the general
-  indicators they leave out are shown as not applicable.
+- Banks and insurers, REITs, utilities and fee-based financials (exchanges, data providers, brokers) have
+  their own indicator sets and weights (WEIGHTS); the general indicators they leave out are shown as not
+  applicable.
 - An indicator that cannot be computed (no data, a loss, a skipped DCF) counts as 0 and keeps its weight,
   so missing data pulls the pillar toward 0 and lowers the confidence.
 - Two caps keep the total at Neutral (+0.4) at most: a balance-sheet red line, and a "value trap"
@@ -24,7 +25,7 @@ from __future__ import annotations
 import bisect
 import statistics
 
-RULES_VERSION = "1.0"
+RULES_VERSION = "1.1"
 
 PILLARS = ("valuation", "quality", "growth", "health")
 PILLAR_WEIGHTS = {"valuation": 0.35, "quality": 0.25, "growth": 0.20, "health": 0.20}
@@ -66,8 +67,18 @@ WEIGHTS = {
         "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
+    # Exchanges, data providers and insurance brokers: scored like other companies, except that clearing
+    # margin and client money held on the balance sheet make Altman Z and the current ratio meaningless.
+    "fee_financial": {
+        "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
+                      "dcf_margin": 0.15, "vs_industry": 0.15},
+        "quality": {"roic_level": 0.30, "roic_trend": 0.15, "op_margin_trend": 0.15,
+                    "gross_margin_stability": 0.10, "fcf_conversion": 0.20, "sbc_burden": 0.10},
+        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
+    },
 }
-NA_NOTE = {"financial": "na_financial", "reit": "na_reit", "utility": "na_utility"}
+NA_NOTE = {"financial": "na_financial", "reit": "na_reit", "utility": "na_utility", "fee_financial": "na_fee_financial"}
 
 UP = (-2, -1, 0, 1, 2)    # higher is better
 DOWN = (2, 1, 0, -1, -2)  # lower is better
@@ -408,7 +419,9 @@ def growth(r, kind):
     out["revenue_recent"] = (_ind("revenue_recent", ry, detail={"fy": L.get("label")}) if ry is not None
                              else _missing("revenue_recent", "short_history" if len(years) < 2 else "no_data"))
     fg, fys = _fwd_revenue_growth(r)
-    out["revenue_forward"] = (_ind("revenue_forward", fg, detail={"fys": fys}) if fg is not None
+    rb = (r.get("analyst") or {}).get("revenue_basis")
+    out["revenue_forward"] = (_ind("revenue_forward", fg, note="revenue_basis" if rb else None,
+                                   detail={"fys": fys, "revenue_basis": rb}) if fg is not None
                               else _missing("revenue_forward", "no_estimates"))
     g, fy0, fy1 = _fwd_eps_growth(r)
     est = _estimates(r)
@@ -445,7 +458,8 @@ def health(r, kind):
             out["current_ratio"] = _current_ratio(L)
     sh = [_f(y.get("shares_yoy")) for y in years]
     sh = [v for v in sh if v is not None]
-    out["dilution"] = (_ind("dilution", sum(sh) / len(sh), detail={"years": len(sh)}) if sh
+    # the median, so that one year's all-share acquisition does not outweigh the yearly buyback or issuance habit
+    out["dilution"] = (_ind("dilution", statistics.median(sh), detail={"years": len(sh), "changes": sh}) if sh
                        else _missing("dilution", "short_history"))
     return out
 
@@ -541,7 +555,7 @@ def red_lines(r, kind):
             and all(c is not None and c < COVERAGE_RED_LINE for c in covs)):
         out.append({"type": "interest_coverage", "detail": {"coverage": covs, "basis": "ebitda" if kind == "reit" else "ebit"}})
     # REITs and utilities fund growth capex with debt and new shares, so for them only operating cash flow counts
-    field = "fcf" if kind == "general" else "ocf"
+    field = "fcf" if kind in ("general", "fee_financial") else "ocf"
     flows = [_f(y.get(field)) for y in years[-2:]]
     if len(flows) == 2 and all(v is not None and v < 0 for v in flows) and nd is not None and nd > 0:
         out.append({"type": "cash_burn", "detail": {field: flows, "net_debt": nd}})
@@ -572,7 +586,7 @@ def _pillar(name, inds, kind):
         i["contribution"] = i["weight_share"] * i["score"]
     ok_w = sum(i["weight"] for i in rows if i["status"] == "ok")
     score = sum(i["contribution"] for i in rows)
-    return {"score": round(score, 2), "weight": PILLAR_WEIGHTS[name],
+    return {"score": round(score, 2) + 0.0, "weight": PILLAR_WEIGHTS[name],
             "contribution": round(PILLAR_WEIGHTS[name] * score, 3),
             "coverage": ok_w / total_w if total_w else 0.0, "available": ok_w > 0, "indicators": rows}
 
@@ -719,9 +733,9 @@ def score(r):
     v, q, g = (pillars[n]["score"] for n in ("valuation", "quality", "growth"))
     if _is_value_trap(v, q, g):
         caps.append({"type": "value_trap", "detail": {"valuation": v, "quality": q, "growth": g}})
-    total = round(min(raw, CAP) if caps else raw, 2)
+    total = round(min(raw, CAP) if caps else raw, 2) + 0.0  # + 0.0 turns -0.0 into 0.0
     return {
-        "version": RULES_VERSION, "kind": kind, "score": total, "raw_score": round(raw, 2), "label": label_of(total),
+        "version": RULES_VERSION, "kind": kind, "score": total, "raw_score": round(raw, 2) + 0.0, "label": label_of(total),
         "capped": bool(caps) and raw > CAP, "caps": caps, "cap_limit": CAP,
         "pillar_order": list(PILLARS), "pillars": pillars,
         "confidence": _confidence(pillars, inds, total, r, caps),
@@ -746,7 +760,7 @@ IND_NAMES = {
     "net_debt_ebitda": "Net debt / EBITDA", "interest_coverage": "Interest coverage (EBIT / interest)",
     "interest_coverage_ebitda": "Interest coverage (EBITDA / interest)",
     "altman": "Altman Z zone", "piotroski": "Piotroski F-score (of 9)", "current_ratio": "Current ratio",
-    "dilution": "Share count change per year", "equity_to_assets": "Equity / assets",
+    "dilution": "Share count change per year (median)", "equity_to_assets": "Equity / assets",
 }
 NOTES = {
     "trailing_history": "fallback to the trailing multiple vs its fiscal-year-end median (no forward range)",
@@ -782,6 +796,10 @@ NOTES = {
     "na_financial": "not used for banks and insurers",
     "na_reit": "not used for REITs (depreciation and the business model distort it)",
     "na_utility": "not used for utilities (regulated and capital-heavy)",
+    "na_fee_financial": "not used for exchanges, data providers and brokers (clearing margin and client money on the "
+                        "balance sheet distort it)",
+    "revenue_basis": "measured from analysts' own figure for the last reported year, since theirs is on another "
+                     "revenue basis than the statements (for example net instead of gross revenue)",
 }
 # What the value column shows for an indicator scored from a condition rather than a number.
 VALUE_TEXT = {"negative_fcf": "FCF < 0", "no_interest": "no interest", "ebitda_not_positive": "EBITDA <= 0",

@@ -54,6 +54,7 @@ import score as S  # noqa: E402
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
 # Fee-based financial industries (exchanges, data providers, insurance brokers) run on cash flow like other
 # companies, so they get the general analysis rather than the bank / insurer one.
+REVENUE_BASIS_GAP = 0.05  # analysts' revenue for the last reported year this far off the reported figure: another basis
 FEE_FINANCIAL_INDUSTRIES = ("data & stock exchanges", "financial data", "stock exchanges", "insurance brokers",
                             "insurance - brokers")
 
@@ -554,7 +555,17 @@ def analyst_view(est, pt, last_fy, price, today):
             ahead += d > today
             if ahead >= 3:
                 break
-        rows, prev_rev = [], last_fy["revenue"]
+        same = [e for e in rows_by_date if near_fy_end(e)]
+        # Banks, exchanges and some others report gross revenue while analysts forecast net revenue: growth
+        # from the reported figure would then show a fall that is only the change of basis. When the analysts'
+        # figure for the last reported year is more than 5% off the reported one, growth starts from theirs.
+        prev_rev = last_fy["revenue"]
+        est_rev = num(same[-1], "revenueAvg", "estimatedRevenueAvg") if same else None
+        if est_rev and est_rev > 0 and prev_rev and prev_rev > 0 and abs(est_rev / prev_rev - 1) > REVENUE_BASIS_GAP:
+            out["revenue_basis"] = {"fy": last_fy["label"], "estimate": est_rev, "reported": prev_rev,
+                                    "gap": est_rev / prev_rev - 1}
+            prev_rev = est_rev
+        rows = []
         for e in future:
             eps, rev = num(e, "epsAvg", "estimatedEpsAvg"), num(e, "revenueAvg", "estimatedRevenueAvg")
             d = str(e["date"])[:10]
@@ -570,7 +581,6 @@ def analyst_view(est, pt, last_fy, price, today):
         out["estimates"] = rows
         # FMP's row for the last reported year vs the reported diluted EPS: a large gap suggests the
         # estimates are on an adjusted (non-GAAP) basis, which the P/E history does not share.
-        same = [e for e in rows_by_date if near_fy_end(e)]
         est_eps = num(same[-1], "epsAvg", "estimatedEpsAvg") if same else None
         if est_eps and est_eps > 0 and last_fy.get("eps") and last_fy["eps"] > 0:
             out["eps_basis"] = {"fy": last_fy["label"], "estimate": est_eps, "reported": last_fy["eps"],
@@ -624,9 +634,13 @@ def _band(vals, window, now=None):
 
 def history_problem(years, window, start, cur_shares):
     """Why the multiple history can't be trusted, as (code, text), or (None, None)."""
-    # Prices are split-adjusted; statement figures may not be (or may be per ordinary share of an ADR).
-    if cur_shares and any(y.get("shares") and y["date"] >= start and not 0.55 <= y["shares"] / cur_shares <= 1.8
-                          for y in years):
+    # Prices are split-adjusted; statement figures may not be (or may be per ordinary share of an ADR). An
+    # unadjusted split shows as a jump between two fiscal years, an ADR ratio as a gap between the latest year and
+    # today. Steady issuance or buybacks (a REIT growing by share sales, an acquisition paid in shares) change
+    # the count gradually, and each year's multiple uses its own count, so they do not break the history.
+    sh = [y["shares"] for y in years if y.get("shares") and y["date"] >= start]
+    steps = list(zip(sh, sh[1:])) + ([(sh[-1], cur_shares)] if sh and cur_shares else [])
+    if any(not 0.55 <= a / b <= 1.8 for a, b in steps):
         return "share_basis", ("The share counts in the statements do not match today's share basis (for example a "
                                "stock split the statements do not reflect, an ADR ratio or several share classes), so "
                                "the multiple history is not comparable and no forward multiple range is shown.")
@@ -852,7 +866,7 @@ def make_flags(years, cur, hist_cmp, pio, alt, dcf, rev_cagr, sector_kind):
             green.append(f"Piotroski F-score {pio['score']}/{pio['out_of']} (strong)")
         elif pio["score"] <= 3:
             red.append(f"Piotroski F-score {pio['score']}/{pio['out_of']} (weak)")
-    if alt and sector_kind != "financial":
+    if alt and sector_kind not in ("financial", "fee_financial"):
         if alt.get("z_zone") == "distress" and alt.get("z2_zone") in ("distress", None):
             red.append(f"Altman Z {alt['z']:.2f} in distress zone")
 
@@ -1252,6 +1266,11 @@ def render(r):
                          [[fy_label(e), f"{per_share(e['eps_avg'])} ({per_share(e['eps_low'])}-{per_share(e['eps_high'])})",
                            mult(e["forward_pe"]), money(e["revenue_avg"]), pct(e["revenue_growth"]),
                            "n/a" if e["analysts"] is None else int(e["analysts"])] for e in a["estimates"]]))
+        if a.get("revenue_basis"):
+            rb = a["revenue_basis"]
+            out.append(f"\nAnalysts' revenue for {rb['fy']} is {money(rb['estimate'])} against "
+                       f"{money(rb['reported'])} reported ({pct(rb['gap'])}), so they use another revenue basis "
+                       f"(often net instead of gross revenue); the first year's growth is measured from their figure.")
     if a.get("price_target"):
         pt = a["price_target"]
         out.append(f"\nPrice target consensus {per_share(pt['consensus'])} (median {per_share(pt['median'])}, "
@@ -1515,9 +1534,11 @@ def analyze(args):
     industry = (profile.get("industry") or "").lower()
     sector_kind, sector_note = "general", ""
     if any(w in industry for w in FEE_FINANCIAL_INDUSTRIES):
+        sector_kind = "fee_financial"
         sector_note = ("Fee-based financial company (exchange, data provider or insurance broker): analysed like "
                        "other companies, since its earnings and cash flow do not depend on a balance sheet of loans "
-                       "or policies.")
+                       "or policies. Clearing margin and client money on its balance sheet make Altman Z and the "
+                       "current ratio meaningless.")
     elif (sector in FINANCIAL_SECTORS or any(w in industry for w in ("bank", "insurance", "capital markets"))
           or ("reit" in industry and "mortgage" in industry)):  # mortgage REITs lend: judged like banks
         sector_kind = "financial"

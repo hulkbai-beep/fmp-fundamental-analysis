@@ -303,7 +303,7 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 `scripts/score.py` turns the numbers above into one score from -2 to +2 and a label, on the same
 scale and with the same five labels as the technical-analysis scorecard. The rules are fixed and
 deterministic: Python computes the score, and the write-up explains it without changing it. Rules
-version 1.0 (`RULES_VERSION`). The report's "Fundamental score" section and the UI's score card show
+version 1.1 (`RULES_VERSION`). The report's "Fundamental score" section and the UI's score card show
 the same numbers with every weight and band.
 
 **Formula:** score = 0.35 x valuation + 0.25 x quality + 0.20 x growth + 0.20 x financial health.
@@ -343,7 +343,7 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 | Quality | Stock comp % revenue | last fiscal year | <2%: +2 / 2% to 5%: +1 / 5% to 10%: 0 / 10% to 20%: -1 / >=20%: -2 |
 | Growth | Revenue CAGR | over the fiscal years in the report | <0%: -2 / 0% to 3%: -1 / 3% to 8%: 0 / 8% to 15%: +1 / >=15%: +2 |
 | Growth | Revenue growth, last FY | last fiscal year vs the one before | <0%: -2 / 0% to 3%: -1 / 3% to 8%: 0 / 8% to 15%: +1 / >=15%: +2 |
-| Growth | Expected revenue growth | analysts' average for the fiscal year in progress and the next | <0%: -2 / 0% to 3%: -1 / 3% to 8%: 0 / 8% to 15%: +1 / >=15%: +2 |
+| Growth | Expected revenue growth | analysts' average for the fiscal year in progress and the next; the first year's growth starts from the analysts' own figure for the last reported year when it is more than 5% off the reported one (another revenue basis, such as net revenue at banks and exchanges) | <0%: -2 / 0% to 3%: -1 / 3% to 8%: 0 / 8% to 15%: +1 / >=15%: +2 |
 | Growth | Expected EPS growth next FY | analysts' EPS next year / this year - 1 (same basis on both sides); historical EPS CAGR without usable estimates | <0%: -2 / 0% to 5%: -1 / 5% to 10%: 0 / 10% to 20%: +1 / >=20%: +2 |
 | Health | Net debt / EBITDA | last fiscal year; EBITDA not positive scores -2 with net debt, 0 with net cash | <0x: +2 / 0x to 1x: +1 / 1x to 2.5x: 0 / 2.5x to 4x: -1 / >=4x: -2 |
 | Health | Net debt / EBITDA, REITs | as above | <0x: +2 / 0x to 4x: +1 / 4x to 6x: 0 / 6x to 8x: -1 / >=8x: -2 |
@@ -354,52 +354,55 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 | Health | Altman Z zone | section 6 zones: safe +1, grey 0, distress -1, Z and Z'' both in distress -2 | zones, not cut points |
 | Health | Piotroski F-score | section 6, rescaled to 9 when only 7 or 8 tests have data (fewer: missing) | <2: -2 / 2 to 4: -1 / 4 to 7: 0 / 7 to 8: +1 / >=8: +2 |
 | Health | Current ratio | last fiscal year; below 1 scores 0 instead of -1 with net cash or an FCF margin of 10% or more | <1x: -1 / 1x to 1.5x: 0 / >=1.5x: +1 |
-| Health | Share count change per year | average yearly change in diluted shares | <-2%: +2 / -2% to -0.5%: +1 / -0.5% to 1%: 0 / 1% to 3%: -1 / >=3%: -2 |
+| Health | Share count change per year | median of the yearly changes in diluted shares, so one year's all-share acquisition does not decide it | <-2%: +2 / -2% to -0.5%: +1 / -0.5% to 1%: 0 / 1% to 3%: -1 / >=3%: -2 |
 | Health | Equity / assets | last fiscal year (banks and insurers) | <5%: -2 / 5% to 7%: -1 / 7% to 10%: 0 / 10% to 13%: +1 / >=13%: +2 |
 
 ### Weights by company type
 
 The company type is the report's sector classification. Banks and insurers are the Financial
 Services sector plus bank, insurance and capital-markets industries, except fee-based ones
-(exchanges, financial data providers, insurance brokers), which are scored like other companies.
+(exchanges, financial data providers, insurance brokers), which are scored like other companies
+without Altman Z and the current ratio.
 Mortgage REITs lend against their balance sheet, so they join banks and insurers. Other REIT
 industries are REITs; real-estate developers and services firms are scored like other companies.
 Utilities are the Utilities sector except independent power producers. Weights are shares of their
 pillar. n/a means a general indicator the type does not use: it is listed as not applicable and
 carries no weight. A dash means an indicator of another type's set, which is not listed at all.
 
-| Pillar | Indicator | General | Banks & insurers | REITs | Utilities |
-|---|---|---|---|---|---|
-| Valuation | Forward P/E vs its 3-year range | 30% | 40% | 30% | 30% |
-| Valuation | Forward EV/EBITDA vs its 3-year range | 20% | n/a | 20% | 20% |
-| Valuation | Reverse DCF: implied minus expected growth | 20% | n/a | 20% | 20% |
-| Valuation | DCF value vs price | 15% | n/a | 15% | 15% |
-| Valuation | P/E vs industry | 15% | 30% | 15% | 15% |
-| Valuation | P/B vs its fiscal-year-end median | - | 30% | - | - |
-| Quality | ROIC (median) | 30% | n/a | n/a | n/a |
-| Quality | ROIC change over 3 years | 15% | n/a | 25% | n/a |
-| Quality | Operating margin change over 3 years | 15% | n/a | 30% | 20% |
-| Quality | Gross margin stability (std. dev.) | 10% | n/a | 25% | 10% |
-| Quality | FCF / net income (3-yr median) | 20% | n/a | n/a | n/a |
-| Quality | Stock comp % revenue | 10% | 20% | 20% | 15% |
-| Quality | ROE (median) | - | 50% | - | 35% |
-| Quality | ROE change over 3 years | - | 30% | - | 20% |
-| Growth | Revenue CAGR | 30% | 30% | 30% | 30% |
-| Growth | Revenue growth, last FY | 20% | 20% | 20% | 20% |
-| Growth | Expected revenue growth (analysts) | 30% | 30% | 30% | 30% |
-| Growth | Expected EPS growth next FY (analysts) | 20% | 20% | 20% | 20% |
-| Financial health | Net debt / EBITDA | 25% | n/a | 30% | 30% |
-| Financial health | Interest coverage (EBIT / interest) | 20% | n/a | 25% | 25% |
-| Financial health | Altman Z zone | 15% | n/a | n/a | n/a |
-| Financial health | Piotroski F-score (of 9) | 20% | 40% | 25% | 25% |
-| Financial health | Current ratio | 10% | n/a | n/a | n/a |
-| Financial health | Share count change per year | 10% | 25% | 20% | 20% |
-| Financial health | Equity / assets | - | 35% | - | - |
+| Pillar | Indicator | General | Banks & insurers | REITs | Utilities | Fee-based financials |
+|---|---|---|---|---|---|---|
+| Valuation | Forward P/E vs its 3-year range | 30% | 40% | 30% | 30% | 30% |
+| Valuation | Forward EV/EBITDA vs its 3-year range | 20% | n/a | 20% | 20% | 20% |
+| Valuation | Reverse DCF: implied minus expected growth | 20% | n/a | 20% | 20% | 20% |
+| Valuation | DCF value vs price | 15% | n/a | 15% | 15% | 15% |
+| Valuation | P/E vs industry | 15% | 30% | 15% | 15% | 15% |
+| Valuation | P/B vs its fiscal-year-end median | - | 30% | - | - | - |
+| Quality | ROIC (median) | 30% | n/a | n/a | n/a | 30% |
+| Quality | ROIC change over 3 years | 15% | n/a | 25% | n/a | 15% |
+| Quality | Operating margin change over 3 years | 15% | n/a | 30% | 20% | 15% |
+| Quality | Gross margin stability (std. dev.) | 10% | n/a | 25% | 10% | 10% |
+| Quality | FCF / net income (3-yr median) | 20% | n/a | n/a | n/a | 20% |
+| Quality | Stock comp % revenue | 10% | 20% | 20% | 15% | 10% |
+| Quality | ROE (median) | - | 50% | - | 35% | - |
+| Quality | ROE change over 3 years | - | 30% | - | 20% | - |
+| Growth | Revenue CAGR | 30% | 30% | 30% | 30% | 30% |
+| Growth | Revenue growth, last FY | 20% | 20% | 20% | 20% | 20% |
+| Growth | Expected revenue growth (analysts) | 30% | 30% | 30% | 30% | 30% |
+| Growth | Expected EPS growth next FY (analysts) | 20% | 20% | 20% | 20% | 20% |
+| Financial health | Net debt / EBITDA | 25% | n/a | 30% | 30% | 30% |
+| Financial health | Interest coverage (EBIT / interest) | 20% | n/a | 25% | 25% | 25% |
+| Financial health | Altman Z zone | 15% | n/a | n/a | n/a | n/a |
+| Financial health | Piotroski F-score (of 9) | 20% | 40% | 25% | 25% | 25% |
+| Financial health | Current ratio | 10% | n/a | n/a | n/a | n/a |
+| Financial health | Share count change per year (median) | 10% | 25% | 20% | 20% | 20% |
+| Financial health | Equity / assets | - | 35% | - | - | - |
 
 Why: EV, FCF, gross margin, DCF, Altman Z and the current ratio mean little for a balance sheet of
 loans or policies. For REITs, property depreciation makes ROIC level, FCF / net income and EBIT
 misleading. Utilities fund capex with debt and new shares, so FCF is often negative by design and
-leverage runs higher; their ROE is what regulators set returns on.
+leverage runs higher; their ROE is what regulators set returns on. Exchanges, data providers and
+insurance brokers hold clearing margin or client money on their balance sheet, which swells current
+assets and liabilities alike, so Altman Z and the current ratio say nothing about their health.
 
 ### Missing data and fallbacks
 
@@ -415,10 +418,13 @@ The forward-multiple positions have fallbacks and stops, checked in this order:
 - Forward range available, today's next-12-month figure usable, and analysts' EPS (or EBITDA) for
   the last reported year within 10% of the reported figure: the forward position is used.
 - A loss (or negative EBITDA) expected in the fiscal year in progress or the next: missing.
-- Share counts not on today's basis (ADR ratio, unadjusted split) or a one-day price fall of more
-  than 50% or rise of more than 100%, anywhere in the fiscal years the trailing history uses (the
-  forward range checks only its 3 years): missing, with no fallback, since the trailing history has
-  the same problem. P/B as well.
+- Share counts not on today's basis or a one-day price fall of more than 50% or rise of more than
+  100%, anywhere in the fiscal years the trailing history uses (the forward range checks only its 3
+  years): missing, with no fallback, since the trailing history has the same problem. P/B as well.
+  The share count is off when it moves outside 0.55x to 1.8x between two fiscal years (an
+  unadjusted split) or between the latest fiscal year and today (an ADR ratio, several share
+  classes). Steady issuance or buybacks over the years do not count, since each year's multiple
+  uses its own share count.
 - Otherwise (no forward range, no usable figure for today, or analysts' figures more than 10% from
   reported ones, usually adjusted non-GAAP, so the range's history would mix two bases): the trailing
   multiple vs its fiscal-year-end median, when at least 3 years exist and currencies match.

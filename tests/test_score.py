@@ -104,6 +104,11 @@ class Pillars(unittest.TestCase):
         self.assertFalse(s["caps"])
         self.assertEqual(s["label"], "Moderately bullish")
 
+    def test_no_negative_zero(self):
+        s = stubbed_score({"valuation": -0.004, "quality": 0, "growth": 0, "health": 0})
+        self.assertEqual([str(x) for x in (s["score"], s["raw_score"], s["pillars"]["valuation"]["score"])],
+                         ["0.0"] * 3)
+
 
 class Caps(unittest.TestCase):
     def test_value_trap_caps_at_neutral(self):
@@ -159,6 +164,8 @@ class Caps(unittest.TestCase):
         distress = {"altman": {"z_zone": "distress", "z2_zone": "distress"}}
         self.assertEqual(types(distress, "reit"), [])
         self.assertEqual(types(distress, "utility"), [])
+        self.assertEqual(types(distress, "fee_financial"), [])
+        self.assertEqual(types(burn, "fee_financial"), ["cash_burn"])
         reit = {"interest_expense": 100, "ebit": 100, "ebitda": 300, "net_debt": 5, "fcf": -1, "ocf": 2}
         self.assertEqual(types({"years": [reit, reit]}, "reit"), [])
         self.assertEqual(types({"years": [reit, reit]}, "general"), ["interest_coverage", "cash_burn"])
@@ -389,6 +396,20 @@ class Indicators(unittest.TestCase):
         self.assertAlmostEqual(s["confidence"]["methods_agreement"], 2 / 3)
         self.assertEqual(s["confidence"]["level"], "high")
 
+    def test_dilution_is_the_median_year(self):
+        # one all-share acquisition year among steady buybacks
+        years = [{"shares_yoy": v} for v in (None, -0.01, 0.35, -0.02, -0.01)]
+        ind = S.health({"years": years}, "general")["dilution"]
+        self.assertEqual((ind["value"], ind["score"]), (-0.01, 1))
+
+    def test_forward_revenue_growth_on_the_analysts_basis_is_noted(self):
+        r = {"analyst": {"estimates": [{"fy": "2026", "revenue_growth": 0.05}, {"fy": "2027", "revenue_growth": 0.07}],
+                         "revenue_basis": {"fy": "FY2025", "estimate": 70, "reported": 100, "gap": -0.3}}}
+        ind = S.growth(r, "financial")["revenue_forward"]
+        self.assertEqual((round(ind["value"], 4), ind["note"]), (0.06, "revenue_basis"))
+        del r["analyst"]["revenue_basis"]
+        self.assertIsNone(S.growth(r, "financial")["revenue_forward"]["note"])
+
     def test_type_sets(self):
         reit = S._pillar("quality", S.quality({"years": []}, "reit"), "reit")
         na = {i["key"] for i in reit["indicators"] if i["status"] == "n/a"}
@@ -399,6 +420,42 @@ class Indicators(unittest.TestCase):
         self.assertEqual(na, {"altman", "current_ratio"})
         q = S._pillar("quality", S.quality({"years": []}, "utility"), "utility")
         self.assertIn("roe_level", [i["key"] for i in q["indicators"] if i["status"] != "n/a"])
+        fee = S._pillar("health", S.health({"years": []}, "fee_financial"), "fee_financial")
+        self.assertEqual({i["key"]: i["note"] for i in fee["indicators"] if i["status"] == "n/a"},
+                         {"altman": "na_fee_financial", "current_ratio": "na_fee_financial"})
+
+
+class AnalystsAndHistory(unittest.TestCase):
+    """analyze.py inputs the score relies on."""
+
+    @classmethod
+    def setUpClass(cls):
+        import analyze as A
+        cls.A = A
+
+    def view(self, fy0_revenue):
+        last = {"date": "2025-12-31", "label": "FY2025", "revenue": 100.0, "eps": 2.0, "ebitda": None}
+        est = [{"date": "2025-12-31", "revenueAvg": fy0_revenue, "epsAvg": 2.0},
+               {"date": "2026-12-31", "revenueAvg": fy0_revenue * 1.05, "epsAvg": 2.2},
+               {"date": "2027-12-31", "revenueAvg": fy0_revenue * 1.05 * 1.05, "epsAvg": 2.4}]
+        return self.A.analyst_view(est, None, last, 50.0, "2026-06-30")
+
+    def test_revenue_growth_starts_from_the_analysts_figure_on_another_basis(self):
+        a = self.view(70.0)  # analysts forecast net revenue, the statements show gross revenue
+        self.assertAlmostEqual(a["revenue_basis"]["gap"], -0.3)
+        self.assertEqual([round(e["revenue_growth"], 4) for e in a["estimates"]], [0.05, 0.05])
+        a = self.view(98.0)  # the same basis: growth starts from the reported figure
+        self.assertNotIn("revenue_basis", a)
+        self.assertAlmostEqual(a["estimates"][0]["revenue_growth"], 98 * 1.05 / 100 - 1)
+
+    def test_share_basis(self):
+        def problem(shares, cur):
+            years = [{"date": f"{2021 + i}-12-31", "shares": v} for i, v in enumerate(shares)]
+            return self.A.history_problem(years, [], "2000-01-01", cur)[0]
+        self.assertIsNone(problem([400, 600, 700, 870, 900], 915))       # a REIT growing by share sales
+        self.assertEqual(problem([200, 210, 420, 425, 430], 430), "share_basis")  # an unadjusted 2:1 split
+        self.assertEqual(problem([100, 101, 102, 103, 104], 520), "share_basis")  # an ADR ratio
+        self.assertIsNone(problem([1000, 900, 800, 700, 600], 590))      # steady buybacks
 
 
 class TextsAndUI(unittest.TestCase):
@@ -406,8 +463,8 @@ class TextsAndUI(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = (ROOT / "scripts" / "score.py").read_text()
-        cls.i18n = (ROOT / "ui" / "i18n.js").read_text()
+        cls.src = (ROOT / "scripts" / "score.py").read_text(encoding="utf-8")
+        cls.i18n = (ROOT / "ui" / "i18n.js").read_text(encoding="utf-8")
 
     def both(self, key):
         n = len(re.findall(r'(?<![\w"])"?' + re.escape(key) + r'"?\s*:', self.i18n))
@@ -445,7 +502,7 @@ class Docs(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        text = (ROOT / "references" / "metrics.md").read_text()
+        text = (ROOT / "references" / "metrics.md").read_text(encoding="utf-8")
         cls.doc = text[text.index("## 12. Fundamental score"):]
 
     def test_bands(self):
@@ -454,7 +511,7 @@ class Docs(unittest.TestCase):
             self.assertIn(f"| {rule} |", self.doc, band)
 
     def test_weights(self):
-        kinds = ("general", "financial", "reit", "utility")
+        kinds = ("general", "financial", "reit", "utility", "fee_financial")
         for p in S.PILLARS:
             keys = dict.fromkeys(k for kind in kinds for k in S.WEIGHTS[kind][p])
             for k in keys:
@@ -526,8 +583,10 @@ class EndToEnd(unittest.TestCase):
 
     def test_fee_based_financial_is_analysed_like_other_companies(self):
         r = self.results["EXCH"]
-        self.assertEqual(r["sector_kind"], "general")
+        self.assertEqual((r["sector_kind"], r["score"]["kind"]), ("fee_financial", "fee_financial"))
         self.check_consistent(r["score"])
+        keys = {i["key"]: i["status"] for p in r["score"]["pillars"].values() for i in p["indicators"]}
+        self.assertEqual((keys["fwd_ev_position"], keys["altman"], keys["current_ratio"]), ("ok", "n/a", "n/a"))
         self.assertNotIn("skipped", r["dcf"])
         self.assertFalse(r["score"]["caps"])
 
