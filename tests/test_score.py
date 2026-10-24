@@ -311,6 +311,28 @@ class Indicators(unittest.TestCase):
         g = S._implied_growth_gap(r, {"implied_growth": 0.10})
         self.assertEqual((g["note"], round(g["value"], 4)), ("historical_growth", 0.05))
 
+    def test_implied_growth_compares_with_the_lower_of_analysts_and_history(self):
+        def r(cagr, *growth):
+            return {"analyst": {"estimates": [{"fy": 2026 + i, "revenue_growth": g, "ended": False}
+                                              for i, g in enumerate(growth)]}, "cagr": {"revenue": cagr}}
+        g = S._implied_growth_gap(r(0.05, 0.12, 0.10), {"implied_growth": 0.10})
+        self.assertEqual((g["note"], g["detail"]["reference_source"], round(g["value"], 4)), ("history_lower", "history", 0.05))
+        g = S._implied_growth_gap(r(0.15, 0.12, 0.10), {"implied_growth": 0.10})
+        self.assertEqual((g["note"], g["detail"]["reference_source"], round(g["value"], 4)), (None, "analysts", -0.01))
+        g = S._implied_growth_gap(r(None, 0.12, 0.10), {"implied_growth": 0.10})
+        self.assertEqual((g["note"], round(g["value"], 4)), (None, -0.01))
+
+    def test_optimistic_estimates_are_a_conflict(self):
+        r = dict(self.est(1.0, 1.20), cagr={"eps": 0.10})      # exactly 10 points above history
+        self.assertIsNotNone(S._optimistic_estimates(r))
+        s = stubbed_score({"valuation": 0, "quality": 0, "growth": 0, "health": 0}, r)
+        c = [x for x in s["conflicts"] if x["type"] == "optimistic_estimates"]
+        self.assertEqual(len(c), 1)
+        self.assertIn("+20.0%", S.conflict_text(c[0]))
+        self.assertEqual(s["score"], 0)                          # listed only, the score does not move
+        self.assertIsNone(S._optimistic_estimates(dict(self.est(1.0, 1.15), cagr={"eps": 0.10})))
+        self.assertIsNone(S._optimistic_estimates(self.est(1.0, 1.5)))   # no history to compare with
+
     def test_negative_dcf_value_is_flagged(self):
         r = {"dcf": {"margin_of_safety": -1.5, "value_per_share": -5}}
         ind = S.valuation(r, "general")["dcf_margin"]

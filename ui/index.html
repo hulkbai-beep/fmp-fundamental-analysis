@@ -587,6 +587,8 @@ function conflictText(c) {
   if (c.type === "adjusted_eps") return t("cf_adjusted_eps", Math.round(v.gap * 100) + "%");
   if (c.type === "group_expensive") return t("cf_group_expensive", t("grp_" + (v.group || "industry")));
   if (c.type === "cyclical_peak") return t("cf_cyclical_peak", pct1(v.margin), pct1(v.median), v.years, sgn(v.eps_growth_next * 100, 1) + "%");
+  if (c.type === "optimistic_estimates") return t("cf_optimistic_estimates", sgn(v.eps_growth_next * 100, 1) + "%",
+    sgn(v.eps_cagr * 100, 1) + "%", ((v.eps_growth_next - v.eps_cagr) * 100).toFixed(1) + (LANG === "zh" ? " 个百分点" : "pt"));
   if (c.type === "currency") return t("cf_currency", v.statements, v.price);
   return t("cf_" + c.type);
 }

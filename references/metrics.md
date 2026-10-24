@@ -303,7 +303,7 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 `scripts/score.py` turns the numbers above into one score from -2 to +2 and a label, on the same
 scale and with the same five labels as the technical-analysis scorecard. The rules are fixed and
 deterministic: Python computes the score, and the write-up explains it without changing it. Rules
-version 1.1 (`RULES_VERSION`). The report's "Fundamental score" section and the UI's score card show
+version 1.2 (`RULES_VERSION`). The report's "Fundamental score" section and the UI's score card show
 the same numbers with every weight and band.
 
 **Formula:** score = 0.35 x valuation + 0.25 x quality + 0.20 x growth + 0.20 x financial health.
@@ -338,7 +338,7 @@ Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is perce
 | Valuation | Forward EV/EBITDA vs its 3-year range | the same on next-12-month EV/EBITDA | <25%: +2 / 25% to 45%: +1 / 45% to 55%: 0 / 55% to 75%: -1 / >=75%: -2 |
 | Valuation | Trailing fallback for both | trailing (TTM) multiple / median of its fiscal-year-end multiples - 1, at least 3 years | <-25%: +2 / -25% to -10%: +1 / -10% to 10%: 0 / 10% to 25%: -1 / >=25%: -2 |
 | Valuation | P/B vs its fiscal-year-end median | the same on P/B (banks and insurers) | <-25%: +2 / -25% to -10%: +1 / -10% to 10%: 0 / 10% to 25%: -1 / >=25%: -2 |
-| Valuation | Reverse DCF: implied minus expected growth | FCF growth the price implies (section 7) minus analysts' revenue growth for the two fiscal years ahead (historical revenue CAGR without estimates); +2 when the price implies FCF shrinking more than 50% a year, -2 above 100% a year | <-5pt: +2 / -5pt to -2pt: +1 / -2pt to 2pt: 0 / 2pt to 8pt: -1 / >=8pt: -2 |
+| Valuation | Reverse DCF: implied minus expected growth | FCF growth the price implies (section 7) minus the lower of analysts' revenue growth for the two fiscal years ahead and historical revenue CAGR (the CAGR alone without estimates); +2 when the price implies FCF shrinking more than 50% a year, -2 above 100% a year | <-5pt: +2 / -5pt to -2pt: +1 / -2pt to 2pt: 0 / 2pt to 8pt: -1 / >=8pt: -2 |
 | Valuation | DCF value vs price | DCF value per share / price - 1 (margin of safety) | <-30%: -2 / -30% to -10%: -1 / -10% to 10%: 0 / 10% to 30%: +1 / >=30%: +2 |
 | Valuation | P/E vs industry | company P/E / industry P/E - 1 (sector P/E when there is no industry P/E) | <-30%: +2 / -30% to -10%: +1 / -10% to 25%: 0 / 25% to 60%: -1 / >=60%: -2 |
 | Quality | ROIC (median) | median over the fiscal years in the report | <5%: -2 / 5% to 8%: -1 / 8% to 12%: 0 / 12% to 20%: +1 / >=20%: +2 |
@@ -392,9 +392,9 @@ carries no weight. A dash means an indicator of another type's set, which is not
 | Quality | Stock comp % revenue | 10% | 20% | 20% | 15% | 10% |
 | Quality | ROE (median) | - | 50% | - | 35% | - |
 | Quality | ROE change over 3 years | - | 30% | - | 20% | - |
-| Growth | Revenue CAGR | 30% | 30% | 30% | 30% | 30% |
-| Growth | Revenue growth, last FY | 20% | 20% | 20% | 20% | 20% |
-| Growth | Expected revenue growth (analysts) | 30% | 30% | 30% | 30% | 30% |
+| Growth | Revenue CAGR | 35% | 35% | 35% | 35% | 35% |
+| Growth | Revenue growth, last FY | 25% | 25% | 25% | 25% | 25% |
+| Growth | Expected revenue growth (analysts) | 20% | 20% | 20% | 20% | 20% |
 | Growth | Expected EPS growth next FY (analysts) | 20% | 20% | 20% | 20% | 20% |
 | Financial health | Net debt / EBITDA | 25% | n/a | 30% | 30% | 30% |
 | Financial health | Interest coverage (EBIT / interest) | 20% | n/a | 25% | 25% | 25% |
@@ -481,7 +481,8 @@ history and industry) and absolute methods (DCF, reverse DCF) each averaging +/-
 opposite sides; growth slowdown; cheap against the industry while the industry's own P/E sits in
 the top fifth of its history; adjusted EPS; a possible cyclical peak (latest operating margin at
 least 5 points above its median and at least 1.5x it, over 4 or more years, while analysts expect
-EPS to fall); a currency mismatch; each red line.
+EPS to fall); optimistic estimates (next year's expected EPS growth 10 points or more above the
+historical EPS CAGR); a currency mismatch; each red line.
 
 ### Value range
 
@@ -508,6 +509,18 @@ enter through the DCF's Treasury-linked discount rate).
 - A single year's one-off charge still moves the trend and coverage indicators and the Altman
   zone; only the coverage and cash-flow red lines require two years.
 - The reverse DCF shares the section 7 model's horizon, terminal growth and discount rate.
+
+### Rule changes
+
+- **1.2:** analysts' estimates count for less. Within growth, expected revenue growth goes from 30%
+  to 20% and history gains it (revenue CAGR 35%, last FY 25%). The reverse DCF compares the implied
+  growth with the lower of expected and historical revenue growth. Optimistic estimates are listed
+  as a conflict. Why: one consensus fed five indicators (both forward positions, the reverse DCF and
+  both expected-growth indicators), and on the first real-data run a single jump in the consensus
+  (JPMorgan and ICE, +12% to +14% in one fiscal year) moved growth and valuation together.
+- **1.1:** fee-based financials as their own type; expected revenue growth from the analysts' own
+  basis; share-basis check between consecutive years only; dilution as the median yearly change.
+  Each fixed a wrong score on the first real-data run.
 
 To change a rule, edit the weights (`PILLAR_WEIGHTS`, `WEIGHTS`), the cut points (`BANDS`) or the
 named thresholds at the top of `score.py`, bump `RULES_VERSION`, and update this section;

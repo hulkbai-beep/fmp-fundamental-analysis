@@ -25,7 +25,7 @@ from __future__ import annotations
 import bisect
 import statistics
 
-RULES_VERSION = "1.1"
+RULES_VERSION = "1.2"
 
 PILLARS = ("valuation", "quality", "growth", "health")
 PILLAR_WEIGHTS = {"valuation": 0.35, "quality": 0.25, "growth": 0.20, "health": 0.20}
@@ -43,14 +43,14 @@ WEIGHTS = {
                       "dcf_margin": 0.15, "vs_industry": 0.15},
         "quality": {"roic_level": 0.30, "roic_trend": 0.15, "op_margin_trend": 0.15,
                     "gross_margin_stability": 0.10, "fcf_conversion": 0.20, "sbc_burden": 0.10},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.25, "interest_coverage": 0.20, "altman": 0.15, "piotroski": 0.20,
                    "current_ratio": 0.10, "dilution": 0.10},
     },
     "financial": {
         "valuation": {"fwd_pe_position": 0.40, "pb_vs_history": 0.30, "vs_industry": 0.30},
         "quality": {"roe_level": 0.50, "roe_trend": 0.30, "sbc_burden": 0.20},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"piotroski": 0.40, "equity_to_assets": 0.35, "dilution": 0.25},
     },
     # REITs: depreciation makes GAAP ROIC, FCF / net income and EBIT coverage misleading; current ratio and
@@ -59,7 +59,7 @@ WEIGHTS = {
         "valuation": {"fwd_pe_position": 0.30, "fwd_ev_position": 0.20, "implied_growth_gap": 0.20,
                       "dcf_margin": 0.15, "vs_industry": 0.15},
         "quality": {"roic_trend": 0.25, "op_margin_trend": 0.30, "gross_margin_stability": 0.25, "sbc_burden": 0.20},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
     # Utilities: regulated returns are judged on ROE; capex above operating cash flow (negative FCF), a current
@@ -69,7 +69,7 @@ WEIGHTS = {
                       "dcf_margin": 0.15, "vs_industry": 0.15},
         "quality": {"roe_level": 0.35, "roe_trend": 0.20, "op_margin_trend": 0.20, "gross_margin_stability": 0.10,
                     "sbc_burden": 0.15},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
     # Exchanges, data providers and insurance brokers: scored like other companies, except that clearing
@@ -79,7 +79,7 @@ WEIGHTS = {
                       "dcf_margin": 0.15, "vs_industry": 0.15},
         "quality": {"roic_level": 0.30, "roic_trend": 0.15, "op_margin_trend": 0.15,
                     "gross_margin_stability": 0.10, "fcf_conversion": 0.20, "sbc_burden": 0.10},
-        "growth": {"revenue_cagr": 0.30, "revenue_recent": 0.20, "revenue_forward": 0.30, "eps_forward": 0.20},
+        "growth": {"revenue_cagr": 0.35, "revenue_recent": 0.25, "revenue_forward": 0.20, "eps_forward": 0.20},
         "health": {"net_debt_ebitda": 0.30, "interest_coverage": 0.25, "piotroski": 0.25, "dilution": 0.20},
     },
 }
@@ -133,6 +133,7 @@ BASIS_GAP = 0.10              # analysts' EPS / EBITDA this far from reported: t
 COVERAGE_RED_LINE = 1.5       # interest covered less than this in each of the last two fiscal years
 CYCLICAL_MARGIN_RATIO = 1.5   # latest operating margin >= 1.5x its median (and 5pt above it) while
 CYCLICAL_MARGIN_GAP = 0.05    # ... analysts expect EPS to fall: possibly a cyclical peak
+OPTIMISTIC_GAP = 0.10         # next year's expected EPS growth this far above historical EPS CAGR: listed as a conflict
 COVERAGE_LOW, COVERAGE_HIGH = 0.6, 0.85
 AGREEMENT_LOW, AGREEMENT_HIGH = 0.5, 0.7
 METHODS_HIGH = 2 / 3          # at least two of three strong valuation indicators agree with the pillar
@@ -316,18 +317,22 @@ def _dcf_margin(r, d):
 
 
 def _implied_growth_gap(r, d):
-    """Growth the price implies (reverse DCF) minus the growth analysts expect (or history delivered)."""
+    """Growth the price implies (reverse DCF) minus the lower of the growth analysts expect and the growth history
+    delivered, so that one optimistic estimate does not make the price look cheap here as well."""
     key = "implied_growth_gap"
     if _currency_mismatch(r):
         return _missing(key, "currency")
     if "skipped" in d:
         return _missing(key, "no_dcf")
-    ref, fys = _fwd_revenue_growth(r)
-    note, src = None, "analysts"
-    if ref is None:
-        ref, note, src = _f((r.get("cagr") or {}).get("revenue")), "historical_growth", "history"
+    fwd, fys = _fwd_revenue_growth(r)
+    hist = _f((r.get("cagr") or {}).get("revenue"))
+    ref, note, src = fwd, None, "analysts"
+    if fwd is None:
+        ref, note, src = hist, "historical_growth", "history"
+    elif hist is not None and hist < fwd:
+        ref, note, src = hist, "history_lower", "history"
     ig = _f(d.get("implied_growth"))
-    detail = {"implied": ig, "reference": ref, "reference_source": src, "fys": fys}
+    detail = {"implied": ig, "reference": ref, "reference_source": src, "fys": fys, "analysts": fwd, "history": hist}
     if ig is None:
         why = str(d.get("implied_growth_note") or "")
         if why.startswith("below"):
@@ -627,6 +632,16 @@ def _cyclical_peak(r):
     return None
 
 
+def _optimistic_estimates(r):
+    """Next year's expected EPS growth far above the historical EPS CAGR: the forward multiples, the growth pillar
+    and (through revenue) the reverse DCF lean on an estimate the company has not delivered before."""
+    g, fy0, fy1 = _fwd_eps_growth(r)
+    hist = _f((r.get("cagr") or {}).get("eps"))
+    if g is not None and hist is not None and round(g - hist, 6) >= OPTIMISTIC_GAP:  # 1.20 / 1.0 - 1 is 0.1999...
+        return {"eps_growth_next": g, "eps_cagr": hist, "fy_from": fy0, "fy_to": fy1}
+    return None
+
+
 def _conflicts(p, inds, r, caps):
     out = []
     v, q, g = p["valuation"]["score"], p["quality"]["score"], p["growth"]["score"]
@@ -657,6 +672,9 @@ def _conflicts(p, inds, r, caps):
     peak = _cyclical_peak(r)
     if peak:
         out.append({"type": "cyclical_peak", "values": peak})
+    opt = _optimistic_estimates(r)
+    if opt:
+        out.append({"type": "optimistic_estimates", "values": opt})
     ccy = _currency_mismatch(r)
     if ccy:
         out.append({"type": "currency", "values": {"statements": ccy[0], "price": ccy[1]}})
@@ -787,6 +805,8 @@ NOTES = {
     "few_tests": "fewer than 7 of the 9 tests have data",
     "growth_slowdown": "capped at +1, since expected EPS growth is under half the historical rate",
     "historical_growth": "compared with historical revenue CAGR (no analyst estimates)",
+    "history_lower": "compared with historical revenue CAGR, which is below analysts' expected growth (the lower of "
+                     "the two is used)",
     "historical_eps": "fallback to historical EPS CAGR (no usable analyst EPS estimates)",
     "sector_pe": "compared with the sector (no industry P/E)",
     "implied_below_range": "price implies FCF shrinking more than 50% a year",
@@ -839,6 +859,8 @@ CONFLICT_TEXT = {
     "adjusted_eps": "Analysts' EPS is about {gap} above reported EPS (adjusted basis), so forward P/E looks lower than GAAP P/E.",
     "cyclical_peak": "Operating margin ({margin}) is far above its {years}-year median ({median}) while analysts expect "
                      "EPS to fall ({growth}): rising margins, growth and the DCF may be reading a cyclical peak.",
+    "optimistic_estimates": "Analysts expect EPS to grow {growth} next fiscal year, {gap} above the historical EPS CAGR "
+                            "({cagr}): the forward multiples and the growth pillar lean on that estimate.",
     "currency": "Statements are in {statements} and the price in {price}: the DCF, reverse DCF, P/E vs industry, EV and "
                 "trailing multiples and Altman Z (Z'' kept) are left out, since they would be off by the exchange rate.",
     "red_line": "Balance-sheet red line: {what}.",
@@ -863,6 +885,9 @@ def conflict_text(x):
     if x["type"] == "cyclical_peak":
         return t.format(margin=f"{v['margin'] * 100:.1f}%", median=f"{v['median'] * 100:.1f}%", years=v["years"],
                         growth=f"{v['eps_growth_next'] * 100:+.1f}%")
+    if x["type"] == "optimistic_estimates":
+        return t.format(growth=f"{v['eps_growth_next'] * 100:+.1f}%", cagr=f"{v['eps_cagr'] * 100:+.1f}%",
+                        gap=f"{(v['eps_growth_next'] - v['eps_cagr']) * 100:.1f}pt")
     if x["type"] == "currency":
         return t.format(**v)
     return t
