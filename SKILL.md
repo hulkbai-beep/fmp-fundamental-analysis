@@ -152,7 +152,8 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   rule-based score (its rules version is printed): valuation 35%, quality 25%, growth 20% and
   financial health 20%, each pillar -2..+2 from fixed indicator bands, with a label on the
   technical scorecard's scale (Bullish / Moderately bullish / Neutral / Moderately bearish /
-  Bearish) and a confidence level. Quote it as printed and never adjust it or compute another.
+  Bearish), a confidence level and two views beside it (business quality and price attractiveness,
+  with the quadrant they fall in). Quote it as printed and never adjust it or compute another.
   Explain what drives it: the pillars and the two or three indicators with the largest
   contributions, any cap (a value trap or a balance-sheet red line holds it at Neutral, +0.4, at most), the
   conflicts it lists, and what the confidence line flags (missing data counts as 0, so thin data

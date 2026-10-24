@@ -104,6 +104,17 @@ class Pillars(unittest.TestCase):
         self.assertFalse(s["caps"])
         self.assertEqual(s["label"], "Moderately bullish")
 
+    def test_two_views_leave_the_total_alone(self):
+        s = stubbed_score({"valuation": -1, "quality": 2, "growth": 1, "health": 0})
+        self.assertAlmostEqual(s["score"], 0.35 * -1 + 0.25 * 2 + 0.20 * 1)
+        self.assertEqual(s["views"]["business"], round((0.25 * 2 + 0.20 * 1) / 0.65, 2))
+        self.assertEqual((s["views"]["price"], s["views"]["quadrant"]), (-1, "good_business_pricey"))
+        for scores, quadrant in (((1, 1), "good_business_good_price"), ((1, -1), "cheap_weak_business"),
+                                 ((-1, -1), "weak_and_pricey"), ((0, 0), "good_business_good_price")):
+            v, b = scores
+            s = stubbed_score({"valuation": v, "quality": b, "growth": b, "health": b})
+            self.assertEqual(s["views"]["quadrant"], quadrant, scores)
+
     def test_no_negative_zero(self):
         s = stubbed_score({"valuation": -0.004, "quality": 0, "growth": 0, "health": 0})
         self.assertEqual([str(x) for x in (s["score"], s["raw_score"], s["pillars"]["valuation"]["score"])],
@@ -495,6 +506,9 @@ class TextsAndUI(unittest.TestCase):
             self.both(f'lbl_{name}')
         for n in S.PILLARS:
             self.both("p_" + n)
+        for q in S.QUADRANTS.values():
+            self.both("q_" + q)
+            self.assertIn(q, S.QUADRANT_TEXT)
 
 
 class Docs(unittest.TestCase):

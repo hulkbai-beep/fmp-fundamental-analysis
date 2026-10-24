@@ -3,7 +3,8 @@
 Fundamental scores for a list of stocks, for checking the scoring rules against real data.
 
 Runs analyze.py's analysis for each symbol (no peers, so it costs fewer API calls) and writes:
-  scores.csv      one row per stock: total, label, confidence, the four pillars, caps, conflicts
+  scores.csv      one row per stock: total, label, confidence, the four pillars, the business-quality view and
+                  quadrant, caps, conflicts
   indicators.csv  one row per stock and indicator: value, score, weight, note
   diff.csv        with --compare: stocks whose score or label changed against an earlier scores.csv
 
@@ -36,7 +37,7 @@ import score as S  # noqa: E402
 from fmp_client import FMPError, InvalidKey  # noqa: E402
 
 SCORE_FIELDS = ["symbol", "name", "sector", "industry", "kind", "rules", "score", "label", "raw_score",
-                "confidence", "coverage", "valuation", "quality", "growth", "health", "caps", "conflicts",
+                "confidence", "coverage", "valuation", "quality", "growth", "health", "business", "quadrant", "caps", "conflicts",
                 "issues", "value_basis", "value_mid_vs_price", "price", "error"]
 IND_FIELDS = ["symbol", "pillar", "indicator", "status", "value", "unit", "score", "weight", "note"]
 
@@ -66,7 +67,8 @@ def rows_for(sym, r):
         "industry": prof.get("industry"), "kind": s["kind"], "rules": s["version"], "score": s["score"],
         "label": s["label"], "raw_score": s["raw_score"], "confidence": c["level"], "coverage": _r(c["coverage"], 2),
         "valuation": p["valuation"]["score"], "quality": p["quality"]["score"], "growth": p["growth"]["score"],
-        "health": p["health"]["score"], "caps": ";".join(x["type"] for x in s["caps"]),
+        "health": p["health"]["score"], "business": s["views"]["business"], "quadrant": s["views"]["quadrant"],
+        "caps": ";".join(x["type"] for x in s["caps"]),
         "conflicts": ";".join(x["type"] for x in s["conflicts"]), "issues": ";".join(c["issues"]),
         "value_basis": vr.get("basis"), "value_mid_vs_price": _r(vr.get("mid_vs_price")),
         "price": _r((r.get("current") or {}).get("price"), 2), "error": "",

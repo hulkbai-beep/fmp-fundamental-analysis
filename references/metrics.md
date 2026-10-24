@@ -321,6 +321,13 @@ cannot make a weak business score high, and the value-trap cap below stops that 
 Moderately bearish, below -1.2 Bearish. A score exactly on a bound takes the label nearer Neutral
 (+0.40 is Neutral, -1.20 is Moderately bearish). It is a rule-based label, not a recommendation.
 
+**Two views** (shown beside the total; they do not change it, the label or the caps): business
+quality = quality, growth and financial health at their total weights (25 : 20 : 20, so 38% / 31% /
+31%), and price attractiveness = the valuation pillar, each -2..+2. Their signs place the stock in
+one of four quadrants: good business at a good price, good business priced high, cheap but a weak
+business, weak business priced high (0 counts as the good side). A total of +0.5 can be a strong
+business that is expensive or a weak one that is cheap; the two views tell them apart.
+
 ### Indicators and bands
 
 Bands read `<cut: score / from to to: score / ... / >=cut: score`; `pt` is percentage points.

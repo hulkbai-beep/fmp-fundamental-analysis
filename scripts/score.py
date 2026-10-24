@@ -29,6 +29,11 @@ RULES_VERSION = "1.1"
 
 PILLARS = ("valuation", "quality", "growth", "health")
 PILLAR_WEIGHTS = {"valuation": 0.35, "quality": 0.25, "growth": 0.20, "health": 0.20}
+# Two views shown beside the total (they do not change it): business quality is the non-valuation pillars at their
+# total weights, price attractiveness is the valuation pillar. Each view's sign picks one of four quadrants.
+BUSINESS_PILLARS = ("quality", "growth", "health")
+QUADRANTS = {(True, True): "good_business_good_price", (True, False): "good_business_pricey",
+             (False, True): "cheap_weak_business", (False, False): "weak_and_pricey"}
 
 # Indicator weights inside each pillar, by company type (analyze.py's sector_kind). An indicator listed for
 # "general" but not for the company's type is shown as not applicable.
@@ -703,6 +708,16 @@ def _confidence(p, inds, total, r, caps):
             "issues": issues, "reasons": reasons}
 
 
+def _views(pillars):
+    """Business quality (quality, growth and health at 25 : 20 : 20) and price attractiveness (valuation), each -2..+2,
+    and the quadrant their signs fall in (0 counts as the good side)."""
+    tw = sum(PILLAR_WEIGHTS[n] for n in BUSINESS_PILLARS)
+    business = round(sum(PILLAR_WEIGHTS[n] * pillars[n]["score"] for n in BUSINESS_PILLARS) / tw, 2) + 0.0
+    price = pillars["valuation"]["score"]
+    return {"business": business, "price": price, "quadrant": QUADRANTS[(business >= 0, price >= 0)],
+            "business_weights": {n: PILLAR_WEIGHTS[n] / tw for n in BUSINESS_PILLARS}}
+
+
 def _value_range(r):
     pr, d = r.get("price_range") or {}, r.get("dcf") or {}
     price = _f((r.get("current") or {}).get("price"))
@@ -737,7 +752,7 @@ def score(r):
     return {
         "version": RULES_VERSION, "kind": kind, "score": total, "raw_score": round(raw, 2) + 0.0, "label": label_of(total),
         "capped": bool(caps) and raw > CAP, "caps": caps, "cap_limit": CAP,
-        "pillar_order": list(PILLARS), "pillars": pillars,
+        "pillar_order": list(PILLARS), "pillars": pillars, "views": _views(pillars),
         "confidence": _confidence(pillars, inds, total, r, caps),
         "conflicts": _conflicts(pillars, inds, r, caps),
         "value_range": _value_range(r),
@@ -828,6 +843,9 @@ CONFLICT_TEXT = {
                 "trailing multiples and Altman Z (Z'' kept) are left out, since they would be off by the exchange rate.",
     "red_line": "Balance-sheet red line: {what}.",
 }
+QUADRANT_TEXT = {"good_business_good_price": "good business at a good price",
+                 "good_business_pricey": "good business, priced high", "cheap_weak_business": "cheap, but a weak business",
+                 "weak_and_pricey": "weak business and priced high"}
 ISSUE_TEXT = {"short_history": "fewer than 4 fiscal years", "adjusted_eps": "analyst EPS on an adjusted basis",
               "proxy_data": "data from a third-party proxy", "capped": "a red-line or value-trap cap triggered",
               "currency": "statements and price in different currencies",
@@ -917,6 +935,10 @@ def render(s):
         p = s["pillars"][n]
         out.append(f"| {PILLAR_NAMES[n]} | {p['weight'] * 100:.0f}% | {p['score']:+.2f} | {p['contribution']:+.2f} | "
                    f"{p['coverage'] * 100:.0f}% |")
+    vw = s["views"]
+    out.append(f"\n**Two views** (beside the total, which they do not change): business quality {vw['business']:+.2f} "
+               f"(quality, growth and financial health at 25 : 20 : 20), price attractiveness {vw['price']:+.2f} "
+               f"(the valuation pillar): {QUADRANT_TEXT[vw['quadrant']]}.")
     out.append("")
     out.append("| Pillar | Indicator | Value | Score | Weight | Rule |")
     out.append("|---|---|---|---|---|---|")
