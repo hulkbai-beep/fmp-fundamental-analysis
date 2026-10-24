@@ -17,6 +17,7 @@ What it covers:
 - Analyst estimates and price targets
 - Price range: forward P/E and EV/EBITDA ranges at three points, **now**, **the end of the current fiscal year** and **the end of the next fiscal year** (next-12-month EPS / EBITDA × the 25th / 50th / 75th percentile of the company's own 3-year multiple on the same basis); volatility ranges to those two fiscal year ends (68% and 95%, optionally from options-implied volatility); all side by side with the DCF range, analyst price targets and the 52-week range
 - Automated flags: positives and concerns, as leads to check, not conclusions
+- Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
 
 All calculations are done by the scripts; Claude only interprets the results.
 
@@ -32,15 +33,21 @@ fmp-fundamental-analysis/
 ├── README.md           # Usage guide for people (Chinese)
 ├── README.en.md        # This file: usage guide for people (English)
 ├── references/
+│   ├── validation-set.txt  # About 20 stocks of every company type for checking the score
 │   └── metrics.md      # Metric definitions, thresholds, sector caveats
 ├── scripts/
 │   ├── fmp_client.py   # FMP API client: connection, cache, rate limiting, plus the check / get commands
 │   ├── analyze.py      # Main analysis script: builds the full report
+│   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
+│   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
 └── ui/
     ├── server.py       # Local web server
     ├── index.html      # Web page
     └── i18n.js         # Chinese/English toggle and translation tables for the web page
+└── tests/
+    ├── fake_fmp.py     # Offline fake FMP data (three made-up companies) for tests and trying the page
+    └── test_score.py   # Offline tests of the score: python3 -m unittest discover -s tests (no API key needed)
 ```
 
 ## Requirements
@@ -307,6 +314,7 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
   - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value. Each analysis takes the price from the latest quote (cached for 1 minute) and shows the quote time (New York) under it; the last candle of the chart is updated to that price too.
   - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months, year to date or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
   - The automated positives and concerns.
+  - A "Fundamental score" card: the total, its label and confidence, then each pillar's weight, score, contribution to the total and data coverage; opening a pillar shows each indicator's value, scoring bands (the matching band highlighted), score, weight and contribution, followed by any caps, conflicts to note, the value range and a "How it is computed" list.
   - Each part of the report on its own tab, with the full text report expandable at the bottom.
   - The "Price range" tab has a comparison chart grouped by horizon (past 52 weeks, now, each fiscal year end, in 12 months, in time order): one bar per method in each group, a dot at the mid value, a vertical line at the current price, and a lighter band on the volatility rows for the 95% range; hovering a row shows its numbers. The table below uses the same method + horizon names. The header card shows the forward P/E range for now.
 - **Chinese / English toggle:** the "EN / 中文" button at the top right switches the whole page and report; Chinese by default, and the browser remembers your last choice. Translation happens only in the web page: numbers do not change, the full text report at the bottom stays in the original English, and industry names from FMP and a few economic release names without a translation stay in English.
