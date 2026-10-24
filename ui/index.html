@@ -662,9 +662,17 @@ function render(data) {
   const last = r.years[r.years.length - 1] || {};
   const chg = p.changePercentage;
   const fwd = r.price_range?.forward || [];
-  const hasPe = f => f.pe && f.pe.low != null && f.pe.high != null;
-  // now (next twelve months) and the end of the current fiscal year, where the price rests on next year's EPS
-  const ranges = [fwd.find(f => f.at === "now"), fwd.find(f => f.at === "fy_end")].filter(f => f && hasPe(f));
+  // now (next-twelve-month EPS, a time-weighted blend of this fiscal year and the next), then the same P/E
+  // band on each of those two years' EPS alone
+  const ranges = [], pb = r.price_range?.pe_band;
+  const now = fwd.find(f => f.at === "now" && f.pe && f.pe.low != null && f.pe.high != null);
+  if (now) {
+    const w = now.weight == null ? null : Math.round(now.weight * 100);
+    ranges.push({ when: rcWhen(now), low: now.pe.low, high: now.pe.high, eps: now.uses.map((fy, i) => [fy, w == null ? null : i ? 100 - w : w]) });
+  }
+  if (pb) for (const e of (r.analyst?.estimates || []).filter(e => !e.ended).slice(0, 2)) {
+    if (e.eps_avg > 0) ranges.push({ when: `FY${e.fy}`, low: e.eps_avg * pb.p25, high: e.eps_avg * pb.p75, eps: [[e.fy, null]] });
+  }
   let h = "";
   if (!conn.route || conn.route.startsWith("third-party")) {
     h += `<div class="notice">${t("notice_proxy", esc(conn.base))}` + (conn.tls_verify === false ? esc(t("notice_tls")) : "") + `</div>`;
@@ -685,8 +693,8 @@ function render(data) {
       ${stat("s_pio", `${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}`)}
       ${stat("s_dcf", dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a")}
       ${stat("s_mos", dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a", dcf.margin_of_safety >= 0 ? "pos" : "neg")}
-      ${ranges.map(f => `<div class="stat wide"><div class="k">${esc(t("s_range"))} · ${esc(rcWhen(f))}</div><div class="v">${fmtPx(f.pe.low)} – ${fmtPx(f.pe.high)}</div>
-        <div class="k">${esc(t("s_range_eps", f.uses.map((fy, i) => [fy, f.weight == null ? null : i ? 100 - Math.round(f.weight * 100) : Math.round(f.weight * 100)])))}</div></div>`).join("")}
+      ${ranges.map(x => `<div class="stat wide"><div class="k">${esc(t("s_range"))} · ${esc(x.when)}</div><div class="v">${fmtPx(x.low)} – ${fmtPx(x.high)}</div>
+        <div class="k">${esc(t("s_range_eps", x.eps))}</div></div>`).join("")}
     </div></div>`;
   const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
   if (r.score) h += scoreCard(r.score);
