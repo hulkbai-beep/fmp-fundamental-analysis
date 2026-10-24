@@ -75,29 +75,24 @@ macOS / Linux：把 `export FMP_API_KEY="你的key"` 加到 `~/.zshrc` 或 `~/.b
 
 > `setx` 只对**新打开**的终端生效。设置完要重新打开终端，并重启 Claude，它才能读到新变量。
 
-### 2. 使用第三方 FMP 代理接口（本机当前的配置）
+### 2. 使用第三方 FMP 代理接口（可选）
 
-本机用的是 **FMP 的第三方代理接口，不是 FMP 官方服务器**：
+本机从 2026-10-18 起用的是 **FMP 官方 key**，直连 `https://financialmodelingprep.com`，下面这些变量都不用设置，`FMP_BASE_URL` 也要保持为空。只有改用第三方代理时才需要：
 
 | 环境变量 | 值 / 说明 |
 |---|---|
 | `FMP_API_KEY` | 代理服务商给你的 token |
-| `FMP_BASE_URL` | 代理地址，本机为 `https://54.236.92.205` |
-| `FMP_TLS_VERIFY` | 设为 `0` 会关闭 HTTPS 证书验证。这个代理用的是裸 IP，证书验证不通过，所以需要设置 |
+| `FMP_BASE_URL` | 代理地址，例如 `https://1.2.3.4` |
+| `FMP_TLS_VERIFY` | 设为 `0` 会关闭 HTTPS 证书验证。只在代理的证书验证不通过时设置（用裸 IP 的代理常见） |
 | `FMP_PATH_PREFIX`、`FMP_AUTH_STYLE` | 一般不用设置，第一次连接时会自动识别并保存 |
 
 设置代理地址：
 
 ```bash
-setx FMP_BASE_URL "https://54.236.92.205"
+setx FMP_BASE_URL "https://代理地址"
 ```
 
-**关于 `FMP_TLS_VERIFY=0` 的风险：** 关闭证书验证后，连接可能被中间人截获，你的 API key 也会经过这条连接。目前的做法是只在需要时、只对单次运行设置，不用 `setx` 永久保存：
-- Claude 运行这个技能时会自动处理（见 SKILL.md）。
-- 本地网页会自动处理。
-- 你自己在命令行运行时，需要手动设置（见下文）。
-
-长期来看，换成 FMP 官方 key 或带有效证书的代理更稳妥。
+**关于 `FMP_TLS_VERIFY=0` 的风险：** 关闭证书验证后，连接可能被中间人截获，你的 API key 也会经过这条连接。所以只在需要时、只对单次运行设置，不要用 `setx` 永久保存。
 
 经代理拿到的数据是转售的 FMP 数据。报告的 Data notes 会写明数据来源（route），看到异常数字时要多留个心。
 
@@ -118,7 +113,7 @@ python scripts/fmp_client.py check
 
 它会显示当前连接（官方还是代理、路径前缀、认证方式、证书验证状态），然后用 AAPL 测试十几个个股接口，再测试板块/行业和宏观接口（板块表现与 P/E、国债收益率、经济指标、经济日历等）。每个接口显示 OK、EMPTY（没有数据）、RESTRICTED（套餐不含）或 ERROR。个股接口全部 OK 就说明设置成功（`historical-price-eod/full` 例外：它只给网页的 K 线图用，没有它网页会改画收盘价折线）；板块和宏观接口的结果用来确认你的套餐/代理支持哪些后续功能。加上 `--peek`（`python scripts/fmp_client.py check --peek`）还会打印板块和宏观接口返回的字段名和首尾两行，方便排查数据格式。
 
-在 PowerShell 里通过代理检查（只对当前终端窗口生效）：
+如果用的是证书无法验证的代理，在 PowerShell 里这样检查（只对当前终端窗口生效）：
 
 ```powershell
 $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
@@ -148,7 +143,7 @@ cd fmp-fundamental-analysis
 
 如果仓库是私有的，git 会要求登录 GitHub。最省事的是先装 GitHub CLI 登录：`brew install gh`，再 `gh auth login`，然后用 `gh repo clone hulkbai-beep/fmp-fundamental-analysis` 下载。
 
-**③ 设置 API key 和代理地址**
+**③ 设置 API key**
 
 用终端里的 nano 编辑器打开 `~/.zshrc`。这样 key 不会留在命令历史里；也不要用「文本编辑」，它可能把引号自动改成中文弯引号，导致设置失效：
 
@@ -156,11 +151,10 @@ cd fmp-fundamental-analysis
 nano ~/.zshrc
 ```
 
-用方向键移到文件末尾，粘贴下面两行，把「你的key」换成真实的 key。然后按 Ctrl + O、回车保存，再按 Ctrl + X 退出：
+用方向键移到文件末尾，粘贴下面这行，把「你的key」换成真实的 key。然后按 Ctrl + O、回车保存，再按 Ctrl + X 退出：
 
 ```bash
 export FMP_API_KEY="你的key"
-export FMP_BASE_URL="https://54.236.92.205"
 ```
 
 回到终端，运行 `source ~/.zshrc`（或者关掉终端再开一个）让它生效。检查有没有设置成功（只显示「已设置」，不会打印 key）：
@@ -169,15 +163,13 @@ export FMP_BASE_URL="https://54.236.92.205"
 [ -n "$FMP_API_KEY" ] && echo "已设置" || echo "没设置"
 ```
 
-**不要**把 `FMP_TLS_VERIFY=0` 写进 `~/.zshrc`，它只在每次运行时单独加（见下一步）。
+用官方 key 不需要 `FMP_TLS_VERIFY`。如果以后改用证书无法验证的代理，也**不要**把 `FMP_TLS_VERIFY=0` 写进 `~/.zshrc`，只在单次运行时加在命令前面。
 
 **④ 检查连接**
 
 ```bash
-FMP_TLS_VERIFY=0 python3 scripts/fmp_client.py check
+python3 scripts/fmp_client.py check
 ```
-
-命令前面的 `FMP_TLS_VERIFY=0` 只对这一条命令生效，相当于 Windows 上的 `$env:FMP_TLS_VERIFY = '0'; ...`。
 
 **⑤ 安装成 Claude 技能**
 
@@ -196,15 +188,14 @@ rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/s
 ```json
 {
   "env": {
-    "FMP_API_KEY": "你的key",
-    "FMP_BASE_URL": "https://54.236.92.205"
+    "FMP_API_KEY": "你的key"
   }
 }
 ```
 
 用 `nano ~/.claude/settings.json` 打开（文件不存在会自动新建），保存和退出的按键同上。如果文件里已经有内容，只把 `"env"` 这一段合并进去，不要覆盖原有内容。
 
-**Mac 上其他命令的写法：** 本文里的 `python` 都换成 `python3`；PowerShell 的 `$env:FMP_TLS_VERIFY = '0'; python ...` 写成 `FMP_TLS_VERIFY=0 python3 ...`。
+**Mac 上其他命令的写法：** 本文里的 `python` 都换成 `python3`。
 
 ---
 
@@ -242,17 +233,7 @@ rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/s
 python scripts/analyze.py AAPL
 ```
 
-通过第三方代理运行时，在 PowerShell 里先设置证书验证（只对当前终端窗口生效）：
-
-```powershell
-$env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
-```
-
-Mac 上：
-
-```bash
-FMP_TLS_VERIFY=0 python3 scripts/analyze.py AAPL
-```
+Mac 上用 `python3 scripts/analyze.py AAPL`。如果用的是证书无法验证的第三方代理，PowerShell 里先运行 `$env:FMP_TLS_VERIFY = '0'`，Mac 上在命令前加 `FMP_TLS_VERIFY=0`。
 
 常用参数：
 
@@ -307,10 +288,10 @@ Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端�
 
 - **启动时自动处理：**
   - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
-  - 连接 54.236.92.205 代理时，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`。
+  - 如果连的是旧代理 54.236.92.205，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`；直连官方时不做任何处理。
 - **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、隐含波动率 %（留空 = 用过去一年的实际波动率）、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
 - **页面显示的内容：**
-  - 顶部有黄色提示条，标明数据来自 FMP 第三方代理接口。
+  - 走第三方代理时，顶部有黄色提示条标明数据来源；直连官方时不显示。
   - 公司概况：股价、市值，以及 P/E、EV/EBITDA、FCF 收益率、ROIC、Piotroski、DCF 价值等关键指标。股价每次分析都取最新报价（缓存 1 分钟），下面显示报价时间（美东），K 线图最后一根也按这个价格更新。
   - 股价 K 线图（每天的开盘、最高、最低、收盘价，下方是成交量），可以切换 3 个月 / 6 个月 / 年初至今 / 1 年；鼠标移到某一天会显示那天的数字。图太窄放不下每天一根时自动改成周 K 线；数据源没有开高低价时只画收盘价折线。
   - 自动提示的优点和风险。
@@ -346,7 +327,7 @@ python scripts/fmp_client.py clear-cache
 |---|---|
 | `FMP_API_KEY is not set` | 没设置 key，或设置后没重开终端/重启 Claude。见「设置 API key」 |
 | `API key problem` / `key rejected` | key 错误或已过期。用代理时，先运行 `fmp_client.py check` 重新识别连接方式 |
-| `HTTPS certificate verification failed for 54.236.92.205` | 代理证书无法验证。在单次运行时设置 `FMP_TLS_VERIFY=0`（注意风险） |
+| `HTTPS certificate verification failed for 54.236.92.205` | 还在连旧代理：`FMP_BASE_URL` 没删干净，删掉后新开终端。确实要用代理时，才在单次运行时设置 `FMP_TLS_VERIFY=0`（注意风险） |
 | `does not cover TICKER` | 套餐只覆盖美股。港股、A 股可以试试对应的美股 ADR |
 | `No profile found for XXX` | 股票代码不对 |
 | 报告里有「Skipped (not in your FMP plan)」 | 套餐不包含某些接口（同行、分析师预期、季度数据等）。其他分析仍然可以基于年报完成 |

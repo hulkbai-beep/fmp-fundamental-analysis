@@ -45,12 +45,11 @@ route). Treat proxy data as unverified: if a figure looks implausible, say so an
 the company's filings. With `FMP_TLS_VERIFY=0` the connection can be intercepted; mention that
 once if the user asks about the setup, and suggest an official FMP key as the long-term fix.
 
-**This machine:** `54.236.92.205` is a **third-party FMP API proxy, not FMP's official
-server** (`FMP_BASE_URL` points to it). Data arriving through it is resold FMP data and must be
-labelled as coming from a third-party FMP proxy in every report's Data notes. The user has chosen
-to skip certificate verification for this proxy, whose certificate fails verification. Whenever you run a script in this skill
-against that proxy, set `FMP_TLS_VERIFY=0` for that process only (PowerShell: `$env:FMP_TLS_VERIFY = '0'`;
-bash: `FMP_TLS_VERIFY=0 python ...`). Do not use `setx`. Do not apply this to any other host.
+**This machine:** since 2026-10-18 the user has an **official FMP key** (paid plan) and
+`FMP_BASE_URL` is unset, so requests go to `https://financialmodelingprep.com` with certificate
+verification on. Do not set `FMP_TLS_VERIFY` or `FMP_BASE_URL`. The old third-party proxy
+(`54.236.92.205`) is no longer used; if `check` ever shows that address again, tell the user
+`FMP_BASE_URL` is still set instead of turning verification off.
 
 ### Local UI (for the user, optional)
 

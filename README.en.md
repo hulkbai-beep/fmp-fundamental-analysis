@@ -75,29 +75,24 @@ macOS / Linux: add `export FMP_API_KEY="your-key"` to `~/.zshrc` or `~/.bashrc` 
 
 > `setx` only applies to terminals opened **afterwards**. After setting it, open a new terminal and restart Claude so they can see the new variable.
 
-### 2. Using a third-party FMP proxy (this machine's current setup)
+### 2. Using a third-party FMP proxy (optional)
 
-This machine uses a **third-party FMP proxy, not FMP's official servers**:
+Since 2026-10-18 this machine uses an **official FMP key** and connects to `https://financialmodelingprep.com` directly, so none of these variables are needed and `FMP_BASE_URL` must stay unset. You only need them if you switch to a third-party proxy:
 
 | Environment variable | Value / notes |
 |---|---|
 | `FMP_API_KEY` | The token the proxy provider gave you |
-| `FMP_BASE_URL` | The proxy address; on this machine `https://54.236.92.205` |
-| `FMP_TLS_VERIFY` | `0` turns off HTTPS certificate verification. This proxy is a bare IP address and its certificate does not verify, so it is needed |
+| `FMP_BASE_URL` | The proxy address, e.g. `https://1.2.3.4` |
+| `FMP_TLS_VERIFY` | `0` turns off HTTPS certificate verification. Set it only if the proxy's certificate does not verify (common for proxies on a bare IP) |
 | `FMP_PATH_PREFIX`, `FMP_AUTH_STYLE` | Usually not needed: detected automatically on the first connection and saved |
 
 Set the proxy address:
 
 ```bash
-setx FMP_BASE_URL "https://54.236.92.205"
+setx FMP_BASE_URL "https://proxy-address"
 ```
 
-**The risk of `FMP_TLS_VERIFY=0`:** with certificate verification off, the connection can be intercepted by a man in the middle, and your API key travels over it. The current practice is to set it only when needed and only for a single run, never permanently with `setx`:
-- Claude handles this automatically when it runs the skill (see SKILL.md).
-- The local web page handles it automatically.
-- When you run the scripts yourself from the command line, set it by hand (see below).
-
-In the long run, an official FMP key or a proxy with a valid certificate is safer.
+**The risk of `FMP_TLS_VERIFY=0`:** with certificate verification off, the connection can be intercepted by a man in the middle, and your API key travels over it. So set it only when needed and only for a single run, never permanently with `setx`.
 
 Data obtained through the proxy is resold FMP data. The report's Data notes state the data route; be extra careful when a number looks odd.
 
@@ -118,7 +113,7 @@ python scripts/fmp_client.py check
 
 It shows the current connection (official or proxy, path prefix, auth style, certificate verification), tests a dozen single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done (except `historical-price-eod/full`, which only feeds the web page's candlestick chart; without it the page draws a line of closing prices); the sector and macro results tell you which later features your plan or proxy supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
 
-Checking through the proxy in PowerShell (applies to the current terminal window only):
+With a proxy whose certificate does not verify, check like this in PowerShell (current terminal window only):
 
 ```powershell
 $env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
@@ -148,7 +143,7 @@ cd fmp-fundamental-analysis
 
 If the repository is private, git will ask you to sign in to GitHub. The easiest way is the GitHub CLI: `brew install gh`, then `gh auth login`, then download with `gh repo clone hulkbai-beep/fmp-fundamental-analysis`.
 
-**③ Set the API key and proxy address**
+**③ Set the API key**
 
 Open `~/.zshrc` in the nano editor in Terminal, so the key does not end up in your command history. Avoid TextEdit: it can turn the quotes into curly quotes, which breaks the settings:
 
@@ -156,11 +151,10 @@ Open `~/.zshrc` in the nano editor in Terminal, so the key does not end up in yo
 nano ~/.zshrc
 ```
 
-Move to the end of the file with the arrow keys and paste these two lines, with your real key. Press Ctrl + O and Enter to save, then Ctrl + X to exit:
+Move to the end of the file with the arrow keys and paste this line, with your real key. Press Ctrl + O and Enter to save, then Ctrl + X to exit:
 
 ```bash
 export FMP_API_KEY="your-key"
-export FMP_BASE_URL="https://54.236.92.205"
 ```
 
 Back in Terminal, run `source ~/.zshrc` (or close Terminal and open a new window). Check that it worked (this prints "set", never the key):
@@ -169,15 +163,13 @@ Back in Terminal, run `source ~/.zshrc` (or close Terminal and open a new window
 [ -n "$FMP_API_KEY" ] && echo "set" || echo "not set"
 ```
 
-Do **not** put `FMP_TLS_VERIFY=0` in `~/.zshrc`; add it to each run instead (next step).
+An official key does not need `FMP_TLS_VERIFY`. If you ever switch to a proxy whose certificate does not verify, still do **not** put `FMP_TLS_VERIFY=0` in `~/.zshrc`; add it in front of a single command instead.
 
 **④ Check the connection**
 
 ```bash
-FMP_TLS_VERIFY=0 python3 scripts/fmp_client.py check
+python3 scripts/fmp_client.py check
 ```
-
-`FMP_TLS_VERIFY=0` in front of a command applies to that command only, like `$env:FMP_TLS_VERIFY = '0'; ...` on Windows.
 
 **⑤ Install it as a Claude skill**
 
@@ -196,15 +188,14 @@ When the code changes, run `git pull` in the code folder, then the same `rsync` 
 ```json
 {
   "env": {
-    "FMP_API_KEY": "your-key",
-    "FMP_BASE_URL": "https://54.236.92.205"
+    "FMP_API_KEY": "your-key"
   }
 }
 ```
 
 Open it with `nano ~/.claude/settings.json` (nano creates the file if it does not exist) and save and exit the same way. If the file already has content, merge in just the `"env"` block rather than replacing what is there.
 
-**Other commands on a Mac:** use `python3` wherever this guide says `python`, and write PowerShell's `$env:FMP_TLS_VERIFY = '0'; python ...` as `FMP_TLS_VERIFY=0 python3 ...`.
+**Other commands on a Mac:** use `python3` wherever this guide says `python`.
 
 ---
 
@@ -242,17 +233,7 @@ From this folder:
 python scripts/analyze.py AAPL
 ```
 
-When going through the third-party proxy, turn off certificate verification first in PowerShell (current terminal window only):
-
-```powershell
-$env:FMP_TLS_VERIFY = '0'; python scripts/analyze.py AAPL
-```
-
-On a Mac:
-
-```bash
-FMP_TLS_VERIFY=0 python3 scripts/analyze.py AAPL
-```
+On a Mac, use `python3 scripts/analyze.py AAPL`. With a third-party proxy whose certificate does not verify, run `$env:FMP_TLS_VERIFY = '0'` first in PowerShell, or put `FMP_TLS_VERIFY=0` in front of the command on a Mac.
 
 Common options:
 
@@ -307,10 +288,10 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
 
 - **Handled automatically at start-up:**
   - Reads the `FMP_*` variables saved with `setx`, even if the terminal was opened before `setx`.
-  - When connecting to the 54.236.92.205 proxy, sets `FMP_TLS_VERIFY=0` for this server process only.
+  - If it is connecting to the old 54.236.92.205 proxy, sets `FMP_TLS_VERIFY=0` for this server process only; nothing is changed for the official API.
 - **Settings on the page:** ticker, comparison companies, discount rate % (blank = automatic, tied to Treasuries), growth years 1-5 %, terminal growth %, implied volatility % (blank = the past year's realized volatility), starting FCF (latest or 3-year average), macro backdrop, ignore cache.
 - **What the page shows:**
-  - A yellow banner at the top saying the data comes from a third-party FMP proxy.
+  - Through a third-party proxy, a yellow banner at the top names the data source; it is not shown for the official API.
   - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value. Each analysis takes the price from the latest quote (cached for 1 minute) and shows the quote time (New York) under it; the last candle of the chart is updated to that price too.
   - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months, year to date or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
   - The automated positives and concerns.
@@ -346,7 +327,7 @@ This also deletes the detected proxy connection settings; they are detected agai
 |---|---|
 | `FMP_API_KEY is not set` | The key is not set, or the terminal / Claude was not restarted afterwards. See "Set the API key" |
 | `API key problem` / `key rejected` | Wrong or expired key. With a proxy, run `fmp_client.py check` first so the connection is detected again |
-| `HTTPS certificate verification failed for 54.236.92.205` | The proxy's certificate cannot be verified. Set `FMP_TLS_VERIFY=0` for a single run (mind the risk) |
+| `HTTPS certificate verification failed for 54.236.92.205` | Still connecting to the old proxy: `FMP_BASE_URL` is still set. Remove it and open a new terminal. Only if you really mean to use a proxy, set `FMP_TLS_VERIFY=0` for a single run (mind the risk) |
 | `does not cover TICKER` | The plan covers US stocks only. For Hong Kong or mainland China listings, try the US ADR |
 | `No profile found for XXX` | Wrong ticker |
 | The report shows "Skipped (not in your FMP plan)" | Your plan lacks some endpoints (peers, analyst estimates, quarterly data and so on). The rest of the analysis still works from annual statements |
