@@ -43,7 +43,8 @@ button:disabled { opacity: .6; cursor: wait; }
 .price { font-size: 26px; font-weight: 700; text-align: right; }
 .pmeta { text-align: right; }
 .pos { color: var(--pos); } .neg { color: var(--neg); }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, calc(50% - 5px)), 1fr)); gap: 10px; margin-top: 14px; }
+.stat.wide { grid-column: span 2; }
 .stat { background: var(--row); border-radius: 8px; padding: 10px; }
 .stat .k { font-size: 12px; color: var(--muted); } .stat .v { font-size: 18px; font-weight: 700; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -632,7 +633,9 @@ function render(data) {
   const last = r.years[r.years.length - 1] || {};
   const chg = p.changePercentage;
   const fwd = r.price_range?.forward || [];
-  const fr = fwd.find(f => f.pe && f.pe.low != null && f.pe.high != null);
+  const hasPe = f => f.pe && f.pe.low != null && f.pe.high != null;
+  // now (next twelve months) and the end of the current fiscal year, where the price rests on next year's EPS
+  const ranges = [fwd.find(f => f.at === "now"), fwd.find(f => f.at === "fy_end")].filter(f => f && hasPe(f));
   let h = "";
   if (!conn.route || conn.route.startsWith("third-party")) {
     h += `<div class="notice">${t("notice_proxy", esc(conn.base))}` + (conn.tls_verify === false ? esc(t("notice_tls")) : "") + `</div>`;
@@ -653,7 +656,8 @@ function render(data) {
       ${stat("s_pio", `${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}`)}
       ${stat("s_dcf", dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a")}
       ${stat("s_mos", dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a", dcf.margin_of_safety >= 0 ? "pos" : "neg")}
-      ${fr ? `<div class="stat"><div class="k">${esc(t("s_range"))} · ${esc(rcWhen(fr))}</div><div class="v">${fmtPx(fr.pe.low)} – ${fmtPx(fr.pe.high)}</div></div>` : ""}
+      ${ranges.map(f => `<div class="stat wide"><div class="k">${esc(t("s_range"))} · ${esc(rcWhen(f))}</div><div class="v">${fmtPx(f.pe.low)} – ${fmtPx(f.pe.high)}</div>
+        <div class="k">${esc(t("s_range_eps", f.uses.map((fy, i) => [fy, f.weight == null ? null : i ? 100 - Math.round(f.weight * 100) : Math.round(f.weight * 100)])))}</div></div>`).join("")}
     </div></div>`;
   const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
   if (r.score) h += scoreCard(r.score);
