@@ -516,6 +516,7 @@ const sgn = (v, d = 2) => {
   const a = Math.abs(v).toFixed(d);
   return (+a === 0 ? "" : v > 0 ? "+" : "−") + a;  // no sign on a value that rounds to zero
 };
+const NAMED_BASES = new Set(["ebitda", "ocf"]);  // detail.basis values that name a row variant (score.py NAMED_BASES)
 const sgnCls = v => v > 0.004 ? "pos" : v < -0.004 ? "neg" : "";
 const intSc = v => v > 0 ? `+${v}` : v < 0 ? `−${-v}` : "0";
 const minus = x => String(x).replace("-", "−");
@@ -578,6 +579,7 @@ function indValue(i) {
     const z = t("zone_" + (i.detail.z_zone || i.detail.z2_zone));
     return LANG === "zh" ? `${fmtUnit(i.value, "num")}（${z}）` : `${fmtUnit(i.value, "num")} (${z})`;
   }
+  if (i.key === "fcf_yield_spread") return `${fmtUnit(i.detail.yield, "pct")} − ${fmtUnit(i.detail.treasury, "pct")} = ${fmtUnit(i.value, i.unit)}`;
   if (i.key === "piotroski") return i.detail.out_of === 9 ? `${i.detail.score} / 9`
     : t("pio_scaled", i.detail.score, i.detail.out_of, fmtUnit(i.value, "num"));
   return fmtUnit(i.value, i.unit);
@@ -620,7 +622,7 @@ function scoreCard(s) {
       const notes = [i.note, i.detail && i.detail.base_note].filter(Boolean).map(x => t("note_" + x));
       const note = notes.length ? `<span class="inote">${esc(notes.join(zh ? "；" : "; "))}</span>` : "";
       const ok = i.status === "ok";
-      const name = t("ind_" + i.key + (i.detail && i.detail.basis === "ebitda" ? "_ebitda" : ""));
+      const name = t("ind_" + i.key + (i.detail && NAMED_BASES.has(i.detail.basis) ? "_" + i.detail.basis : ""));
       h += `<tr><td class="l">${esc(name)}${note}</td><td>${esc(indValue(i))}</td>
         <td class="l">${bandsHtml(i)}</td><td class="${ok ? sgnCls(i.score) : ""}"><b>${intSc(i.score)}</b></td>
         <td data-l="${esc(t("sc_weight"))}">${pct0(i.weight_share)}</td><td data-l="${esc(t("sc_icontrib"))}">${sgn(i.contribution)}</td></tr>`;
