@@ -1,0 +1,10 @@
+# Stocks for checking the fundamental score against real data (scripts/score_batch.py --file).
+# A few of each company type; swap in names you know well.
+MSFT, COST, NVDA        # quality growth
+MU, XOM, NUE            # cyclicals
+INTC, VFC               # possible value traps
+JPM, PGR                # bank, insurer
+O, PLD                  # REITs
+NEE, DUK                # utilities
+TSM, TM                 # ADRs (statements in TWD / JPY)
+ICE, SPGI               # exchange, data provider (fee-based financials)

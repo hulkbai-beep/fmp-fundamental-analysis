@@ -142,6 +142,22 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   - Banks / insurers: ignore EV multiples, FCF, DCF, gross margin and Altman Z. Focus on ROE,
     P/B, P/E, book-value growth and leverage.
   - REITs: use operating cash flow / P/FCF as an FFO proxy; higher leverage is normal.
+  - Utilities (not independent power producers): negative FCF and net debt of 5-6x EBITDA are
+    normal; judge earnings growth, interest cover and leverage against other utilities.
+  - Exchanges, financial data providers and insurance brokers are fee-based and analysed like
+    other companies, not as banks or insurers; so are real-estate developers and services firms,
+    not as REITs. Mortgage REITs lend against their balance sheet and are analysed like banks.
+- **Fundamental score: a summary of the numbers, not a verdict.** The report opens with a
+  rule-based score (its rules version is printed): valuation 35%, quality 25%, growth 20% and
+  financial health 20%, each pillar -2..+2 from fixed indicator bands, with a label on the
+  technical scorecard's scale (Bullish / Moderately bullish / Neutral / Moderately bearish /
+  Bearish) and a confidence level. Quote it as printed and never adjust it or compute another.
+  Explain what drives it: the pillars and the two or three indicators with the largest
+  contributions, any cap (a value trap or a balance-sheet red line holds it at Neutral, +0.4, at most), the
+  conflicts it lists, and what the confidence line flags (missing data counts as 0, so thin data
+  pulls the score toward Neutral). When an input is distorted for this company (a one-off charge,
+  negative equity from buybacks, a cyclical at peak margins, a recent acquisition), say so and
+  which way it biases the score. The bands and rules are in `references/metrics.md` section 12.
 - **No buy/sell instructions.** Frame the conclusion as quality + valuation (for example,
   "high-quality business priced for roughly its historical growth"), state what would change
   the view, and leave the decision to the user.
@@ -150,8 +166,10 @@ This is for the user's own browsing; when you analyse a stock, still run `script
 
 Use headers and short tables; keep it skimmable. Numbers come from the script output.
 
-1. **Bottom line** - 3 to 5 sentences: business quality, growth, financial strength,
-   valuation vs history/peers/DCF, and the one or two things that matter most.
+1. **Bottom line** - open with the fundamental score, label and confidence (for example
+   "+0.9, Moderately bullish, confidence medium"), then 3 to 5 sentences: business quality,
+   growth, financial strength, valuation vs history/peers/DCF, and the one or two things that
+   matter most.
 2. **Business snapshot** - what the company does, scale, sector context.
 3. **Growth** - revenue/EPS/FCF trajectory and its drivers; acceleration or deceleration.
 4. **Profitability & moat signals** - margins, ROIC/ROE and their trend.

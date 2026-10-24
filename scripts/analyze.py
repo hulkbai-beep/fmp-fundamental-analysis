@@ -49,9 +49,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
 import macro as M  # noqa: E402
+import score as S  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
-REAL_ESTATE_SECTORS = {"real estate"}
+# Fee-based financial industries (exchanges, data providers, insurance brokers) run on cash flow like other
+# companies, so they get the general analysis rather than the bank / insurer one.
+FEE_FINANCIAL_INDUSTRIES = ("data & stock exchanges", "financial data", "stock exchanges", "insurance brokers",
+                            "insurance - brokers")
 
 
 # ============================================================ numeric helpers
@@ -619,17 +623,18 @@ def _band(vals, window, now=None):
 
 
 def history_problem(years, window, start, cur_shares):
-    """Why the multiple history can't be trusted, or None."""
+    """Why the multiple history can't be trusted, as (code, text), or (None, None)."""
     # Prices are split-adjusted; statement figures may not be (or may be per ordinary share of an ADR).
     if cur_shares and any(y.get("shares") and y["date"] >= start and not 0.55 <= y["shares"] / cur_shares <= 1.8
                           for y in years):
-        return ("The share counts in the statements do not match today's share basis (for example a stock split the "
-                "statements do not reflect, an ADR ratio or several share classes), so the multiple history is not "
-                "comparable and no forward multiple range is shown.")
+        return "share_basis", ("The share counts in the statements do not match today's share basis (for example a "
+                               "stock split the statements do not reflect, an ADR ratio or several share classes), so "
+                               "the multiple history is not comparable and no forward multiple range is shown.")
     if any(not 0.5 <= b / a <= 2.0 for (_, a), (_, b) in zip(window, window[1:])):
-        return ("The price history has a one-day move of more than 50% (possibly a stock split the prices do not "
-                "reflect), so no forward multiple range is shown.")
-    return None
+        return "price_jump", ("The price history has a one-day fall of more than 50% or rise of more than 100% "
+                              "(possibly a stock split the prices do not reflect), so no forward multiple range is "
+                              "shown.")
+    return None, None
 
 
 def multiple_bands(years, window, eps_at, ebitda_at, now_pe, now_ev_ebitda):
@@ -675,10 +680,18 @@ def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=Non
     estimates = analyst.get("estimates") or []
     cur, nxt, after = ([e for e in estimates if not e["ended"]] + [None, None, None])[:3]
     out = {"price": price, "lookback_years": lookback_years, "pe_band": None, "ev_band": None, "band_note": None,
-           "forward": [], "summary": []}
+           "band_problem": None, "trailing_problem": None, "forward": [], "summary": []}
     nd, mi = basis.get("net_debt"), basis.get("minority_interest") or 0.0
     ev_ok = sector_kind != "financial" and nd is not None and bool(cur_shares)
     today_iso = today.isoformat()
+    # checked with or without estimates: the fundamental score's trailing-multiple fallback relies on it
+    start = (today - dt.timedelta(days=round(365.25 * lookback_years))).isoformat()
+    window = [(d, px) for d, px in series if d >= start and px]
+    out["band_problem"], problem_note = history_problem(years, window, start, cur_shares)
+    # the trailing multiples vs their fiscal-year-end median (history_compare) use every fiscal year
+    first = min((y["date"] for y in years), default=start)
+    out["trailing_problem"] = history_problem(years, [(d, px) for d, px in series if d >= first and px], first,
+                                              cur_shares)[0]
 
     def ntm(rep_key, est_key):
         return _ntm([(y["date"], y[rep_key]) for y in years if y.get(rep_key) is not None] +
@@ -699,9 +712,7 @@ def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=Non
         now_pe = pos_div(price, now["eps"])
         now_ev = pos_div(price * cur_shares + nd + mi, now["ebitda"]) if ev_ok else None
 
-        start = (today - dt.timedelta(days=round(365.25 * lookback_years))).isoformat()
-        window = [(d, px) for d, px in series if d >= start and px]
-        out["band_note"] = history_problem(years, window, start, cur_shares)
+        out["band_note"] = problem_note
         if not out["band_note"]:
             out["pe_band"], out["ev_band"] = multiple_bands(years, window, eps_at, ebitda_at, now_pe, now_ev)
             if not ev_ok or not (now["ebitda"] and now["ebitda"] > 0):
@@ -1111,6 +1122,8 @@ def render(r):
     desc = (pr.get("description") or "").strip()
     if desc:
         out.append("\n" + (desc[:600] + ("..." if len(desc) > 600 else "")))
+    if r.get("score"):
+        out.append(S.render(r["score"]))
 
     cg = r["cagr"]
     out.append(f"\n## 1. Growth ({len(years) - 1}-year CAGR in last column)")
@@ -1501,14 +1514,24 @@ def analyze(args):
     sector = (profile.get("sector") or "").strip().lower()
     industry = (profile.get("industry") or "").lower()
     sector_kind, sector_note = "general", ""
-    if sector in FINANCIAL_SECTORS or any(w in industry for w in ("bank", "insurance", "capital markets")):
+    if any(w in industry for w in FEE_FINANCIAL_INDUSTRIES):
+        sector_note = ("Fee-based financial company (exchange, data provider or insurance broker): analysed like "
+                       "other companies, since its earnings and cash flow do not depend on a balance sheet of loans "
+                       "or policies.")
+    elif (sector in FINANCIAL_SECTORS or any(w in industry for w in ("bank", "insurance", "capital markets"))
+          or ("reit" in industry and "mortgage" in industry)):  # mortgage REITs lend: judged like banks
         sector_kind = "financial"
         sector_note = ("Financial company: gross margin, EV-based multiples, FCF, DCF and Altman Z are not "
                        "meaningful. Focus on ROE, P/B, P/E, book-value growth and leverage.")
-    elif sector in REAL_ESTATE_SECTORS or "reit" in industry:
+    elif "reit" in industry:  # developers and real-estate services are analysed like other companies
         sector_kind = "reit"
         sector_note = ("REIT: net income understates cash earnings (depreciation). Use P/FCF or operating "
                        "cash flow as an FFO proxy; leverage is structurally higher.")
+    elif sector == "utilities" and "independent power" not in industry:
+        sector_kind = "utility"
+        sector_note = ("Utility: regulated and capital-heavy. Capex routinely exceeds operating cash flow and is "
+                       "funded with debt and new shares, so negative FCF, net debt of 5-6x EBITDA and a low Altman Z "
+                       "are normal; judge it on earnings growth, interest cover and leverage against other utilities.")
 
     price, mcap = num(profile, "price"), num(profile, "marketCap", "mktCap")
     current = multiples(price, mcap, basis)
@@ -1551,7 +1574,7 @@ def analyze(args):
                          sector_kind=sector_kind)
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
 
-    return {
+    result = {
         "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
         "sector_kind": sector_kind, "sector_note": sector_note,
         "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg, "peg": peg,
@@ -1566,6 +1589,8 @@ def analyze(args):
                  "restricted": client.restricted, "errors": client.errors,
                  "connection": client.describe()},
     }
+    result["score"] = S.score(result)
+    return result
 
 
 def parse_args(argv):
