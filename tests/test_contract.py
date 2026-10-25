@@ -183,6 +183,18 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(trap["availability"]["primary_range"]["reason"], "no_forward_pe_or_dcf")
         self.assertIn("loss_making", trap["availability"]["primary_range"]["text"])
 
+    def test_a_capped_fallback_keeps_saying_why_it_is_a_fallback(self):
+        # DIS, XYZ and PODD in the 100-stock batch: trailing fallback (adjusted EPS), then capped for a slowdown
+        capped = {"key": "fwd_pe_position", "status": "ok", "unit": "pct", "note": "growth_slowdown",
+                  "detail": {"base_note": "adjusted_basis", "capped_from": 2}}
+        st = C._indicator_state(capped)
+        self.assertEqual((st["status"], st["reason"]), ("fallback", "adjusted_basis"))
+        self.assertIn(S.NOTES["growth_slowdown"], st["text"])
+        # IBM: the forward band exists, only capped -> ok, with the cap as the note
+        st = C._indicator_state({"key": "fwd_pe_position", "status": "ok", "unit": "pctile", "note": "growth_slowdown",
+                                 "detail": {"capped_from": 2}})
+        self.assertEqual((st["status"], st["reason"]), ("ok", "growth_slowdown"))
+
     def test_availability_matches_the_values(self):
         for sym, c in self.contracts.items():
             v, a = c["valuation"], c["valuation"]["availability"]

@@ -168,9 +168,14 @@ def _indicator_state(ind):
     if not ind:
         return _state("unavailable", "no_data", S.NOTES["no_data"])
     note = ind.get("note")
+    base = (ind.get("detail") or {}).get("base_note")   # the score keeps the original note when it caps a value
     if ind["status"] == "ok":
-        if note in FALLBACK_NOTES or (ind["key"].endswith("_position") and ind.get("unit") != "pctile"):
-            return _state("fallback", note or "trailing_history", S.NOTES.get(note or "trailing_history"))
+        if (base or note) in FALLBACK_NOTES or (ind["key"].endswith("_position") and ind.get("unit") != "pctile"):
+            why = base or (note if note in FALLBACK_NOTES else "trailing_history")
+            text = S.NOTES.get(why)
+            if note and note != why:                      # e.g. also capped for a growth slowdown
+                text = f"{text}; {S.NOTES.get(note, note)}"
+            return _state("fallback", why, text)
         return _state("ok", note, S.NOTES.get(note) if note else None)
     if ind["status"] == "n/a":
         return _state("unavailable", note or "not_applicable", S.NOTES.get(note, "not used for this company type"))
