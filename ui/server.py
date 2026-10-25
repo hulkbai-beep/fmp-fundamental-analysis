@@ -68,14 +68,16 @@ apply_proxy_tls_rule()
 
 import analyze as A  # noqa: E402
 from fmp_client import FMPError, InvalidKey  # noqa: E402
+from symbols import normalize_symbol  # noqa: E402
 
 _lock = threading.Lock()  # FMPClient rate limiting and cache are per-process; run one analysis at a time
 
 
 def run_analysis(q):
-    sym = (q.get("symbol") or "").strip().upper()
-    if not sym or len(sym) > 15 or not all(c.isalnum() or c in ".-" for c in sym):
-        return 400, {"error": "Enter a valid ticker, e.g. AAPL."}
+    try:
+        sym = normalize_symbol(q.get("symbol"))  # BRK.B -> BRK-B; refuses foreign listings
+    except ValueError as e:
+        return 400, {"error": f"Enter a valid ticker, e.g. AAPL or BRK.B ({e})."}
     argv = [sym]
     peers = (q.get("peers") or "").strip()
     if peers:

@@ -632,7 +632,8 @@ def main(argv):
     try:
         if cmd == "check":
             rest = [a for a in argv[1:] if a != "--peek"]
-            return _cmd_check((rest[0] if rest else "AAPL").upper(), peek="--peek" in argv)
+            from symbols import normalize_symbol
+            return _cmd_check(normalize_symbol(rest[0] if rest else "AAPL"), peek="--peek" in argv)
         if cmd == "get" and len(argv) >= 2:
             return _cmd_get(argv[1], argv[2:])
         if cmd == "clear-cache":

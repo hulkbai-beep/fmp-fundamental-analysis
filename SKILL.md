@@ -64,7 +64,8 @@ This is for the user's own browsing; when you analyse a stock, still run `script
 
 1. **Identify the ticker(s).** Use US tickers. The FMP Starter plan covers US listings only;
    for Hong Kong / A-share / other foreign names suggest the US ADR if one exists, otherwise
-   say the plan does not cover it.
+   say the plan does not cover it. Share classes may be typed `BRK.B`, `BRK/B` or `brk b`: the scripts
+   turn them into FMP's `BRK-B`. A foreign suffix (`SHOP.TO`, `0700.HK`, `VOD.L`) is refused with a hint.
 2. **Run the analysis** (paths are relative to this skill's directory):
    ```
    python scripts/analyze.py TICKER
@@ -82,7 +83,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
    | `--no-market` | Skip Treasury / sector / industry data (fixed 9% discount, no sector section; cannot be combined with `--macro`); only if those calls fail or the user wants the old behaviour |
    | `--no-insider` | Skip the insider-trades section (the score does not use it); to save API calls or if the endpoint fails |
    | `--json out.json` | User wants the raw numbers |
-   | `--contract out.json` | Another tool or skill will consume the result: writes the fa-1.0 contract (see below) |
+   | `--contract out.json` | Another tool or skill will consume the result: writes the fa-1.1 contract (see below) |
    | `--refresh` | User says data looks stale or a company just reported |
 3. **Check the header and "Data notes"** first: which fiscal years, whether TTM was available,
    the sector note, the Treasury date, and which endpoints the plan skipped. Mention material
@@ -240,15 +241,19 @@ from FMP, so keep them separate from the script's company numbers.
 Fundamentals answer *what* is worth owning; technical analysis answers *when*. If the user has a
 technical-analysis skill available, offer to run it on the same ticker after this report.
 
-## Contract for other tools (fa-1.0)
+## Contract for other tools (fa-1.1)
 
-Tools that build on this skill (a decision engine, a screener) read the **fa-1.0 contract**, not the full
+Tools that build on this skill (a decision engine, a screener) read the **fa-1.1 contract**, not the full
 `--json` file, whose layout is internal and may change. `--contract out.json` writes it from a run;
 `python scripts/contract.py full.json [-o out.json]` builds it from a saved `--json` file.
-`contracts/fa-1.0.schema.json` describes every field: the score, pillars and caps, every indicator, the
+`contracts/fa-1.1.schema.json` describes every field: the score, pillars and caps, every indicator, the
 valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the
-price's trading day, `statements_through` the latest statement period). The contract selects facts and
-judges nothing. Its fields are only ever added; renaming or removing one means fa-2.0, and
+price's trading day, `statements_through` the latest statement period). 1.1 adds
+`valuation.availability`: for the forward P/E and EV/EBITDA bands, the primary value range, the reverse
+DCF, the DCF, the FCF-yield spread and the industry comparison, whether each is `ok`, a `fallback` (a
+stand-in measure, such as the trailing multiple when there is no forward P/E range) or `unavailable`, with
+the reason (for example `loss_making`, `financial`, `negative_fcf`) and a sentence. The contract selects
+facts and judges nothing. Its fields are only ever added; renaming or removing one means fa-2.0, and
 `tests/test_contract.py` checks the output against the schema.
 
 ## Raw data for anything else
@@ -269,6 +274,7 @@ the price comes from the quote, so each run uses the current price;
 |---|---|
 | `API key problem` | `FMP_API_KEY` missing or wrong; see Setup |
 | `does not cover TICKER` | Non-US symbol on a US-only plan; use the ADR or another source |
+| `looks like a non-US listing` | The ticker has a foreign exchange suffix (`SHOP.TO`, `VOD.L`); use the US ticker or ADR |
 | "Skipped (not in your FMP plan)" | Expected on Starter for peers / estimates / quarterly data; the analysis still works from annual statements |
 | Price/market cap looks stale | Data notes say "Price from the company profile": the quote was unavailable, re-run with `--refresh` |
 | `python` not found on Windows | Use `py scripts/analyze.py ...` |

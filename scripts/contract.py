@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-The fa-1.0 contract: a small, versioned summary of analyze.py's result for other tools to read.
+The fa-1.1 contract: a small, versioned summary of analyze.py's result for other tools to read.
 
 analyze.py's full result (and its --json file) is internal and may change between versions. The contract is
 the public interface: fields are only ever added, and renaming or removing one means a new major version
 (fa-2.0). It selects and normalises facts and makes no judgement of its own (nothing here says "cheap" or
-"buy"). contracts/fa-1.0.schema.json describes every field; tests/test_contract.py checks both.
+"buy"). contracts/fa-1.1.schema.json describes every field; tests/test_contract.py checks both.
 
 Usage:
   python contract.py aapl.json             print the contract of a saved `analyze.py --json` file
@@ -26,7 +26,14 @@ import json
 import sys
 from pathlib import Path
 
-CONTRACT = "fa-1.0"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import score as S  # noqa: E402
+
+CONTRACT = "fa-1.1"   # 1.1 adds valuation.availability; 1.x versions only add fields
+# valuation.availability: whether each valuation input exists, and why not (fwd_pe, dcf, ...)
+AVAILABILITY_KEYS = ("fwd_pe", "fwd_ev", "primary_range", "reverse_dcf", "dcf", "fcf_yield_spread", "vs_industry")
+FALLBACK_NOTES = ("trailing_history", "adjusted_basis", "sector_pe")   # a stand-in measure was used
+DCF_SKIPS = (("Financial-sector", "financial"), ("not positive", "negative_fcf"), ("inputs invalid", "invalid_inputs"))
 RANGE_KINDS = ("fwd_pe", "fwd_ev", "dcf")
 HISTORY_METRICS = ("pe", "ev_ebitda", "ps", "p_fcf", "pb")
 ESTIMATE_FIELDS = ("fy", "date", "eps_avg", "eps_low", "eps_high", "revenue_growth", "analysts", "forward_pe")
@@ -152,6 +159,62 @@ def _dcf(d):
             "fcf_start_basis": d.get("fcf_start_basis")}
 
 
+def _state(status, reason=None, text=None):
+    return {"status": status, "reason": reason, "text": text}
+
+
+def _indicator_state(ind):
+    """ok / fallback / unavailable for one score indicator, with its note as the reason."""
+    if not ind:
+        return _state("unavailable", "no_data", S.NOTES["no_data"])
+    note = ind.get("note")
+    base = (ind.get("detail") or {}).get("base_note")   # the score keeps the original note when it caps a value
+    if ind["status"] == "ok":
+        if (base or note) in FALLBACK_NOTES or (ind["key"].endswith("_position") and ind.get("unit") != "pctile"):
+            why = base or (note if note in FALLBACK_NOTES else "trailing_history")
+            text = S.NOTES.get(why)
+            if note and note != why:                      # e.g. also capped for a growth slowdown
+                text = f"{text}; {S.NOTES.get(note, note)}"
+            return _state("fallback", why, text)
+        return _state("ok", note, S.NOTES.get(note) if note else None)
+    if ind["status"] == "n/a":
+        return _state("unavailable", note or "not_applicable", S.NOTES.get(note, "not used for this company type"))
+    return _state("unavailable", note or "no_data", S.NOTES.get(note, S.NOTES["no_data"]))
+
+
+def _dcf_state(r):
+    d = r.get("dcf") or {}
+    if d.get("skipped"):
+        code = next((c for k, c in DCF_SKIPS if k in d["skipped"]), "skipped")
+        return _state("unavailable", code, d["skipped"])
+    if _num(d.get("value_per_share")) is None:
+        return _state("unavailable", "no_data", "DCF not computed")
+    if _num(d["value_per_share"]) <= 0:
+        return _state("unavailable", "dcf_negative", S.NOTES["dcf_negative"])
+    return _state("ok")
+
+
+def _availability(r, s, raw, valuation):
+    """Which valuation inputs exist, which are stand-ins, and why the others are missing."""
+    out = {"fwd_pe": _indicator_state(raw.get("fwd_pe_position")),
+           "fwd_ev": _indicator_state(raw.get("fwd_ev_position")),
+           "reverse_dcf": _indicator_state(raw.get("implied_growth_gap")),
+           "dcf": _dcf_state(r),
+           "fcf_yield_spread": _indicator_state(raw.get("fcf_yield_spread")),
+           "vs_industry": _indicator_state(raw.get("vs_industry"))}
+    if valuation["primary_range"]:
+        basis = valuation["primary_range"]["basis"]
+        out["primary_range"] = _state("ok" if basis == "fwd_pe" else "fallback", basis,
+                                      None if basis == "fwd_pe" else "no usable forward P/E range, so the DCF range is used")
+    else:
+        why = [f"forward P/E: {out['fwd_pe']['reason']}" if out["fwd_pe"]["status"] != "ok" else
+               "forward P/E on another EPS basis than the statements",
+               f"DCF: {out['dcf']['reason']}" if out["dcf"]["status"] != "ok" else "DCF in another currency"]
+        out["primary_range"] = _state("unavailable", "no_forward_pe_or_dcf",
+                                      "neither a forward P/E range nor a DCF range is usable (" + "; ".join(why) + ")")
+    return {k: out[k] for k in AVAILABILITY_KEYS}
+
+
 def _yield_spread(ind):
     """FCF yield minus the 10Y Treasury yield; REITs use operating cash flow (detail.basis "ocf")."""
     if not ind or ind["status"] != "ok":
@@ -170,7 +233,7 @@ def _valuation(r, s):
     vi = raw.get("vs_industry") or {}
     vd = vi.get("detail") or {}
     hc = r.get("history_compare") or {}
-    return {
+    out = {
         "fwd_pe": _band(raw.get("fwd_pe_position")),
         "fwd_ev": _band(raw.get("fwd_ev_position")),
         "ranges": now,
@@ -191,6 +254,8 @@ def _valuation(r, s):
         "vs_own_history": {m: {k: _num((hc.get(m) or {}).get(k)) for k in ("current", "median", "min", "max", "vs_median")}
                            for m in HISTORY_METRICS if hc.get(m)},
     }
+    out["availability"] = _availability(r, s, raw, out)
+    return out
 
 
 def _estimates(analyst):
@@ -230,7 +295,7 @@ def _warnings(r):
 
 # ---------------------------------------------------------------------------- contract
 def build(r):
-    """The fa-1.0 contract of one analyze.py result (the in-memory dict or a loaded --json file)."""
+    """The fa-1.1 contract of one analyze.py result (the in-memory dict or a loaded --json file)."""
     s = r["score"]
     day, basis = as_of(r)
     meta = r.get("meta") or {}
