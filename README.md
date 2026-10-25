@@ -19,6 +19,7 @@
 - 内部人交易（只作观察，不计入评分）：近 12 个月高管、董事在公开市场的买入和卖出，剔除股权授予、期权行权、扣股缴税等非市价交易；几位内部人在 90 天内集体买入，或 CEO / CFO 大额买入时，会在自动提示里标出
 - 自动提示：列出优点和风险，作为进一步核实的线索，不是结论
 - 基本面打分：估值 35%、质量 25%、成长 20%、财务健康 20% 四大项，每个指标按固定区间打 −2 到 +2 分，合成总分和「看多 / 偏多 / 中性 / 偏空 / 看空」标签（和技术面打分同一套刻度），附置信度；价值陷阱和资产负债表红线会把总分封顶在中性。规则固定、有版本号，详见 `references/metrics.md` 第 12 节
+- 给其他工具用的 fa-1.0 契约：`--contract` 导出一份精简、带版本号的 JSON 摘要，供决策引擎、选股脚本等读取（见「用法 2：命令行」）
 
 所有计算都由脚本完成，Claude 只负责解读。
 
@@ -41,14 +42,20 @@ fmp-fundamental-analysis/
 │   ├── analyze.py      # 主分析脚本：生成完整报告
 │   ├── score.py        # 基本面打分：四大项、打分区间、封顶规则和置信度
 │   ├── score_batch.py  # 批量打分：一串股票的分数写成 CSV，改规则前后可对比
+│   ├── insider.py      # 内部人交易：公开市场买入卖出的汇总和集体买入提示
+│   ├── contract.py     # fa-1.0 契约：给其他工具读的精简摘要
 │   └── macro.py        # 利率、宏观和板块数据：独立的宏观仪表盘，也供 analyze.py 调用
-└── ui/
-    ├── server.py       # 本地网页服务器
-    ├── index.html      # 网页界面
-    └── i18n.js         # 网页的中英文切换和翻译表
-└── tests/
-    ├── fake_fmp.py     # 离线的假 FMP 数据（三家虚构公司），测试和试网页用
-    └── test_score.py   # 打分的离线测试：python3 -m unittest discover -s tests（不需要 API key）
+├── contracts/
+│   └── fa-1.0.schema.json  # 契约每个字段的定义（JSON Schema）
+├── ui/
+│   ├── server.py       # 本地网页服务器
+│   ├── index.html      # 网页界面
+│   └── i18n.js         # 网页的中英文切换和翻译表
+└── tests/              # 离线测试，不需要 API key：python -m unittest discover -s tests
+    ├── fake_fmp.py     # 离线的假 FMP 数据（五家虚构公司：QUAL、TRAP、BANK、EXCH、UTIL），测试和试网页用
+    ├── test_score.py   # 打分的测试
+    ├── test_insider.py # 内部人交易的测试
+    └── test_contract.py  # 契约的测试：输出必须符合 schema，数字必须和完整结果一致
 ```
 
 ## 环境要求
@@ -253,7 +260,8 @@ Mac 上用 `python3 scripts/analyze.py AAPL`。如果用的是证书无法验证
 | `--macro` | 在报告里加「利率和宏观背景」一节（多 6 次 API 调用） | 想看利率、通胀、美联储对这家公司的影响 |
 | `--no-market` | 不拉国债、板块、行业数据（折现率回到固定 9%，没有行业对比一节），省 9 次 API 调用；不能和 `--macro` 一起用 | 这些接口出错，或想要旧版结果 |
 | `--no-insider` | 不拉内部人交易（没有这一节），省 1 到 5 次 API 调用；打分不受影响 | 不需要这一节，或接口出错 |
-| `--json out.json` | 把所有计算结果另存为 JSON | 需要原始数字，或交给其他工具使用 |
+| `--json out.json` | 把所有计算结果另存为 JSON | 需要原始数字 |
+| `--contract out.json` | 另存一份 fa-1.0 契约：给其他工具读的精简、带版本号的摘要（见下文） | 交给决策引擎、选股脚本等其他工具使用 |
 | `--refresh` | 忽略缓存，重新拉取数据 | 数据看起来过时，或公司刚发布财报 |
 
 示例：
@@ -271,6 +279,15 @@ python scripts/macro.py --events     # 列出窗口内所有中高影响的美�
 ```
 
 时间都是 UTC。各板块和行业的 P/E、涨跌幅是 FMP 按交易所（默认纳斯达克）汇总的等权数据，适合看方向和相对位置，不等同于标普 500 的板块指数。
+
+给其他工具用的 fa-1.0 契约：
+
+```bash
+python scripts/analyze.py NVDA --contract nvda_contract.json   # 分析时直接导出
+python scripts/contract.py nvda_full.json -o nvda_contract.json # 从已保存的 --json 文件转换
+```
+
+`--json` 的完整结果是内部格式，以后可能会变；契约是对外接口，字段只增不改，改名或删除就升级为 fa-2.0。每个字段的含义见 `contracts/fa-1.0.schema.json`：打分、四大项和封顶、全部指标、估值分位和估值区间、分析师未来两年预期、内部人交易、数据日期（`as_of` 是价格所在的交易日，`statements_through` 是最新财报期的截止日）。契约只整理事实，不做判断。
 
 调用分析没覆盖到的任意 FMP 接口，拿原始数据：
 

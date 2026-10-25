@@ -3,3 +3,4 @@ __pycache__/
 *.json
 .env
 score-batch/
+!contracts/*.json

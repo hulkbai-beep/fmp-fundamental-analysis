@@ -19,6 +19,7 @@ What it covers:
 - Insider trades (observation only, not scored): open-market purchases and sales by officers and directors over the last 12 months, leaving out awards, option exercises, shares withheld for tax and other trades not at the market price; several insiders buying within 90 days, or a large CEO / CFO purchase, is flagged in the automated flags
 - Automated flags: positives and concerns, as leads to check, not conclusions
 - Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
+- The fa-1.0 contract for other tools: `--contract` writes a small, versioned JSON summary for a decision engine, screener or other tool to read (see "Option 2: command line")
 
 All calculations are done by the scripts; Claude only interprets the results.
 
@@ -41,14 +42,20 @@ fmp-fundamental-analysis/
 │   ├── analyze.py      # Main analysis script: builds the full report
 │   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
 │   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
+│   ├── insider.py      # Insider trades: open-market purchases and sales, and cluster buying
+│   ├── contract.py     # The fa-1.0 contract: the small summary other tools read
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
-└── ui/
-    ├── server.py       # Local web server
-    ├── index.html      # Web page
-    └── i18n.js         # Chinese/English toggle and translation tables for the web page
-└── tests/
-    ├── fake_fmp.py     # Offline fake FMP data (three made-up companies) for tests and trying the page
-    └── test_score.py   # Offline tests of the score: python3 -m unittest discover -s tests (no API key needed)
+├── contracts/
+│   └── fa-1.0.schema.json  # Every field of the contract (JSON Schema)
+├── ui/
+│   ├── server.py       # Local web server
+│   ├── index.html      # Web page
+│   └── i18n.js         # Chinese/English toggle and translation tables for the web page
+└── tests/              # Offline tests, no API key needed: python -m unittest discover -s tests
+    ├── fake_fmp.py     # Offline fake FMP data (five made-up companies: QUAL, TRAP, BANK, EXCH, UTIL) for tests and trying the page
+    ├── test_score.py   # Tests of the score
+    ├── test_insider.py # Tests of the insider-trades summary
+    └── test_contract.py  # Tests of the contract: the output must match the schema and the full result
 ```
 
 ## Requirements
@@ -253,7 +260,8 @@ Common options:
 | `--macro` | Add a "Rates & macro backdrop" section to the report (6 more API calls) | You want to see how rates, inflation and the Fed bear on the company |
 | `--no-market` | Skip Treasury, sector and industry data (fixed 9% discount rate, no industry section); saves 9 API calls; cannot be combined with `--macro` | Those endpoints fail, or you want the old behaviour |
 | `--no-insider` | Skip insider trades (no insider section); saves 1 to 5 API calls; the score is unchanged | You don't need the section, or the endpoint fails |
-| `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers, or another tool will use them |
+| `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers |
+| `--contract out.json` | Also save the fa-1.0 contract: a small, versioned summary for other tools (see below) | A decision engine, screener or other tool will use the result |
 | `--refresh` | Ignore the cache and fetch again | Data looks stale, or the company just reported |
 
 Example:
@@ -271,6 +279,15 @@ python scripts/macro.py --events     # Lists every medium- and high-impact US ec
 ```
 
 All times are UTC. Sector and industry P/E and returns are FMP's equal-weighted aggregates per exchange (NASDAQ by default): good for direction and relative position, not the same as S&P 500 sector indexes.
+
+The fa-1.0 contract for other tools:
+
+```bash
+python scripts/analyze.py NVDA --contract nvda_contract.json   # write it during the analysis
+python scripts/contract.py nvda_full.json -o nvda_contract.json # convert a saved --json file
+```
+
+The full `--json` result is internal and may change; the contract is the public interface, whose fields are only ever added (renaming or removing one means fa-2.0). `contracts/fa-1.0.schema.json` describes every field: the score, pillars and caps, every indicator, the valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the price's trading day, `statements_through` the end of the latest statement period). The contract selects facts and judges nothing.
 
 Raw data from any FMP endpoint the analysis does not cover:
 

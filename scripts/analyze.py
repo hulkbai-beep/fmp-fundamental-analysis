@@ -29,6 +29,7 @@ Options:
                      cannot be combined with --macro)
   --no-insider       skip the insider-trades section (saves 1-5 API calls; the score does not use it)
   --json PATH        also write every computed number to a JSON file
+  --contract PATH    also write the fa-1.0 contract (the stable summary other tools read; see contract.py)
   --refresh          ignore the local cache
 
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
@@ -49,6 +50,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
+import contract as C  # noqa: E402
 import insider as I  # noqa: E402
 import macro as M  # noqa: E402
 import score as S  # noqa: E402
@@ -1607,6 +1609,7 @@ def analyze(args):
 
     result = {
         "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
+        "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "sector_kind": sector_kind, "sector_note": sector_note,
         "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg, "peg": peg,
         "valuation_history": hist, "history_compare": hist_cmp,
@@ -1640,6 +1643,7 @@ def parse_args(argv):
     ap.add_argument("--no-market", action="store_true")
     ap.add_argument("--no-insider", action="store_true")
     ap.add_argument("--json", default=None)
+    ap.add_argument("--contract", default=None)
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args(argv)
     if a.macro and a.no_market:
@@ -1662,10 +1666,15 @@ def main(argv=None):
         print(f"FMP error: {e}", file=sys.stderr)
         return 1
     print(render(result))
+    out = {k: v for k, v in result.items() if k not in ("price_series", "candles", "candles_note")}
     if args.json:
-        out = {k: v for k, v in result.items() if k not in ("price_series", "candles", "candles_note")}
         Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
         print(f"\n(JSON written to {args.json})")
+    if args.contract:
+        # built from the JSON form, so it matches `contract.py <json file>` exactly
+        c = C.build(json.loads(json.dumps(out, default=str)))
+        Path(args.contract).write_text(C.dumps(c), encoding="utf-8")
+        print(f"\n({C.CONTRACT} contract written to {args.contract})")
     return 0
 
 

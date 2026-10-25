@@ -81,7 +81,8 @@ This is for the user's own browsing; when you analyse a stock, still run `script
    | `--macro` | User asks how rates, inflation or the Fed affect the stock, or wants the backdrop in the report |
    | `--no-market` | Skip Treasury / sector / industry data (fixed 9% discount, no sector section; cannot be combined with `--macro`); only if those calls fail or the user wants the old behaviour |
    | `--no-insider` | Skip the insider-trades section (the score does not use it); to save API calls or if the endpoint fails |
-   | `--json out.json` | User wants the raw numbers, or another tool/skill will consume them |
+   | `--json out.json` | User wants the raw numbers |
+   | `--contract out.json` | Another tool or skill will consume the result: writes the fa-1.0 contract (see below) |
    | `--refresh` | User says data looks stale or a company just reported |
 3. **Check the header and "Data notes"** first: which fiscal years, whether TTM was available,
    the sector note, the Treasury date, and which endpoints the plan skipped. Mention material
@@ -238,6 +239,17 @@ from FMP, so keep them separate from the script's company numbers.
 
 Fundamentals answer *what* is worth owning; technical analysis answers *when*. If the user has a
 technical-analysis skill available, offer to run it on the same ticker after this report.
+
+## Contract for other tools (fa-1.0)
+
+Tools that build on this skill (a decision engine, a screener) read the **fa-1.0 contract**, not the full
+`--json` file, whose layout is internal and may change. `--contract out.json` writes it from a run;
+`python scripts/contract.py full.json [-o out.json]` builds it from a saved `--json` file.
+`contracts/fa-1.0.schema.json` describes every field: the score, pillars and caps, every indicator, the
+valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the
+price's trading day, `statements_through` the latest statement period). The contract selects facts and
+judges nothing. Its fields are only ever added; renaming or removing one means fa-2.0, and
+`tests/test_contract.py` checks the output against the schema.
 
 ## Raw data for anything else
 
