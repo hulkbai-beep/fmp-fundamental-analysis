@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fa-1.0",
+  "title": "Fundamental analysis contract fa-1.0",
+  "description": "The stable summary of scripts/analyze.py that other tools read, built by scripts/contract.py. Fields are only ever added; renaming or removing one means fa-2.0. Fractions are decimals (0.25 = 25%); ranges are [low, mid, high] in the price currency; null means missing, never estimated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "rules_version", "ticker", "generated_at", "as_of", "as_of_basis", "price", "price_time",
+               "statements_through", "period_basis", "data_source", "company", "score", "indicators", "valuation",
+               "estimates", "insider", "flags_text", "warnings", "restricted", "errors"],
+  "properties": {
+    "contract": {"const": "fa-1.0"},
+    "rules_version": {"type": "string", "description": "score.py RULES_VERSION"},
+    "ticker": {"type": "string"},
+    "generated_at": {"type": "string", "description": "when the analysis ran (ISO 8601; a date only for files saved before fa-1.0)"},
+    "as_of": {"type": ["string", "null"], "description": "trading day the price belongs to (YYYY-MM-DD)"},
+    "as_of_basis": {"enum": ["quote", "last_close", "run_date"]},
+    "price": {"$ref": "#/$defs/num"},
+    "price_time": {"$ref": "#/$defs/str", "description": "quote timestamp, New York time; null when the price is the profile's"},
+    "statements_through": {"$ref": "#/$defs/str", "description": "end date of the latest statement period (TTM quarter or fiscal year)"},
+    "period_basis": {"$ref": "#/$defs/str", "description": "TTM or the fiscal year label the current ratios use"},
+    "data_source": {"$ref": "#/$defs/str"},
+    "company": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "exchange", "sector", "industry", "kind", "currency", "market_cap", "is_etf", "is_adr"],
+      "properties": {
+        "name": {"$ref": "#/$defs/str"},
+        "exchange": {"$ref": "#/$defs/str"},
+        "sector": {"$ref": "#/$defs/str"},
+        "industry": {"$ref": "#/$defs/str"},
+        "kind": {"enum": ["general", "financial", "fee_financial", "reit", "utility", null]},
+        "currency": {"$ref": "#/$defs/str"},
+        "market_cap": {"$ref": "#/$defs/num"},
+        "is_etf": {"type": "boolean"},
+        "is_adr": {"type": "boolean"}
+      }
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "label", "raw", "capped", "cap_limit", "caps", "confidence", "pillars", "views", "conflicts", "not_scored"],
+      "properties": {
+        "total": {"type": "number", "description": "-2..+2 after caps"},
+        "label": {"$ref": "#/$defs/label"},
+        "raw": {"type": "number"},
+        "capped": {"type": "boolean"},
+        "cap_limit": {"type": "number"},
+        "caps": {"type": "array", "description": "value trap / balance-sheet red lines; non-empty means the total is held at Neutral at most",
+                 "items": {"type": "object", "required": ["type"], "properties": {"type": {"type": "string"}, "detail": {}}}},
+        "confidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "coverage", "agreement", "methods_agreement", "issues"],
+          "properties": {
+            "level": {"enum": ["high", "medium", "low"]},
+            "coverage": {"$ref": "#/$defs/num"},
+            "agreement": {"$ref": "#/$defs/num"},
+            "methods_agreement": {"$ref": "#/$defs/num"},
+            "issues": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "pillars": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["valuation", "quality", "growth", "health"],
+          "properties": {
+            "valuation": {"$ref": "#/$defs/pillar"},
+            "quality": {"$ref": "#/$defs/pillar"},
+            "growth": {"$ref": "#/$defs/pillar"},
+            "health": {"$ref": "#/$defs/pillar"}
+          }
+        },
+        "views": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["business", "price", "quadrant"],
+          "properties": {
+            "business": {"$ref": "#/$defs/num"},
+            "price": {"$ref": "#/$defs/num"},
+            "quadrant": {"enum": ["good_business_good_price", "good_business_pricey", "cheap_weak_business", "weak_and_pricey", null]}
+          }
+        },
+        "conflicts": {"type": "array",
+                      "items": {"type": "object", "required": ["type"], "properties": {"type": {"type": "string"}, "values": {}}}},
+        "not_scored": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "indicators": {
+      "type": "object",
+      "description": "every score indicator by key (score.py IND_NAMES)",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pillar", "status", "value", "unit", "score", "weight", "note"],
+        "properties": {
+          "pillar": {"enum": ["valuation", "quality", "growth", "health"]},
+          "status": {"enum": ["ok", "missing", "n/a"]},
+          "value": {"$ref": "#/$defs/num"},
+          "unit": {"$ref": "#/$defs/str"},
+          "score": {"$ref": "#/$defs/num"},
+          "weight": {"$ref": "#/$defs/num"},
+          "note": {"$ref": "#/$defs/str"}
+        }
+      }
+    },
+    "valuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fwd_pe", "fwd_ev", "ranges", "ranges_fy_end", "primary_range", "reverse_dcf", "dcf",
+                   "fcf_yield_spread", "vs_industry", "vs_own_history"],
+      "properties": {
+        "fwd_pe": {"$ref": "#/$defs/band"},
+        "fwd_ev": {"$ref": "#/$defs/band"},
+        "ranges": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fwd_pe", "fwd_ev", "dcf", "week52", "analyst_targets"],
+          "properties": {
+            "fwd_pe": {"$ref": "#/$defs/trio"},
+            "fwd_ev": {"$ref": "#/$defs/trio"},
+            "dcf": {"$ref": "#/$defs/trio"},
+            "week52": {"$ref": "#/$defs/trio"},
+            "analyst_targets": {"$ref": "#/$defs/trio"}
+          }
+        },
+        "ranges_fy_end": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "fy", "date", "range"],
+            "properties": {
+              "kind": {"type": "string", "description": "fwd_pe, fwd_ev or volatility (68% band)"},
+              "fy": {"$ref": "#/$defs/str"},
+              "date": {"$ref": "#/$defs/str"},
+              "range": {"$ref": "#/$defs/trio"}
+            }
+          }
+        },
+        "primary_range": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["basis", "range", "mid_vs_price"],
+          "properties": {
+            "basis": {"enum": ["fwd_pe", "dcf"]},
+            "range": {"$ref": "#/$defs/trio"},
+            "mid_vs_price": {"$ref": "#/$defs/num"}
+          }
+        },
+        "reverse_dcf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["implied", "reference", "reference_source", "analysts", "gap"],
+          "properties": {
+            "implied": {"$ref": "#/$defs/num", "description": "FCF growth the price implies"},
+            "reference": {"$ref": "#/$defs/num"},
+            "reference_source": {"$ref": "#/$defs/str"},
+            "analysts": {"$ref": "#/$defs/num"},
+            "gap": {"$ref": "#/$defs/num", "description": "implied minus reference; positive means the price assumes more growth"}
+          }
+        },
+        "dcf": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["value", "low", "high", "margin", "discount_rate", "growth", "terminal_growth", "fcf_start_basis"],
+          "properties": {
+            "value": {"$ref": "#/$defs/num"},
+            "low": {"$ref": "#/$defs/num"},
+            "high": {"$ref": "#/$defs/num"},
+            "margin": {"$ref": "#/$defs/num", "description": "value / price - 1"},
+            "discount_rate": {"$ref": "#/$defs/num"},
+            "growth": {"$ref": "#/$defs/num"},
+            "terminal_growth": {"$ref": "#/$defs/num"},
+            "fcf_start_basis": {"$ref": "#/$defs/str"}
+          }
+        },
+        "fcf_yield_spread": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["value", "basis"],
+          "properties": {
+            "value": {"$ref": "#/$defs/num"},
+            "basis": {"enum": ["fcf", "ocf"]}
+          }
+        },
+        "vs_industry": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["company_pe", "group_pe", "group", "group_pctile", "premium"],
+          "properties": {
+            "company_pe": {"$ref": "#/$defs/num"},
+            "group_pe": {"$ref": "#/$defs/num"},
+            "group": {"$ref": "#/$defs/str"},
+            "group_pctile": {"$ref": "#/$defs/num"},
+            "premium": {"$ref": "#/$defs/num"}
+          }
+        },
+        "vs_own_history": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["current", "median", "min", "max", "vs_median"],
+            "properties": {
+              "current": {"$ref": "#/$defs/num"},
+              "median": {"$ref": "#/$defs/num"},
+              "min": {"$ref": "#/$defs/num"},
+              "max": {"$ref": "#/$defs/num"},
+              "vs_median": {"$ref": "#/$defs/num"}
+            }
+          }
+        }
+      }
+    },
+    "estimates": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fy", "date", "eps_avg", "eps_low", "eps_high", "revenue_growth", "analysts", "forward_pe"],
+        "properties": {
+          "fy": {"$ref": "#/$defs/str"},
+          "date": {"$ref": "#/$defs/str"},
+          "eps_avg": {"$ref": "#/$defs/num"},
+          "eps_low": {"$ref": "#/$defs/num"},
+          "eps_high": {"$ref": "#/$defs/num"},
+          "revenue_growth": {"$ref": "#/$defs/num"},
+          "analysts": {"$ref": "#/$defs/num"},
+          "forward_pe": {"$ref": "#/$defs/num"}
+        }
+      }
+    },
+    "insider": {
+      "type": "object",
+      "description": "observation only; not part of the score",
+      "required": ["available"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "reason": {"type": "string"},
+        "from": {"$ref": "#/$defs/str"},
+        "to": {"$ref": "#/$defs/str"},
+        "complete": {"type": "boolean"},
+        "open_market_buys": {"type": ["integer", "null"]},
+        "buyers": {"type": ["integer", "null"]},
+        "buy_value": {"$ref": "#/$defs/num"},
+        "cluster_buy": {"type": "boolean"},
+        "cluster": {"type": ["object", "null"]},
+        "officer_buy": {"type": ["object", "null"]},
+        "open_market_sells": {"type": ["integer", "null"]},
+        "sellers": {"type": ["integer", "null"]},
+        "sell_value": {"$ref": "#/$defs/num"},
+        "sells_vs_mcap": {"$ref": "#/$defs/num"}
+      }
+    },
+    "flags_text": {
+      "type": "object",
+      "description": "the report's automated flags as English sentences, for display only",
+      "additionalProperties": false,
+      "required": ["red", "green"],
+      "properties": {
+        "red": {"type": "array", "items": {"type": "string"}},
+        "green": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "restricted": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array"}
+  },
+  "$defs": {
+    "num": {"type": ["number", "null"]},
+    "str": {"type": ["string", "null"]},
+    "trio": {"type": ["array", "null"], "items": {"type": ["number", "null"]}, "minItems": 3, "maxItems": 3},
+    "label": {"enum": ["Bullish", "Moderately bullish", "Neutral", "Moderately bearish", "Bearish"]},
+    "pillar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "weight", "coverage", "available"],
+      "properties": {
+        "score": {"type": "number", "description": "-2..+2"},
+        "weight": {"type": "number"},
+        "coverage": {"$ref": "#/$defs/num"},
+        "available": {"type": "boolean"}
+      }
+    },
+    "band": {
+      "type": ["object", "null"],
+      "description": "where today's multiple sits: in its own 3-year forward range (pctile 0..1), or vs its fiscal-year-end median",
+      "additionalProperties": false,
+      "required": ["basis", "now", "pctile", "p25", "median", "p75", "from", "to", "vs_median"],
+      "properties": {
+        "basis": {"enum": ["forward_3y", "trailing_vs_median"]},
+        "now": {"$ref": "#/$defs/num"},
+        "pctile": {"$ref": "#/$defs/num"},
+        "p25": {"$ref": "#/$defs/num"},
+        "median": {"$ref": "#/$defs/num"},
+        "p75": {"$ref": "#/$defs/num"},
+        "from": {"$ref": "#/$defs/str"},
+        "to": {"$ref": "#/$defs/str"},
+        "vs_median": {"$ref": "#/$defs/num"}
+      }
+    }
+  }
+}

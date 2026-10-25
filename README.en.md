@@ -41,14 +41,18 @@ fmp-fundamental-analysis/
 │   ├── analyze.py      # Main analysis script: builds the full report
 │   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
 │   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
+│   ├── contract.py     # The fa-1.0 contract: the small summary other tools read
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
+├── contracts/
+│   └── fa-1.0.schema.json  # Every field of the contract (JSON Schema)
 └── ui/
     ├── server.py       # Local web server
     ├── index.html      # Web page
     └── i18n.js         # Chinese/English toggle and translation tables for the web page
 └── tests/
     ├── fake_fmp.py     # Offline fake FMP data (three made-up companies) for tests and trying the page
-    └── test_score.py   # Offline tests of the score: python3 -m unittest discover -s tests (no API key needed)
+    ├── test_score.py   # Offline tests of the score: python3 -m unittest discover -s tests (no API key needed)
+    └── test_contract.py  # Offline tests of the contract: the output must match the schema and the full result
 ```
 
 ## Requirements
@@ -253,7 +257,8 @@ Common options:
 | `--macro` | Add a "Rates & macro backdrop" section to the report (6 more API calls) | You want to see how rates, inflation and the Fed bear on the company |
 | `--no-market` | Skip Treasury, sector and industry data (fixed 9% discount rate, no industry section); saves 9 API calls; cannot be combined with `--macro` | Those endpoints fail, or you want the old behaviour |
 | `--no-insider` | Skip insider trades (no insider section); saves 1 to 5 API calls; the score is unchanged | You don't need the section, or the endpoint fails |
-| `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers, or another tool will use them |
+| `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers |
+| `--contract out.json` | Also save the fa-1.0 contract: a small, versioned summary for other tools (see below) | A decision engine, screener or other tool will use the result |
 | `--refresh` | Ignore the cache and fetch again | Data looks stale, or the company just reported |
 
 Example:
@@ -271,6 +276,15 @@ python scripts/macro.py --events     # Lists every medium- and high-impact US ec
 ```
 
 All times are UTC. Sector and industry P/E and returns are FMP's equal-weighted aggregates per exchange (NASDAQ by default): good for direction and relative position, not the same as S&P 500 sector indexes.
+
+The fa-1.0 contract for other tools:
+
+```bash
+python scripts/analyze.py NVDA --contract nvda_contract.json   # write it during the analysis
+python scripts/contract.py nvda_full.json -o nvda_contract.json # convert a saved --json file
+```
+
+The full `--json` result is internal and may change; the contract is the public interface, whose fields are only ever added (renaming or removing one means fa-2.0). `contracts/fa-1.0.schema.json` describes every field: the score, pillars and caps, every indicator, the valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the price's trading day, `statements_through` the end of the latest statement period). The contract selects facts and judges nothing.
 
 Raw data from any FMP endpoint the analysis does not cover:
 
