@@ -80,6 +80,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
    | `--iv 0.45` | User has the stock's options-implied volatility (annual, 0.45 = 45%); the volatility ranges then use it instead of the past year's realized volatility |
    | `--macro` | User asks how rates, inflation or the Fed affect the stock, or wants the backdrop in the report |
    | `--no-market` | Skip Treasury / sector / industry data (fixed 9% discount, no sector section; cannot be combined with `--macro`); only if those calls fail or the user wants the old behaviour |
+   | `--no-insider` | Skip the insider-trades section (the score does not use it); to save API calls or if the endpoint fails |
    | `--json out.json` | User wants the raw numbers, or another tool/skill will consume them |
    | `--refresh` | User says data looks stale or a company just reported |
 3. **Check the header and "Data notes"** first: which fiscal years, whether TTM was available,
@@ -132,6 +133,12 @@ This is for the user's own browsing; when you analyse a stock, still run `script
   index, and loss-makers and tiny companies can skew it; use it for direction and relative
   position, not as a precise benchmark. Returns for industry/sector are equal-weighted averages;
   a company beating its industry but lagging SPY (or the reverse) is worth one sentence.
+- **Insider trades are an observation, not a signal to act on** (the "Insider trades" section; not
+  scored). Mention open-market purchases, above all cluster buying (3+ insiders within 90 days) or a
+  large CEO/CFO purchase, as a reason to look closer, with the dates and amounts. Do not read routine
+  sales as bearish: most are diversification, taxes or pre-planned 10b5-1 sales, and at mega-caps
+  insiders almost only sell. Say nothing about the section when it shows no purchases and ordinary
+  sales.
 - **Rates and macro are context, not timing.** Use them to explain sensitivity (long-duration
   growth stocks to the 10-year yield, banks to the curve shape, REITs/homebuilders to mortgage
   rates, heavy borrowers to refinancing costs, input-cost-heavy businesses to PPI), always with

@@ -27,6 +27,7 @@ Options:
   --macro            add the rates & macro backdrop (Fed funds, CPI, jobs, key releases)
   --no-market        skip Treasury / sector / industry data (fixed 9% discount, no sector section;
                      cannot be combined with --macro)
+  --no-insider       skip the insider-trades section (saves 1-5 API calls; the score does not use it)
   --json PATH        also write every computed number to a JSON file
   --refresh          ignore the local cache
 
@@ -48,6 +49,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
+import insider as I  # noqa: E402
 import macro as M  # noqa: E402
 import score as S  # noqa: E402
 
@@ -1315,6 +1317,10 @@ def render(r):
         out.append(f"\n## {sec}. Rates & macro backdrop")
         out.append(M.render_macro(mk["macro"]))
         sec += 1
+    if r.get("insider"):
+        out.append(f"\n## {sec}. Insider trades (last 12 months, observation only)")
+        out.append(I.render(r["insider"]))
+        sec += 1
 
     out.append(f"\n## {sec}. Automated flags (prompts for investigation, not conclusions)")
     out.append("**Positives**")
@@ -1489,6 +1495,7 @@ def analyze(args):
         f_pt = submit(client.try_get, "price-target-consensus", symbol=sym)
         f_quote = submit(fetch_quote, client, sym)
         f_peer_syms = submit(peer_symbols, client, sym, args.peers, args.max_peers)
+        f_ins = None if args.no_insider else submit(I.fetch, client, sym, today)
         market_reqs = {}
         if not args.no_market:
             market_reqs.update(M.rates_requests(client, today))
@@ -1515,6 +1522,7 @@ def analyze(args):
         est, pt, quote = f_est.result(), f_pt.result(), f_quote.result()
         peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
         market_res = {k: f.result() for k, f in f_market.items()}
+        ins_rows, ins_complete = f_ins.result() if f_ins else (None, True)
     except BaseException:
         for f in futures:
             f.cancel()
@@ -1594,6 +1602,8 @@ def analyze(args):
     ranges = price_range(years, basis, series, analyst, dcf, price, today, div(mcap, price), iv=args.iv,
                          sector_kind=sector_kind)
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
+    insider = I.summarize(ins_rows, today, mcap, ins_complete) if f_ins else None
+    green += I.flags(insider)
 
     result = {
         "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
@@ -1603,7 +1613,7 @@ def analyze(args):
         "piotroski": pio, "altman": alt, "dcf": dcf, "analyst": analyst, "price_range": ranges,
         "self_snapshot": lfy_snapshot(profile, years), "peers": peers,
         "flags": {"red": red, "green": green},
-        "market": market,
+        "market": market, "insider": insider,
         "price_series": series,  # daily closes used for valuation history (the UI charts the last year)
         "candles": candles, "candles_note": candles_note,  # last year of daily bars, only when args.candles (UI)
         "meta": {"network_calls": client.stats["network_calls"], "cache_hits": client.stats["cache_hits"],
@@ -1628,6 +1638,7 @@ def parse_args(argv):
     ap.add_argument("--no-ttm", action="store_true")
     ap.add_argument("--macro", action="store_true")
     ap.add_argument("--no-market", action="store_true")
+    ap.add_argument("--no-insider", action="store_true")
     ap.add_argument("--json", default=None)
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args(argv)

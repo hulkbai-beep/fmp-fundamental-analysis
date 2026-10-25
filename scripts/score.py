@@ -1029,7 +1029,7 @@ def render(s):
         vs = f" ({vr['mid_vs_price'] * 100:+.1f}% vs price)" if vr["mid_vs_price"] is not None else ""
         out.append(f"Value range from the {src}: {vr['low']:,.2f} / {vr['mid']:,.2f} / {vr['high']:,.2f}{vs}.")
     out.append("Not scored: analyst price targets (optimistic, and built from the same forward EPS), the 52-week and "
-               "volatility ranges (price moves, not value), peers (auto-peers can include foreign listings) and macro "
-               "releases (context; rates already enter through the DCF discount rate and the FCF yield spread). Missing "
-               "data counts as 0.")
+               "volatility ranges (price moves, not value), peers (auto-peers can include foreign listings), macro "
+               "releases (context; rates already enter through the DCF discount rate and the FCF yield spread) and insider "
+               "trades (observation only, in their own section). Missing data counts as 0.")
     return "\n".join(out)

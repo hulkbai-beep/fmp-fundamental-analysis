@@ -147,7 +147,7 @@ const SCORE_UI = {
       "算不出来的指标（缺数据、亏损、DCF 跳过、币种不一致）按 0 分计、权重不变，所以数据越少，分数越接近 0，置信度也越低。",
       "封顶规则：碰到资产负债表红线，或者估值便宜但质量和成长平均偏弱（价值陷阱：两项均值 ≤ −0.5），总分最高 +0.4（中性）。另外，过去 EPS 增速超过 15%、但预期增速不到过去一半时，前瞻倍数位置那一项最多 +1。",
       "分档：高于 +1.2 看多，+0.4 到 +1.2 偏多，−0.4 到 +0.4 中性，−1.2 到 −0.4 偏空，低于 −1.2 看空；正好在分界上的取更靠近中性的标签。和技术面打分是同一套刻度。",
-      "不计分：分析师目标价（偏乐观，而且和前瞻 P/E 用的是同一份 EPS 预期）、52 周区间和波动率区间（是价格会怎么动，不是值多少）、同行（自动同行可能混有外国上市公司）、宏观数据（只作背景，利率已经通过 DCF 的折现率和 FCF 收益率对比国债算进去了）。",
+      "不计分：分析师目标价（偏乐观，而且和前瞻 P/E 用的是同一份 EPS 预期）、52 周区间和波动率区间（是价格会怎么动，不是值多少）、同行（自动同行可能混有外国上市公司）、宏观数据（只作背景，利率已经通过 DCF 的折现率和 FCF 收益率对比国债算进去了）、内部人交易（只作观察，单独一节）。",
       "这是按固定规则算出的标签，不是买卖建议；改任何阈值或权重都会升规则版本号。",
     ],
   },
@@ -239,7 +239,7 @@ const SCORE_UI = {
       "An indicator that cannot be computed (no data, a loss, a skipped DCF, mixed currencies) counts as 0 and keeps its weight, so less data pulls the score toward 0 and lowers the confidence.",
       "Caps: a balance-sheet red line, or a cheap valuation while quality and growth average −0.5 or less (value trap), holds the score at +0.4 (Neutral) at most. Separately, after historical EPS growth above 15%, a forward-multiple position scores at most +1 when expected EPS growth is under half of it.",
       "Labels: above +1.2 Bullish, +0.4 to +1.2 Moderately bullish, −0.4 to +0.4 Neutral, −1.2 to −0.4 Moderately bearish, below −1.2 Bearish; a score exactly on a bound takes the label nearer Neutral. The technical scorecard uses the same scale.",
-      "Not scored: analyst targets (optimistic, and built from the same EPS estimates as forward P/E), the 52-week and volatility ranges (how the price moves, not what it is worth), peers (auto-peers can include foreign listings) and macro data (context; rates already enter through the DCF discount rate and the FCF yield vs Treasury).",
+      "Not scored: analyst targets (optimistic, and built from the same EPS estimates as forward P/E), the 52-week and volatility ranges (how the price moves, not what it is worth), peers (auto-peers can include foreign listings), macro data (context; rates already enter through the DCF discount rate and the FCF yield vs Treasury) and insider trades (observation only, in their own section).",
       "A rule-based label, not a recommendation; any change to a threshold or weight bumps the rules version.",
     ],
   },
@@ -264,6 +264,7 @@ const ZH_EXACT = new Map(Object.entries({
   "Sector & industry context": "行业与板块对比",
   "Rates & macro backdrop": "利率与宏观背景",
   "Automated flags (prompts for investigation, not conclusions)": "自动提示（需进一步核实，不是结论）",
+  "Insider trades (last 12 months, observation only)": "内部人交易（近 12 个月，仅供观察）",
   "Data notes": "数据说明",
   "Treasury yields": "国债收益率",
   "Policy rate, jobs and prices (economic-indicators, latest two readings)": "政策利率、就业与物价（经济指标，最近两期）",
@@ -377,6 +378,12 @@ const ZH_EXACT = new Map(Object.entries({
   "Treasury, sector and industry data skipped (--no-market).": "跳过了国债、板块和行业数据（--no-market）。",
   "Source: Financial Modeling Prep. Computed figures are approximations; verify against filings before acting.":
     "数据源：Financial Modeling Prep。计算结果是近似值，做决定前请对照财报核实。",
+  // insider trades
+  "Side": "方向", "Trades": "笔数", "Insiders": "人数", "Amount": "金额", "Purchases": "买入", "Sales": "卖出",
+  "Insider": "内部人", "Role": "职位", "Bought": "买入", "Sold": "卖出", "Last trade": "最近交易", "Price": "价格",
+  "Filing": "申报文件", "**By insider**": "**按人汇总**", "**Open-market purchases (latest first)**": "**公开市场买入（最新在前）**",
+  "No open-market purchases or sales in this period.": "这段时间没有公开市场买入或卖出。",
+  "Insider trades are not in your FMP plan (insider-trading/search).": "你的 FMP 套餐不包含内部人交易数据（insider-trading/search）。",
 }));
 
 const ZONE = { safe: "安全", grey: "灰色", distress: "危险" };
@@ -415,6 +422,10 @@ const MULT = "(P\\/E|P\\/B|EV\\/EBITDA)";
 for (const k of ["rc_fwd_pe", "rc_fwd_ev", "rc_dcf", "rc_targets", "rc_week52", "rc_volatility", "rc_past", "rc_now", "rc_12m"]) {
   ZH_EXACT.set(UI.en[k], UI.zh[k]);
 }
+
+// Insider roles as insider.py labels them ("Director, CEO").
+const ROLES = { "Director": "董事", "Officer": "高管", "10% owner": "10% 股东", "Other": "其他" };
+const roleZh = s => s.split(", ").map(x => ROLES[x] || x).join("、");
 
 // Sentence templates and fragments, applied in order to text not matched above.
 const ZH_RULES = [
@@ -534,6 +545,16 @@ const ZH_RULES = [
   [/^Price is (\S+) above base-case DCF value$/, "股价比 DCF 基准价值高 $1"],
   [/^Price implies ~(\S+)\/yr FCF growth for 5 yrs vs (\S+) historical revenue CAGR$/, "股价隐含未来 5 年 FCF 每年增长约 $1，历史营收复合增速只有 $2"],
   [/^Price implies only ~(\S+)\/yr FCF growth vs (\S+) historical revenue CAGR$/, "股价只隐含 FCF 每年增长约 $1，历史营收复合增速为 $2"],
+  // insider trades
+  [/^Form 4 filings, trades from (\S+) to (\S+)\. Only open-market purchases \(code P\) and sales \(code S\) count; (\d+) other transactions \(awards, option exercises, shares withheld for tax, gifts\) are left out\.$/,
+    "Form 4 申报，交易日期 $1 至 $2。只统计公开市场买入（代码 P）和卖出（代码 S），另有 $3 笔授予、期权行权、扣股缴税、赠与等不按市价成交的交易未计入。"],
+  [/^FMP returned only the latest (\d+) filings, so the totals start at (\S+)\.$/, "FMP 只返回了最近 $1 份申报，所以统计从 $2 开始。"],
+  [/^Sales were (\S+) of the market cap\.$/, "卖出金额占市值的 $1。"],
+  [/^Observation only, not used in the score\. Purchases with the insider's own money, especially by (\d+) or more insiders within (\d+) days, have historically come before better returns, mostly at small and mid-size companies\. Sales are mostly diversification, taxes or pre-planned \(10b5-1\) sales and say little on their own\.$/,
+    "仅供观察，不计入评分。内部人自己掏钱在公开市场买入，尤其是 $2 天内有 $1 位或更多内部人一起买，历史上之后的回报往往更好，在中小盘公司更明显。卖出大多是分散持仓、交税或预先安排的 10b5-1 计划，单看说明不了什么。"],
+  [/^Insider cluster buying: (\d+) insiders bought (\S+) on the open market between (\S+) and (\S+)$/, "内部人集体买入：$1 位内部人在 $3 至 $4 期间于公开市场买入 $2"],
+  [/^Insider buying: (.+) \(([^()]+)\) bought (\S+) on the open market on (\S+)$/, (m, name, role, v, d) => `内部人买入：${name}（${roleZh(role)}）于 ${d} 在公开市场买入 ${v}`],
+  [/^(?:Director|CEO|CFO|Officer|10% owner|Other)(?:, (?:Director|CEO|CFO|Officer|10% owner|Other))*$/, roleZh],
   // data notes
   [/^Data route: third-party proxy at (\S+)\. Data is not served by FMP directly; spot-check key figures against company filings\.$/,
     "数据来源：第三方代理 $1，不是 FMP 官方服务器；重要数字请对照公司财报核实。"],

@@ -12,7 +12,7 @@ Benchmarks are rules of thumb for US companies; always prefer peer and own-histo
 6. Quality scores (Piotroski, Altman)
 7. DCF and reverse DCF (rate-linked discount rate)
 8. Price range by method (forward P/E and EV/EBITDA, DCF, analyst targets, volatility)
-9. Industry, sector and rates context
+9. Industry, sector, rates and insider context
 10. Sector cheat sheet
 11. Known approximations in the script
 12. Fundamental score (pillars, weights, bands, caps, confidence)
@@ -238,7 +238,7 @@ DCF far below the P/E rows usually means the DCF growth or discount inputs are c
 this business (pass analyst revenue growth with `--growth` to test it), or the multiple is rich -
 say which you think it is.
 
-## 9. Industry, sector and rates context
+## 9. Industry, sector, rates and insider context
 
 **Industry / sector P/E** (FMP `historical-industry-pe`, `historical-sector-pe`):
 - An aggregate P/E of the companies in that group listed on one exchange (the company's own
@@ -269,6 +269,23 @@ Equal weighting means a group can lag SPY simply because its mega-caps outperfor
 PCE (headline and core), payrolls, GDP and Fed rate decisions. PPI running above CPI points to
 margin pressure for companies that cannot pass costs on; check the gross-margin trend.
 `economic-indicators` CPI is the index level (1982-84 = 100), so it only gives month-on-month.
+
+**Insider trades** (FMP `insider-trading/search`, SEC Form 4; observation only, not scored):
+- Covers trades in the last 12 months by transaction date. FMP returns filings newest first, 100 per
+  page; the script reads up to 5 pages and says so when they stop short of 12 months (large companies
+  file many awards and planned sales).
+- Only open-market purchases (code P) and sales (code S) count. Awards (A), option exercises (M, X),
+  shares withheld for tax (F), gifts (G) and other codes are compensation or paperwork, not a view on
+  the stock; Form 3 (holdings on joining) is skipped; an amended Form 4 that repeats a row counts once.
+- Purchases with the insider's own money are the informative side, most of all when 3 or more
+  insiders buy within 90 days (flagged as cluster buying) or the CEO or CFO buys at least $100K
+  (flagged when there is no cluster). The evidence (Lakonishok & Lee 2001; Cohen, Malloy & Pomorski
+  2012) is strongest at small and mid-size companies; at mega-caps insiders rarely buy at all.
+- Sales say little on their own: diversification, taxes and pre-planned 10b5-1 sales dominate, and
+  FMP does not mark which sales were pre-planned. Sales are shown against the market cap for scale
+  and never raise a flag.
+- Roles come from FMP's `typeOfOwner`; a business unit's CEO ("CEO Amazon Web Services") counts as
+  an officer, not the company's CEO.
 
 ## 10. Sector cheat sheet
 
@@ -499,9 +516,9 @@ history, not a target.
 
 Analyst price targets (optimistic, and mostly forward EPS x a chosen multiple, so they repeat the
 forward P/E), the 52-week and volatility ranges (how the price moves, not what the company is
-worth), peers (auto-peers can include foreign listings) and macro releases (context; rates already
+worth), peers (auto-peers can include foreign listings), macro releases (context; rates already
 enter through the DCF's Treasury-linked discount rate and the FCF yield's spread over the 10-year
-Treasury).
+Treasury) and insider trades (observation only, in their own section; see section 9).
 
 ### Known limits
 
