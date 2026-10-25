@@ -16,6 +16,7 @@ What it covers:
 - Rates and macro backdrop (optional): Treasury yield curve, Fed funds rate, the latest readings of CPI / PPI / PCE / payrolls / Fed decisions, and the next three weeks' schedule
 - Analyst estimates and price targets
 - Price range: forward P/E and EV/EBITDA ranges at three points, **now**, **the end of the current fiscal year** and **the end of the next fiscal year** (next-12-month EPS / EBITDA × the 25th / 50th / 75th percentile of the company's own 3-year multiple on the same basis); volatility ranges to those two fiscal year ends (68% and 95%, optionally from options-implied volatility); all side by side with the DCF range, analyst price targets and the 52-week range
+- Insider trades (observation only, not scored): open-market purchases and sales by officers and directors over the last 12 months, leaving out awards, option exercises, shares withheld for tax and other trades not at the market price; several insiders buying within 90 days, or a large CEO / CFO purchase, is flagged in the automated flags
 - Automated flags: positives and concerns, as leads to check, not conclusions
 - Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
 
@@ -251,6 +252,7 @@ Common options:
 | `--no-ttm` | Skip trailing-twelve-month (TTM) data; saves 3 API calls | |
 | `--macro` | Add a "Rates & macro backdrop" section to the report (6 more API calls) | You want to see how rates, inflation and the Fed bear on the company |
 | `--no-market` | Skip Treasury, sector and industry data (fixed 9% discount rate, no industry section); saves 9 API calls; cannot be combined with `--macro` | Those endpoints fail, or you want the old behaviour |
+| `--no-insider` | Skip insider trades (no insider section); saves 1 to 5 API calls; the score is unchanged | You don't need the section, or the endpoint fails |
 | `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers, or another tool will use them |
 | `--refresh` | Ignore the cache and fetch again | Data looks stale, or the company just reported |
 

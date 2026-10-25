@@ -125,7 +125,7 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     rows, inds = [], []
     for n, sym in enumerate(syms, 1):
-        a = ["--peers", "none", "--years", str(args.years)] + (["--no-market"] if args.no_market else []) \
+        a = ["--peers", "none", "--no-insider", "--years", str(args.years)] + (["--no-market"] if args.no_market else []) \
             + (["--refresh"] if args.refresh else [])
         try:
             r = A.analyze(A.parse_args([sym] + a))

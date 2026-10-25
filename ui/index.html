@@ -57,6 +57,7 @@ ul.flags { margin: 0; padding-left: 18px; }
 .tab { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; }
 .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .section { overflow-x: auto; }
+.section a { color: var(--accent); }
 .section h2 { font-size: 16px; margin: 0 0 10px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
 th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: right; white-space: nowrap; }
@@ -230,9 +231,12 @@ $("#lang").onclick = () => {
   else if ($("#go").disabled) $("#out").innerHTML = loadingHtml(lastSymbol);
 };
 
-// Minimal markdown -> HTML for the report produced by analyze.py (headings, tables, bold, lists).
+// Minimal markdown -> HTML for the report produced by analyze.py (headings, tables, bold, lists, SEC links).
 // Each text piece goes through tr() first, so the Chinese view translates headings, cells and sentences.
-function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
+function inline(s) {
+  return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\[([^\]]+)\]\((https:\/\/www\.sec\.gov\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
 function md(text) {
   const lines = text.split("\n"); let html = "", i = 0;
   while (i < lines.length) {

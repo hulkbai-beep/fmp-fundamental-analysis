@@ -163,6 +163,51 @@ def _market():
 TREASURY, GROUP_PE, SPY = _market()
 
 
+def _insider():
+    """Form 4 rows in FMP's insider-trading/search shape, newest filing first. QUAL: three directors buy
+    within two months (a cluster), the CFO sells, plus awards, a tax withholding, a Form 3, an amended
+    repeat of one purchase and a purchase from before the 12-month window. TRAP: only sales and a tax
+    withholding. The other scenarios have no Form 4 filings."""
+    def row(days_ago, name, owner, code, shares, price, form="4", cik="0000000001"):
+        d = (TODAY - dt.timedelta(days=days_ago)).isoformat()
+        f = (TODAY - dt.timedelta(days=days_ago - 2)).isoformat()
+        return {"symbol": None, "filingDate": f, "transactionDate": d, "reportingCik": cik, "companyCik": "0000000099",
+                "transactionType": code, "securitiesOwned": 50000, "reportingName": name, "typeOfOwner": owner,
+                "acquisitionOrDisposition": "A" if code[:1] in "PAM" else ("D" if code else ""),
+                "directOrIndirect": "D", "formType": form, "securitiesTransacted": shares, "price": price,
+                "securityName": "Common Stock", "url": "https://www.sec.gov/Archives/edgar/data/0/0-index.htm"}
+    q = SCENARIOS["QUAL"]["profile"]["price"]
+    t = SCENARIOS["TRAP"]["profile"]["price"]
+    qual = [
+        row(20, "Stone Maria", "officer: EVP, CFO", "S-Sale", 4000, q * 1.02, cik="0000000011"),
+        row(45, "Stone Maria", "officer: EVP, CFO", "F-InKind", 1500, q, cik="0000000011"),
+        row(70, "Diaz Carlos", "director, officer: President &amp; Chief Exec Officer", "P-Purchase", 3000, q * 0.95, cik="0000000012"),
+        row(70, "Diaz Carlos", "director, officer: President &amp; Chief Exec Officer", "P-Purchase", 3000, q * 0.95, form="4/A", cik="0000000012"),
+        row(95, "Park Min", "director", "P-Purchase", 1500, q * 0.93, cik="0000000013"),
+        row(120, "Lee Ann", "director", "P-Purchase", 2000, q * 0.9, cik="0000000014"),
+        row(150, "New Director", "director", "", 0, 0, form="3", cik="0000000015"),
+        row(200, "Stone Maria", "officer: EVP, CFO", "S-Sale", 6000, q * 0.98, cik="0000000011"),
+        row(300, "Diaz Carlos", "director, officer: President &amp; Chief Exec Officer", "A-Award", 20000, 0, cik="0000000012"),
+        row(330, "Stone Maria", "officer: EVP, CFO", "M-Exempt", 5000, q * 0.5, cik="0000000011"),
+        row(420, "Lee Ann", "director", "P-Purchase", 9000, q * 0.8, cik="0000000014"),
+    ]
+    trap = [
+        row(30, "Holt Ray", "director, officer: CEO", "S-Sale", 50000, t, cik="0000000021"),
+        row(31, "Holt Ray", "director, officer: CEO", "F-InKind", 8000, t, cik="0000000021"),
+        row(160, "Fox Dana", "officer: COO", "S-Sale", 12000, t * 1.1, cik="0000000022"),
+    ]
+    out = {k: [] for k in SCENARIOS}
+    out.update(QUAL=qual, TRAP=trap)
+    for k, rows in out.items():
+        for r in rows:
+            r["symbol"] = k
+        rows.sort(key=lambda r: r["filingDate"], reverse=True)
+    return out
+
+
+INSIDER = _insider()
+
+
 def answer(endpoint, params):
     """The synthetic response for one request, or raise RestrictedEndpoint."""
     sym = params.get("symbol")
@@ -187,6 +232,9 @@ def answer(endpoint, params):
         if rows is None:
             raise RestrictedEndpoint(f"{endpoint}: unknown symbol {sym}")
         return _between([{"date": d, "price": p} for d, p in rows], params)
+    if endpoint == "insider-trading/search" and c:
+        page, limit = int(params.get("page", 0)), int(params.get("limit", 100))
+        return INSIDER[sym][page * limit:(page + 1) * limit]
     if endpoint == "treasury-rates":
         return list(reversed(_between(TREASURY, params)))
     if endpoint == "market-risk-premium":
