@@ -1,5 +1,5 @@
 """
-Offline tests for the fa-1.0 contract (scripts/contract.py, contracts/fa-1.0.schema.json). No API key needed:
+Offline tests for the fa-1.1 contract (scripts/contract.py, contracts/fa-1.1.schema.json). No API key needed:
 
     python -m unittest discover -s tests
 
@@ -81,7 +81,7 @@ class Schema(unittest.TestCase):
         self.assertEqual(set(SCHEMA["required"]), set(SCHEMA["properties"]))
 
     def test_the_checker_catches_drift(self):
-        c = {"contract": "fa-1.0"}
+        c = {"contract": "fa-1.1"}
         self.assertTrue(validate(c, SCHEMA))                                   # missing fields
         self.assertTrue(validate({"available": "yes"}, SCHEMA["properties"]["insider"]))
         self.assertTrue(validate([1, 2], SCHEMA["$defs"]["trio"]))
@@ -170,6 +170,34 @@ class EndToEnd(unittest.TestCase):
         bare = copy.deepcopy(r)
         bare["price_range"]["week52"] = None
         self.assertEqual(C.build(bare)["as_of_basis"], "run_date")
+
+    def test_availability_says_what_is_missing_and_why(self):
+        q, bank, util, trap = (self.contracts[s]["valuation"] for s in ("QUAL", "BANK", "UTIL", "TRAP"))
+        self.assertEqual({v["status"] for v in q["availability"].values()}, {"ok"})
+        self.assertEqual(bank["availability"]["dcf"]["reason"], "financial")
+        self.assertIn("Financial-sector", bank["availability"]["dcf"]["text"])
+        self.assertEqual(bank["availability"]["fwd_ev"]["reason"], "na_financial")
+        self.assertEqual((util["availability"]["dcf"]["status"], util["availability"]["dcf"]["reason"]),
+                         ("unavailable", "negative_fcf"))
+        self.assertEqual(trap["availability"]["fwd_pe"]["reason"], "loss_making")
+        self.assertEqual(trap["availability"]["primary_range"]["reason"], "no_forward_pe_or_dcf")
+        self.assertIn("loss_making", trap["availability"]["primary_range"]["text"])
+
+    def test_availability_matches_the_values(self):
+        for sym, c in self.contracts.items():
+            v, a = c["valuation"], c["valuation"]["availability"]
+            for key in ("fwd_pe", "fwd_ev"):
+                want = {None: "unavailable", "forward_3y": "ok", "trailing_vs_median": "fallback"}[(v[key] or {}).get("basis")]
+                self.assertEqual(a[key]["status"], want, (sym, key))
+            self.assertEqual(a["primary_range"]["status"] == "unavailable", v["primary_range"] is None, sym)
+            self.assertEqual(a["fcf_yield_spread"]["status"] == "unavailable", v["fcf_yield_spread"] is None, sym)
+            self.assertEqual(a["vs_industry"]["status"] == "unavailable", v["vs_industry"] is None, sym)
+            self.assertEqual(a["reverse_dcf"]["status"] == "unavailable", v["reverse_dcf"]["gap"] is None, sym)
+            if a["dcf"]["status"] == "ok":
+                self.assertGreater(v["dcf"]["value"], 0, sym)
+            for key, state in a.items():
+                if state["status"] != "ok":
+                    self.assertTrue(state["reason"] and state["text"], (sym, key))
 
     def test_insider_states(self):
         c = self.contracts["QUAL"]["insider"]

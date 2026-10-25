@@ -29,7 +29,7 @@ Options:
                      cannot be combined with --macro)
   --no-insider       skip the insider-trades section (saves 1-5 API calls; the score does not use it)
   --json PATH        also write every computed number to a JSON file
-  --contract PATH    also write the fa-1.0 contract (the stable summary other tools read; see contract.py)
+  --contract PATH    also write the fa-1.1 contract (the stable summary other tools read; see contract.py)
   --refresh          ignore the local cache
 
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
@@ -54,6 +54,7 @@ import contract as C  # noqa: E402
 import insider as I  # noqa: E402
 import macro as M  # noqa: E402
 import score as S  # noqa: E402
+from symbols import normalize_symbol  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
 # Fee-based financial industries (exchanges, data providers, insurance brokers) run on cash flow like other
@@ -477,7 +478,11 @@ def peer_symbols(client, sym, override, max_peers):
     if override:
         if override.strip().lower() == "none":
             return []
-        return [s.strip().upper() for s in override.split(",") if s.strip() and s.strip().upper() != sym]
+        try:
+            peers = [normalize_symbol(s) for s in override.split(",") if s.strip()]
+        except ValueError as e:
+            raise SystemExit(f"--peers: {e}") from None
+        return [s for s in dict.fromkeys(peers) if s != sym]
     data = client.try_get("stock-peers", symbol=sym) or []
     syms = []
     for r in data if isinstance(data, list) else [data]:
@@ -1463,7 +1468,10 @@ def max_workers():
 
 
 def analyze(args):
-    sym = args.symbol.upper()
+    try:
+        sym = normalize_symbol(args.symbol)  # BRK.B -> BRK-B; refuses foreign listings before any API call
+    except ValueError as e:
+        raise SystemExit(f"Cannot analyse {args.symbol!r}: {e}") from None
     client = FMPClient(refresh=args.refresh)
     try:
         profile = client.profile(sym)

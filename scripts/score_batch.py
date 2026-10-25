@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import analyze as A  # noqa: E402
 import score as S  # noqa: E402
 from fmp_client import FMPError, InvalidKey  # noqa: E402
+from symbols import normalize_symbol  # noqa: E402
 
 SCORE_FIELDS = ["symbol", "name", "sector", "industry", "kind", "rules", "score", "label", "raw_score",
                 "confidence", "coverage", "valuation", "quality", "growth", "health", "business", "quadrant", "caps", "conflicts",
@@ -49,7 +50,11 @@ def read_symbols(args):
             line = line.split("#", 1)[0]
             syms += [s for s in line.replace(",", " ").split() if s]
     out = []
-    for s in (x.strip().upper() for x in syms):
+    for x in syms:
+        try:
+            s = normalize_symbol(x)  # BRK.B -> BRK-B
+        except ValueError:
+            s = x.strip().upper()    # kept as typed: analyze() reports why, and the batch goes on
         if s and s not in out:
             out.append(s)
     return out

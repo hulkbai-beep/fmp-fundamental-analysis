@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "fa-1.0",
-  "title": "Fundamental analysis contract fa-1.0",
-  "description": "The stable summary of scripts/analyze.py that other tools read, built by scripts/contract.py. Fields are only ever added; renaming or removing one means fa-2.0. Fractions are decimals (0.25 = 25%); ranges are [low, mid, high] in the price currency; null means missing, never estimated.",
+  "$id": "fa-1.1",
+  "title": "Fundamental analysis contract fa-1.1",
+  "description": "The stable summary of scripts/analyze.py that other tools read, built by scripts/contract.py. Fields are only ever added; renaming or removing one means fa-2.0. 1.1 adds valuation.availability (whether each valuation input exists and why not). Fractions are decimals (0.25 = 25%); ranges are [low, mid, high] in the price currency; null means missing, never estimated.",
   "type": "object",
   "additionalProperties": false,
   "required": ["contract", "rules_version", "ticker", "generated_at", "as_of", "as_of_basis", "price", "price_time",
                "statements_through", "period_basis", "data_source", "company", "score", "indicators", "valuation",
                "estimates", "insider", "flags_text", "warnings", "restricted", "errors"],
   "properties": {
-    "contract": {"const": "fa-1.0"},
+    "contract": {"const": "fa-1.1"},
     "rules_version": {"type": "string", "description": "score.py RULES_VERSION"},
     "ticker": {"type": "string"},
     "generated_at": {"type": "string", "description": "when the analysis ran (ISO 8601; a date only for files saved before fa-1.0)"},
@@ -108,7 +108,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["fwd_pe", "fwd_ev", "ranges", "ranges_fy_end", "primary_range", "reverse_dcf", "dcf",
-                   "fcf_yield_spread", "vs_industry", "vs_own_history"],
+                   "fcf_yield_spread", "vs_industry", "vs_own_history", "availability"],
       "properties": {
         "fwd_pe": {"$ref": "#/$defs/band"},
         "fwd_ev": {"$ref": "#/$defs/band"},
@@ -196,6 +196,18 @@
             "premium": {"$ref": "#/$defs/num"}
           }
         },
+        "availability": {
+          "type": "object",
+          "description": "for each valuation input: ok, fallback (a stand-in measure was used) or unavailable, with the reason code (score.py NOTES keys, or financial / negative_fcf / invalid_inputs / dcf_negative for the DCF) and a sentence",
+          "additionalProperties": false,
+          "required": ["fwd_pe", "fwd_ev", "primary_range", "reverse_dcf", "dcf", "fcf_yield_spread", "vs_industry"],
+          "properties": {
+            "fwd_pe": {"$ref": "#/$defs/availability"}, "fwd_ev": {"$ref": "#/$defs/availability"},
+            "primary_range": {"$ref": "#/$defs/availability"}, "reverse_dcf": {"$ref": "#/$defs/availability"},
+            "dcf": {"$ref": "#/$defs/availability"}, "fcf_yield_spread": {"$ref": "#/$defs/availability"},
+            "vs_industry": {"$ref": "#/$defs/availability"}
+          }
+        },
         "vs_own_history": {
           "type": "object",
           "additionalProperties": {
@@ -273,6 +285,11 @@
     "str": {"type": ["string", "null"]},
     "trio": {"type": ["array", "null"], "items": {"type": ["number", "null"]}, "minItems": 3, "maxItems": 3},
     "label": {"enum": ["Bullish", "Moderately bullish", "Neutral", "Moderately bearish", "Bearish"]},
+    "availability": {
+      "type": "object", "additionalProperties": false, "required": ["status", "reason", "text"],
+      "properties": {"status": {"enum": ["ok", "fallback", "unavailable"]},
+                     "reason": {"$ref": "#/$defs/str"}, "text": {"$ref": "#/$defs/str"}}
+    },
     "pillar": {
       "type": "object",
       "additionalProperties": false,
