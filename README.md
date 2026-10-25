@@ -19,6 +19,7 @@
 - 内部人交易（只作观察，不计入评分）：近 12 个月高管、董事在公开市场的买入和卖出，剔除股权授予、期权行权、扣股缴税等非市价交易；几位内部人在 90 天内集体买入，或 CEO / CFO 大额买入时，会在自动提示里标出
 - 自动提示：列出优点和风险，作为进一步核实的线索，不是结论
 - 基本面打分：估值 35%、质量 25%、成长 20%、财务健康 20% 四大项，每个指标按固定区间打 −2 到 +2 分，合成总分和「看多 / 偏多 / 中性 / 偏空 / 看空」标签（和技术面打分同一套刻度），附置信度；价值陷阱和资产负债表红线会把总分封顶在中性。规则固定、有版本号，详见 `references/metrics.md` 第 12 节
+- 给其他工具用的 fa-1.0 契约：`--contract` 导出一份精简、带版本号的 JSON 摘要，供决策引擎、选股脚本等读取（见「用法 2：命令行」）
 
 所有计算都由脚本完成，Claude 只负责解读。
 
@@ -41,18 +42,20 @@ fmp-fundamental-analysis/
 │   ├── analyze.py      # 主分析脚本：生成完整报告
 │   ├── score.py        # 基本面打分：四大项、打分区间、封顶规则和置信度
 │   ├── score_batch.py  # 批量打分：一串股票的分数写成 CSV，改规则前后可对比
+│   ├── insider.py      # 内部人交易：公开市场买入卖出的汇总和集体买入提示
 │   ├── contract.py     # fa-1.0 契约：给其他工具读的精简摘要
 │   └── macro.py        # 利率、宏观和板块数据：独立的宏观仪表盘，也供 analyze.py 调用
 ├── contracts/
 │   └── fa-1.0.schema.json  # 契约每个字段的定义（JSON Schema）
-└── ui/
-    ├── server.py       # 本地网页服务器
-    ├── index.html      # 网页界面
-    └── i18n.js         # 网页的中英文切换和翻译表
-└── tests/
-    ├── fake_fmp.py     # 离线的假 FMP 数据（三家虚构公司），测试和试网页用
-    ├── test_score.py   # 打分的离线测试：python3 -m unittest discover -s tests（不需要 API key）
-    └── test_contract.py  # 契约的离线测试：输出必须符合 schema，数字必须和完整结果一致
+├── ui/
+│   ├── server.py       # 本地网页服务器
+│   ├── index.html      # 网页界面
+│   └── i18n.js         # 网页的中英文切换和翻译表
+└── tests/              # 离线测试，不需要 API key：python -m unittest discover -s tests
+    ├── fake_fmp.py     # 离线的假 FMP 数据（五家虚构公司：QUAL、TRAP、BANK、EXCH、UTIL），测试和试网页用
+    ├── test_score.py   # 打分的测试
+    ├── test_insider.py # 内部人交易的测试
+    └── test_contract.py  # 契约的测试：输出必须符合 schema，数字必须和完整结果一致
 ```
 
 ## 环境要求

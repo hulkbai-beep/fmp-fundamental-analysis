@@ -19,6 +19,7 @@ What it covers:
 - Insider trades (observation only, not scored): open-market purchases and sales by officers and directors over the last 12 months, leaving out awards, option exercises, shares withheld for tax and other trades not at the market price; several insiders buying within 90 days, or a large CEO / CFO purchase, is flagged in the automated flags
 - Automated flags: positives and concerns, as leads to check, not conclusions
 - Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
+- The fa-1.0 contract for other tools: `--contract` writes a small, versioned JSON summary for a decision engine, screener or other tool to read (see "Option 2: command line")
 
 All calculations are done by the scripts; Claude only interprets the results.
 
@@ -41,18 +42,20 @@ fmp-fundamental-analysis/
 │   ├── analyze.py      # Main analysis script: builds the full report
 │   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
 │   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
+│   ├── insider.py      # Insider trades: open-market purchases and sales, and cluster buying
 │   ├── contract.py     # The fa-1.0 contract: the small summary other tools read
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
 ├── contracts/
 │   └── fa-1.0.schema.json  # Every field of the contract (JSON Schema)
-└── ui/
-    ├── server.py       # Local web server
-    ├── index.html      # Web page
-    └── i18n.js         # Chinese/English toggle and translation tables for the web page
-└── tests/
-    ├── fake_fmp.py     # Offline fake FMP data (three made-up companies) for tests and trying the page
-    ├── test_score.py   # Offline tests of the score: python3 -m unittest discover -s tests (no API key needed)
-    └── test_contract.py  # Offline tests of the contract: the output must match the schema and the full result
+├── ui/
+│   ├── server.py       # Local web server
+│   ├── index.html      # Web page
+│   └── i18n.js         # Chinese/English toggle and translation tables for the web page
+└── tests/              # Offline tests, no API key needed: python -m unittest discover -s tests
+    ├── fake_fmp.py     # Offline fake FMP data (five made-up companies: QUAL, TRAP, BANK, EXCH, UTIL) for tests and trying the page
+    ├── test_score.py   # Tests of the score
+    ├── test_insider.py # Tests of the insider-trades summary
+    └── test_contract.py  # Tests of the contract: the output must match the schema and the full result
 ```
 
 ## Requirements
