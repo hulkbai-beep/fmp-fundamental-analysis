@@ -385,12 +385,13 @@ def latest_by_end(rows: list, before: dt.date | None = None) -> list:
 
 
 def annual_check(years: list, quarters: list) -> list:
-    """Fiscal-year EPS against the sum of its four quarters (latest filings): a ratio near a split factor marks
-    a basis error the steps above missed."""
+    """Fiscal-year EPS against the sum of its four quarters (latest filings), the quarters ending in the 340 days
+    up to the year's end (the first ends about 273, the year before about 364 days earlier, 52/53-week years
+    included): a ratio near a split factor marks a basis error the steps above missed."""
     out = []
     qs = latest_by_end(quarters)
     for y in latest_by_end(years):
-        inside = [q for q in qs if y["end"] - dt.timedelta(days=370) < q["end"] <= y["end"] and q["eps"] is not None]
+        inside = [q for q in qs if y["end"] - dt.timedelta(days=340) < q["end"] <= y["end"] and q["eps"] is not None]
         if len(inside) == 4 and y["eps"] and sum(q["eps"] for q in inside):
             ratio = y["eps"] / sum(q["eps"] for q in inside)
             if not 0.9 <= ratio <= 1.1:

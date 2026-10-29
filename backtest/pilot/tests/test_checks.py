@@ -9,6 +9,7 @@ import random
 import sys
 import tempfile
 import unittest
+from dataclasses import dataclass, replace
 from pathlib import Path
 from unittest import mock
 
@@ -172,7 +173,9 @@ class ChecksTest(unittest.TestCase):
     def test_the_every_start_table_is_replayed_in_full(self):
         """Check 6 replays every plan of the placebo's every-start table, as run_pilot makes it: a table whose
         plans start on the next pool day, or whose plans are not of size 1, fails it, and so does a sim that
-        sells a session late only in plans simulated alone (the method's plans then all pass)."""
+        sells a session late only in plans simulated alone (the method's plans then all pass), or one whose
+        metrics are off only in those plans, their trades unchanged (SPEC amendment 25: only the table's plans
+        are simulated alone, so only their recomputed metrics see such a fault)."""
         comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
         comps = comps[:1]
         table, run0 = C.PL.every_start, C.S.run
@@ -196,8 +199,15 @@ class ChecksTest(unittest.TestCase):
                         pl.sold[j] = (b, p.o[b], s[2], s[2] * p.o[b] * (1 - r.cost), s[4])
                         break
             return out
+
+        def off(p, r, *a, **k):
+            out = run0(p, r, *a, **k)
+            for pl in C.PL.method_plans(out) if k.get("single") else []:
+                pl.m["dh252"] *= 1.01
+            return out
         for obj, name, fault, kinds in ((C.PL, "every_start", next_day, {"table"}),
-                                        (C.PL, "every_start", sized, {"table", "buy"}), (C.S, "run", late, {"sale"})):
+                                        (C.PL, "every_start", sized, {"table", "buy"}), (C.S, "run", late, {"sale"}),
+                                        (C.S, "run", off, {"metrics"})):
             with mock.patch.object(obj, name, fault):
                 got = C.check_fills(self.snap, comps, walk["z"], {})
             self.assertGreater(got["failed"], 0, name)
@@ -287,9 +297,52 @@ class ChecksTest(unittest.TestCase):
         p = P.build(comps[0][1], self.snap, comps[0][3], snapshot_end=walk["z"])
         self.assertIn("2008-01-02", p.dates)                        # the late run lost a bar
 
+    def test_the_dividends_are_audited_apart(self):
+        """Check 6 reads the dividends file itself (SPEC 4, checks.dividends): panel.build's dividends dropped, or
+        each one bar late, and a dividends file whose fields SPEC 4 does not name, each with the trades as the run
+        makes them, fail it."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        build0 = P.build
+
+        def faulty(late):
+            def build(*a, **k):
+                p = build0(*a, **k)
+                return replace(p, div=[0.0] + p.div[:-1] if late else [0.0] * len(p.div))
+            return build
+        for late in (False, True):
+            with mock.patch.object(C.P, "build", faulty(late)):
+                got = C.check_fills(self.snap, comps[:1], walk["z"], {})
+            self.assertIn("dividends", {f.get("replay") for f in got["failures"]}, late)
+        f = self.snap / "raw" / "div" / f"{comps[0][1]}.json"
+        keep = f.read_text()
+        try:
+            f.write_text(json.dumps([{"date": r["date"], "adj_dividend": r["adjDividend"]} for r in json.loads(keep)]))
+            got = C.check_fills(self.snap, comps[:1], walk["z"], {})
+        finally:
+            f.write_text(keep)
+        self.assertEqual([(x["replay"], x["bars"], x["read"]) for x in got["failures"] if x.get("replay") == "dividends"],
+                         [("dividends", 0, 0)])
+
+    def test_the_start_fields_are_audited(self):
+        """Check 6 compares each replayed plan's start temperature, percentile and mid (what the tables' temp0
+        and below_mid and plans.csv's pct0 and vs_mid read) with the start's range: a sim that stores one of them
+        wrong, its decisions unchanged, fails it."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        for name in ("temp0", "pct0", "mid0"):
+            @dataclass
+            class Wrong(C.S.Plan):
+                def __post_init__(self, name=name):
+                    setattr(self, name, "hot" if name == "temp0" and self.temp0 != "hot" else
+                            "cold" if name == "temp0" else getattr(self, name) * 1.01)
+            with mock.patch.object(C.S, "Plan", Wrong):
+                got = C.check_fills(self.snap, comps[:1], walk["z"], {})
+            self.assertEqual({f.get("replay") for f in got["failures"]}, {"levels"}, name)
+            self.assertEqual(list(got["failures"][0]["plan"]), [name])
+
     def test_the_limits_check_finds_the_shapes_it_guards(self):
         """Check 'limits' (SPEC amendment 24): the clean synthetic companies pass; an unclear split whose epoch
-        reaches member days (synth.late_verdict A) and a quarter filed again after a split (B) fail it."""
+        reaches member days (synth.late_verdict A), a quarter filed again after a split (B) and a quarter first
+        filed after a split though a later one was filed before it (C) fail it."""
         self.assertEqual({k: self.res["limits"][k] for k in ("checked", "held_epochs", "failed")},
                          {"checked": 2, "held_epochs": 0, "failed": 0})
         tmp = tempfile.TemporaryDirectory()
@@ -302,6 +355,17 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual([x["symbol"] for x in got["A"]["reaching"]], ["LVA0"])
         self.assertEqual([(x["end"], x["splits"]) for x in got["B"]["refiled_across_split"]],
                          [("2016-03-31", ["2016-06-06"])])
+        synth.company(snap, "LVC0", seed=7, split=(dt.date(2016, 6, 6), 2.0))
+        path = snap / "raw" / "inc_q" / "LVC0.json"
+        rows = json.loads(path.read_text())
+        for r in rows:
+            if r["date"] == "2015-12-31":
+                r["filingDate"], r["acceptedDate"] = "2016-07-15", "2016-07-15 16:05:00"
+        path.write_text(json.dumps(rows))
+        got["C"] = C.check_limits(snap, [("LVC0", "LVC0", "Tech", [["2005-01-03", "2030-01-01"]])], "2026-10-23")
+        self.assertEqual([(x["statements"], x["end"], x["split"], x["latest_end_before"])
+                          for x in got["C"]["filed_late_across_split"]], [("inc_q", "2015-12-31", "2016-06-06", "2016-03-31")])
+        self.assertEqual(got["A"]["filed_late_across_split"] + got["B"]["filed_late_across_split"], [])
         self.assertTrue(all(x["failed"] for x in got.values()))
         tmp.cleanup()
 

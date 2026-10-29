@@ -485,6 +485,33 @@ class PanelTest(unittest.TestCase):
             n = len(t.dates)
             self.assertEqual((t.eps["T"], t.band["T"]), (u.eps["T"][:n], u.band["T"][:n]), cut)
 
+    def test_the_annual_check_reads_each_years_own_quarters(self):
+        """panel.annual_check sums the four quarters ending in the 340 days up to a fiscal year's end, calendar and
+        52/53-week years alike (the last quarter of the year before ends about 364 days earlier and stays out):
+        the synthetic company's years add up, a year planted at twice its quarters' EPS is listed with ratio 2,
+        and so is a 52-week year whose quarters end on Saturdays."""
+        self.assertEqual(self.p.report["annual_vs_quarters"], [])
+        path = self.snap / "raw" / "inc_a" / "SYN.json"
+        keep = path.read_text()
+        try:
+            rows = json.loads(keep)
+            for r in rows:
+                if r["date"] == "2016-12-31":
+                    r["epsDiluted"] *= 2
+            path.write_text(json.dumps(rows))
+            got = P.build("SYN", self.snap, SPANS).report["annual_vs_quarters"]
+        finally:
+            path.write_text(keep)
+        self.assertEqual([(x["fy_end"], x["ratio"]) for x in got], [("2016-12-31", 2.0)])
+        d = dt.date
+
+        def row(end, eps):
+            return {"end": end, "known": end + dt.timedelta(days=40), "eps": eps}
+        qs = [row(e, 1.0) for e in (d(2016, 12, 31), d(2017, 4, 1), d(2017, 7, 1), d(2017, 9, 30), d(2017, 12, 30))]
+        self.assertEqual(P.annual_check([row(d(2017, 12, 30), 8.0)], qs),
+                         [{"fy_end": "2017-12-30", "fy_eps": 8.0, "ratio": 2.0}])
+        self.assertEqual(P.annual_check([row(d(2017, 12, 30), 4.0)], qs), [])
+
     def test_loss_years_have_no_band(self):
         synth.company(self.snap, "LOS", seed=5, loss_years=(2012, 2013))
         q = P.build("LOS", self.snap, SPANS)
