@@ -41,9 +41,11 @@ def series_stats(cal: list, v: list, accr: list) -> dict:
 
 
 def month_ends(cal: list) -> list:
-    """Indices of the last session of each month (and the last session)."""
-    out = [k for k in range(len(cal) - 1) if cal[k][:7] != cal[k + 1][:7]]
-    return out + [len(cal) - 1]
+    """Indices of the first session (where every series starts at 1.0, so the first year counts from it), the
+    last session of each month, and the last session."""
+    if not cal:
+        return []
+    return sorted({0, len(cal) - 1} | {k for k in range(len(cal) - 1) if cal[k][:7] != cal[k + 1][:7]})
 
 
 def t_ppf(p: float, df: int) -> float:

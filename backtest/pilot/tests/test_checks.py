@@ -91,6 +91,16 @@ class ChecksTest(unittest.TestCase):
                 got = C.check_truncation(self.snap, comps, 10, random.Random(5), walk["z"])
             self.assertGreater(got["failed"], 0, name)
 
+    def test_review_table_lists_skipped_candidates(self):
+        walk = {"z": "2026-10-23", "companies": [], "review": [],
+                "replacements": [{"out": "BBB", "why": "TTM EPS on 0% of member sessions", "in": "CCC",
+                                  "tried": [{"key": "EEE", "why": "reused ticker (V3 bars_from / cuts)"}]},
+                                 {"out": "DDD", "why": "bars on 10% of member sessions", "in": None, "tried": []}]}
+        text = C.review_table(walk, {}, {}, [], {})
+        self.assertIn("BBB → CCC", text)
+        self.assertIn("EEE：reused ticker", text)
+        self.assertIn("DDD → 找不到可用的替补", text)
+
     def test_spin_off_evidence(self):
         rows = {(r["symbol"], r["source"]): r for r in self.res["spins"]}
         a = rows[("AAA", "listed")]

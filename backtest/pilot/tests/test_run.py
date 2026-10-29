@@ -16,6 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
+import market as M  # noqa: E402
 import panel as P  # noqa: E402
 import run_pilot as R  # noqa: E402
 import sim as S  # noqa: E402
@@ -41,6 +42,8 @@ def market(snap: Path):
 
 
 def manifest(snap: Path):
+    if not (snap / "fetch_log.json").exists():                     # as the PC writes it: nothing failed
+        (snap / "fetch_log.json").write_text(json.dumps({"failures": [], "optional_missing": []}))
     files = {}
     for p in sorted((snap / "raw").rglob("*.json")):
         files[str(p.relative_to(snap)).replace("\\", "/")] = {"md5": hashlib.md5(p.read_bytes()).hexdigest()}
@@ -210,6 +213,32 @@ class RunTest(unittest.TestCase):
                                      "--sample", str(self.sample)]), 2)
         finally:
             pc.unlink()
+
+    def test_failed_or_missing_parts_refuse(self):
+        """A part that failed on the PC, or a chosen company's part that is not in the snapshot at all (read as
+        empty data otherwise), stops the run even when every file present matches the manifest."""
+        log = self.snap / "fetch_log.json"
+        keep = log.read_text()
+        try:
+            log.write_text(json.dumps({"failures": [{"part": "splits", "symbol": "AAA", "error": "HTTP 500"}],
+                                       "optional_missing": []}))
+            self.assertEqual(M.check_complete(self.snap, ["AAA"]), ["failed on the PC: splits/AAA"])
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+                                     "--sample", str(self.sample)]), 2)
+        finally:
+            log.write_text(keep)
+        f = self.snap / "raw" / "div" / "CCC.json"
+        data = f.read_bytes()
+        try:
+            f.unlink()
+            manifest(self.snap)
+            self.assertEqual(M.check_complete(self.snap, ["CCC"]), ["missing: raw/div/CCC.json"])
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+                                     "--sample", str(self.sample)]), 2)
+        finally:
+            f.write_bytes(data)
+            manifest(self.snap)
+        self.assertEqual(M.check_complete(self.snap, ["AAA", "CCC", "DDD", "EEE"]), [])
 
     def test_manifest_refuses_a_changed_file(self):
         f = self.snap / "raw" / "inc_q" / "AAA.json"

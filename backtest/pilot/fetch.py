@@ -337,12 +337,15 @@ def pack(out: Path, zip_path: Path, scan: list, key: str | None) -> int:
     if not key:
         raise Stop("FMP_API_KEY is not set, so the key scan cannot run")
     k = key.strip().encode()
-    hits = 0
+    hits, files = 0, 0
     for p in [out] + [Path(x) for x in scan]:
+        if not p.exists():
+            raise Stop(f"{p}: not found, so it was not scanned; nothing was zipped")
         for f in ([p] if p.is_file() else sorted(p.rglob("*"))):
             if f.is_file():
                 hits += f.read_bytes().count(k)
-    print(f"key occurrences: {hits}")
+                files += 1
+    print(f"key occurrences: {hits} in {files} files")
     if hits:
         raise Stop("the key occurs in the snapshot or the log; nothing was zipped (find the file by name)")
     man = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
@@ -373,7 +376,7 @@ def main(argv=None) -> int:
     ap.add_argument("--scan", nargs="*", default=[], help="more files for the key scan (the console log)")
     a = ap.parse_args(argv)
     out = Path(a.out)
-    key = os.environ.get("FMP_API_KEY")
+    key = (os.environ.get("FMP_API_KEY") or "").strip() or None      # the value the client sends, for redaction
     try:
         if a.pack:
             return pack(out, Path(a.pack), a.scan, key)

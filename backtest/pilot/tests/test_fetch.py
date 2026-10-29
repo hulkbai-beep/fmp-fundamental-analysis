@@ -189,6 +189,27 @@ class FetchRunTest(unittest.TestCase):
         finally:
             stray.unlink()
 
+    def test_key_with_whitespace_is_still_redacted(self):
+        """A key read with a trailing CR (a CRLF key file in Git Bash) is the stripped key the client sends: the
+        failure text is redacted all the same."""
+        out = Path(self.tmp.name) / "snap_cr"
+        fail = {("earnings", "AAA"): f"HTTP 404 on earnings: bad request apikey={KEY}"}
+        with mock.patch.object(F, "FMPClient", lambda use_cache=False: FakeClient(Path(self.tmp.name) / "src", fail)), \
+                mock.patch.dict(os.environ, {"FMP_API_KEY": KEY + "\r\n"}, clear=False):
+            F.main(["--out", str(out), "--sample", str(self.sample), "--end", Z.isoformat()])
+        log = json.loads((out / "fetch_log.json").read_text())
+        self.assertIn("***", log["failures"][0]["error"])
+        for f in out.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(KEY.encode(), f.read_bytes(), f)
+
+    def test_pack_refuses_a_scan_file_that_is_not_there(self):
+        z = Path(self.tmp.name) / "no.zip"
+        with mock.patch.dict(os.environ, {"FMP_API_KEY": KEY}, clear=False):
+            rc = F.main(["--out", str(self.out), "--pack", str(z), "--scan", str(Path(self.tmp.name) / "consle.log")])
+        self.assertNotEqual(rc, 0)
+        self.assertFalse(z.exists())
+
     def test_rerun_fetches_nothing_new(self):
         with mock.patch.object(F, "FMPClient", lambda use_cache=False: FakeClient(Path(self.tmp.name) / "src")), \
                 mock.patch.dict(os.environ, {"FMP_API_KEY": KEY}, clear=False):

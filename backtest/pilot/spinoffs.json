@@ -1,14 +1,15 @@
 {
- "rule": "Spin-offs in the sample. Prices are not adjusted for a distribution: the ex-date's bar drops by the value spun off, and for a while the trailing (T) or fiscal-year (F) EPS still holds the unit the price no longer does, so the P/E reads cheap. For an event marked confirmed (from checks.py's spins table: the /full move against SPY on the ex-date and the distribution the dividend-adjusted series implies): a position held at the last close before the ex-date is sold at that close, and a plan still waiting for its first buy there is cancelled (sim, reason 'spin'); no plan starts on that close; no new T plan for 365 days after the ex-date, no new F plan until the end of that fiscal year (panel.build). Dates are from memory until confirmed; an unconfirmed event changes nothing.",
+ "rule": "Spin-offs in the sample. FMP usually adjusts the prices before the ex-date through a split row on that day (the bar then does not drop, or jumps by the adjustment's error); when it does not, the ex-date's bar drops by the value spun off. Either way, for a while the trailing (T) or fiscal-year (F) EPS still holds the unit the price no longer does, so the P/E reads cheap. For an event marked confirmed (from checks.py's spins table: the /full move against SPY on the ex-date and the distribution the dividend-adjusted series implies): a position held at the last close before the ex-date is sold at that close, and a plan still waiting for its first buy there is cancelled (sim, reason 'spin'); no plan starts on that close; no new T plan for 365 days after the ex-date, no new F plan until the end of that fiscal year (panel.build). Dates are from memory until confirmed; an unconfirmed event changes nothing.",
+ "reviewed": "Marked from checks.py's spins table on the snapshot of 2026-10-28 (zip md5 65f003ec605814fdc2f5d90508863981), before any result was opened. None of the 222 other candidates (one-day moves beyond 20%) implies a distribution in the dividend-adjusted series: they are market or company news, not spin-offs.",
  "events": {
-  "MS": [{"date": "2007-07-02", "what": "Discover Financial Services", "confirmed": false}],
-  "MSI": [{"date": "2011-01-04", "what": "Motorola Mobility (with the 1-for-7 reverse split)", "confirmed": false}],
-  "MDLZ": [{"date": "2012-10-02", "what": "Kraft Foods Group", "confirmed": false}],
-  "PENN": [{"date": "2013-11-04", "what": "Gaming and Leisure Properties", "confirmed": false}],
-  "MTW": [{"date": "2016-03-04", "what": "Manitowoc Foodservice (Welbilt)", "confirmed": false}],
-  "XRX": [{"date": "2017-01-03", "what": "Conduent", "confirmed": false}],
-  "CTXS": [{"date": "2017-02-01", "what": "GoTo business to LogMeIn (Reverse Morris Trust)", "confirmed": false}],
-  "EXC": [{"date": "2022-02-02", "what": "Constellation Energy", "confirmed": false}],
-  "FBHS": [{"date": "2022-12-15", "what": "MasterBrand", "confirmed": false}]
+  "MS": [{"date": "2007-07-02", "what": "Discover Financial Services", "confirmed": false, "evidence": "Not confirmed from the snapshot: /full shows no move on 2007-07-02 (+0.0% vs SPY), the dividend-adjusted series implies no distribution and there is no split row, so the date cannot be checked here; it is before 2008-01-02 and only its 365-day T blackout (to 2008-07-01) would have mattered."}],
+  "MSI": [{"date": "2011-01-04", "what": "Motorola Mobility (with the 1-for-7 reverse split)", "confirmed": true, "evidence": "FMP split row 400/1617 on 2011-01-04 (the 1-for-7 reverse split with the spin-off folded in); /full jumps +9.2% vs SPY that day, an artefact of that adjustment."}],
+  "MDLZ": [{"date": "2012-10-02", "what": "Kraft Foods Group", "confirmed": true, "evidence": "FMP split row 191/125 typed 'spin-off' on 2012-10-02; /full is adjusted through it (+0.6% vs SPY)."}],
+  "PENN": [{"date": "2013-11-04", "what": "Gaming and Leisure Properties", "confirmed": false, "evidence": "Outside PENN's bars (they start 2018-01-22); nothing to confirm and no effect."}],
+  "MTW": [{"date": "2016-03-04", "what": "Manitowoc Foodservice (Welbilt)", "confirmed": true, "evidence": "FMP split row 27599/6250 on 2016-03-04; /full adjusted through it (+5.0% vs SPY). MTW left the index in 2009, so no plan can start near it."}],
+  "XRX": [{"date": "2017-01-03", "what": "Conduent", "confirmed": true, "evidence": "FMP split row 759/500 on 2017-01-03; /full jumps +19.1% vs SPY that day, an artefact of that adjustment."}],
+  "CTXS": [{"date": "2017-02-01", "what": "GoTo business to LogMeIn (Reverse Morris Trust)", "confirmed": true, "evidence": "FMP split row 6279/5000 on 2017-02-01, but /full is not adjusted: it drops 21.9% vs SPY that day."}],
+  "EXC": [{"date": "2022-02-02", "what": "Constellation Energy", "confirmed": true, "evidence": "FMP split row 701/500 on 2022-02-02; /full adjusted through it (+3.0% vs SPY)."}],
+  "FBHS": [{"date": "2022-12-15", "what": "MasterBrand", "confirmed": false, "evidence": "Outside FBHS's bars: the series ends 2022-12-14, the day before the spin-off and the change of ticker to FBIN, so the panel treats it as delisted at that close; no effect."}]
  }
 }

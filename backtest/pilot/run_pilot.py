@@ -487,6 +487,10 @@ def main(argv=None) -> int:
     if walk.get("same_as_pc") is False:
         print("snapshot refused: the replacement walk here differs from the PC's (status.json)")
         return 2
+    gaps = M.check_complete(snap, [c[1] for c in comps])
+    if gaps:
+        print(f"snapshot refused: {len(gaps)} parts failed or are missing, e.g. {gaps[:3]}")
+        return 2
     swaps = walk["replacements"]
     rates, spy = M.load(snap)
     cal = [d for d in spy.days if FIRST_DAY <= d <= walk["z"]]

@@ -85,8 +85,9 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
     for _, sym, sector, spans in picked:
         p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z)
         sp = P.split_factors(P.read(snap / "raw" / "splits" / f"{sym}.json"))
-        years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {}, unclear="none")
-        quarters = P.statement_rows(P.read(snap / "raw" / "inc_q" / f"{sym}.json"), sp, {}, unclear="none")
+        years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {}, unclear="none", units="fix")
+        quarters = P.statement_rows(P.read(snap / "raw" / "inc_q" / f"{sym}.json"), sp, {}, unclear="none",
+                                    units="fix")
         days = [i for i, d in enumerate(p.dates) if d >= R.FIRST_DAY and p.member[i]]
         for i in rnd.sample(days, min(len(days), per)):
             for v in ("T", "F"):
@@ -207,7 +208,7 @@ def check_pipeline(snap: Path, comps: list) -> dict:
         rep = {}
         lo = (zd - dt.timedelta(days=P.LOOKBACK_DAYS + 400)).isoformat()
         for r in P.statement_rows(inc_a_all, P.split_factors(P.read(raw / "splits" / f"{sym}.json")), rep,
-                                  unclear="none"):
+                                  unclear="none", units="fix"):
             if r["end"].isoformat() >= lo:
                 eps0 = P.fnum(r["raw"].get("epsDiluted", r["raw"].get("epsdiluted", r["raw"].get("eps"))))
                 sh0 = P.fnum(r["raw"].get("weightedAverageShsOutDil")) or P.fnum(r["raw"].get("weightedAverageShsOut"))
@@ -343,7 +344,7 @@ def check_basis(snap: Path, comps: list, z: str) -> dict:
         rep = p.report
         keep = {k: rep[k] for k in ("basis_q", "basis_a", "annual_vs_quarters", "spin_candidates")}
         if any(keep["basis_q"].get(k) or keep["basis_a"].get(k) for k in
-               ("boundary", "partial", "share_steps", "eps_shares", "review")) or keep["annual_vs_quarters"] \
+               ("boundary", "partial", "share_steps", "eps_units", "eps_shares", "review")) or keep["annual_vs_quarters"] \
                 or keep["spin_candidates"]:
             out[sym] = json.loads(json.dumps(keep, default=str))
     return out
@@ -371,7 +372,8 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
     w = ["# 数据核对表（看结果之前签字）\n", f"快照最后一天 {walk['z']}；公司 {len(walk['companies'])} 家\n",
          "## 可用规则（U1–U4）和替换\n"]
     swaps = [x for x in walk["replacements"] if x.get("in")]
-    w += [f"- {x['out']} → {x['in']}：{x['why']}" + (f"（试过 {', '.join(x['tried'])}）" if x.get("tried") else "")
+    w += [f"- {x['out']} → {x['in'] or '找不到可用的替补'}：{x['why']}"
+          + ("（跳过 " + "，".join(f"{t['key']}：{t['why']}" for t in x["tried"]) + "）" if x.get("tried") else "")
           for x in walk["replacements"]] or ["- 没有替换"]
     w += [f"- 待人工看：{x}" for x in walk.get("review", [])]
     w.append(f"\n替换 {len(swaps)} 家。\n")
@@ -401,7 +403,13 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
             for d in x.get("boundary", []):
                 parts.append(f"{name} 拆股 {d['split']}×{d['factor']:g} {d['action']}（改 {d['rows_changed']} 行）")
             parts += [f"{name} 部分重述 {len(x['partial'])} 处"] if x.get("partial") else []
-            parts += [f"{name} EPS×股数/净利润异常 {len(x['eps_shares'])} 行"] if x.get("eps_shares") else []
+            parts += [f"{name} EPS 和股数口径不同、按拆股倍数改了 {len(x['eps_shares'])} 行"] if x.get("eps_shares") else []
+            parts += [f"{name} EPS 单位错、改成净利润÷股数 {len(x['eps_units'])} 行（"
+                      + "，".join(f"{u['end']} {u['eps']:g}→{u['now']:g}" for u in x["eps_units"]) + "）"] \
+                if x.get("eps_units") else []
+            parts += [f"{name} EPS×股数÷净利润不在 0.6–1.6、只列出 {len(x['review'])} 行（"
+                      + "，".join(f"{u['end']} {u['eps_x_shares_over_ni']:g}" for u in x["review"][:8])
+                      + ("…" if len(x["review"]) > 8 else "") + "）"] if x.get("review") else []
         parts += [f"年报和四季之和不符 {len(b['annual_vs_quarters'])} 年"] if b.get("annual_vs_quarters") else []
         parts += [f"大幅单日涨跌 {len(b['spin_candidates'])} 次"] if b.get("spin_candidates") else []
         if parts:
@@ -475,6 +483,10 @@ def main(argv=None) -> int:
     comps, walk = R.choose(snap, sample)
     if walk.get("same_as_pc") is False:
         print("snapshot refused: the replacement walk here differs from the PC's (status.json)")
+        return 2
+    gaps = M.check_complete(snap, [c[1] for c in comps])
+    if gaps:
+        print(f"snapshot refused: {len(gaps)} parts failed or are missing, e.g. {gaps[:3]}")
         return 2
     z = walk["z"]
     rnd = random.Random(SEED)

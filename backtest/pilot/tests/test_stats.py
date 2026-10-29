@@ -122,5 +122,21 @@ class SignalTest(unittest.TestCase):
         self.assertGreater(out["h252"]["ic"], 0.8)
 
 
+class YearlyExcessTest(unittest.TestCase):
+    def test_the_first_year_counts_from_the_first_session(self):
+        """The method holds cash while SPY falls 10% in January 2008 and is flat after: 2008's excess is +10%."""
+        import datetime as dt
+        cal = [d.isoformat() for d in (dt.date(2008, 1, 2) + dt.timedelta(days=k) for k in range(400))
+               if d.weekday() < 5]
+        spy = [1.0 if d == cal[0] else 0.9 for d in cal]
+        cash = [1.0] * len(cal)
+        marks = ST.month_ends(cal)
+        self.assertEqual(marks[0], 0)
+        mcal = [cal[k] for k in marks]
+        got = ST.yearly_excess(mcal, [cash[k] for k in marks], [spy[k] for k in marks])
+        self.assertAlmostEqual(got["by_year"]["2008"], 0.10)
+        self.assertAlmostEqual(got["by_year"]["2009"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

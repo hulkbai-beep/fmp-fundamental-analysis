@@ -49,6 +49,23 @@ def load(snap: Path) -> tuple[Rates, Spy]:
     return Rates(read(raw / "market" / "treasury.json")), Spy(read(raw / "adj" / "SPY.json"))
 
 
+PARTS = ("full", "adj", "inc_q", "inc_a", "splits", "div", "earn", "profile", "est")   # fetch.py's per company
+
+
+def check_complete(snap: Path, series: list) -> list:
+    """What the analysis needs and the snapshot lacks: a part the fetch log lists as failed, and any part of a
+    company the walk chose, or a market file, that is not there (panel.read would take it for empty data)."""
+    snap = Path(snap)
+    path = snap / "fetch_log.json"
+    if not path.exists():
+        return ["fetch_log.json is missing"]
+    log = json.loads(path.read_text(encoding="utf-8"))
+    out = [f"failed on the PC: {x.get('part')}/{x.get('symbol')}" for x in log.get("failures", [])]
+    need = ["raw/full/SPY.json", "raw/adj/SPY.json", "raw/market/treasury.json"]
+    need += [f"raw/{part}/{s}.json" for s in series for part in PARTS]
+    return out + [f"missing: {n}" for n in need if not (snap / n).exists()]
+
+
 def check_manifest(snap: Path) -> list:
     """Files that differ from the manifest, are missing, or are not listed in it, and bookkeeping files (run,
     status, fetch log) that differ from their recorded md5: the analysis refuses such a snapshot."""

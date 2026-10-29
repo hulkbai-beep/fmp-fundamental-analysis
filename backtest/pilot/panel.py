@@ -46,6 +46,9 @@ SPLIT_MIN = math.log(1.02)               # smaller factors are ignored
 SPLIT_WEAK = math.log(1.25)              # below this the share-count test needs clearer evidence
 STEP_BAND = (0.8, 1.25)                  # consecutive diluted share counts outside this are a step to explain
 EPS_SHARES_OK = (0.6, 1.6)               # EPS x diluted shares / net income outside this is listed for review
+UNIT_SLIP = 1000.0                       # EPS x shares / NI this far off (within 2%): one field is in the wrong unit
+UNIT_NEAR_DAYS = 730                     # ... and the EPS is the wrong one when it is 100 times off the EPS of the
+UNIT_OFF = math.log(100.0)               #     company's other rows with period ends this close
 DELIST_GAP_DAYS = 10                     # bars ending this long before the snapshot's last day: delisted
 SPIN_MOVE = 0.20                         # one-day moves beyond this, off splits and earnings: spin-off candidates
 BAND_OF = {"T": "T", "F": "F", "FY": "F"}
@@ -187,9 +190,13 @@ def _runs(factors: list) -> list:
     return [math.prod(factors[a:b]) for a in range(len(factors)) for b in range(a + 1, len(factors) + 1)]
 
 
-def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep") -> list:
+def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep", units: str = "keep") -> list:
     """Rows (each filing, with end / known / eps / shares / ni) on today's split basis, in four steps; every
     decision goes into report (a dict of lists) for review.
+      0 eps_units (units="fix", the pilot's panels; status.py's frozen rule keeps the rows as filed): EPS x
+        shares / NI within 2% of 1000 or 1/1000 means one field is in the wrong unit. When the EPS is also 100
+        times off the median EPS of the company's other rows within two years, the EPS is the wrong field and
+        becomes NI / shares; otherwise the net income is, and nothing changes (only the EPS is used).
       1 eps_shares: EPS x diluted shares / net income near a split product F (or 1/F) means the EPS and share
         fields of that row are on different bases; the EPS is put on the shares' basis. Rows outside 0.6-1.6
         otherwise are only listed (preferred dividends, two classes of stock).
@@ -205,8 +212,21 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
         ones are put on the new basis. Other steps are listed (a merger, a spin-off) for history_problem.
     """
     rows = sorted((dict(r) for r in rows), key=lambda r: (r["known"], r["end"]))
-    for k in ("eps_shares", "boundary", "partial", "share_steps", "review"):
+    for k in ("eps_units", "eps_shares", "boundary", "partial", "share_steps", "review"):
         report.setdefault(k, [])
+    if units == "fix":
+        fixes = []
+        for r in rows:
+            e, n, ni = r["eps"], r["shares"], r.get("ni")
+            if not (e and n and ni) or e * ni <= 0 or abs(abs(math.log(e * n / ni)) - math.log(UNIT_SLIP)) > 0.02:
+                continue
+            near = sorted(abs(x["eps"]) for x in rows if x is not r and x["eps"] and x["end"] != r["end"]
+                          and abs((x["end"] - r["end"]).days) <= UNIT_NEAR_DAYS)
+            if near and abs(math.log(abs(e) / near[len(near) // 2])) > UNIT_OFF:
+                fixes.append((r, ni / n))
+        for r, new in fixes:                     # decided on the rows as filed, then applied
+            report["eps_units"].append({"end": r["end"].isoformat(), "eps": r["eps"], "now": round(new, 6)})
+            r["eps"] = new
     big = [F for F in _runs([f for _, f in splits]) if abs(math.log(F)) >= math.log(1.4)]
     for r in rows:
         e, n, ni = r["eps"], r["shares"], r.get("ni")
@@ -282,9 +302,9 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
     return rows
 
 
-def statement_rows(raw: list, splits: list, report: dict, unclear: str = "keep") -> list:
+def statement_rows(raw: list, splits: list, report: dict, unclear: str = "keep", units: str = "keep") -> list:
     """Income rows -> [{end, known, placeholder, period, eps, shares, ni}], every filing kept, oldest known
-    first, on today's split basis (unclear: see normalize_basis)."""
+    first, on today's split basis (unclear, units: see normalize_basis)."""
     out, seen = [], set()
     for r in raw:
         if not r.get("date"):
@@ -300,7 +320,7 @@ def statement_rows(raw: list, splits: list, report: dict, unclear: str = "keep")
             out.append(row)
     report["placeholders"] = sum(r["placeholder"] for r in out)
     report["rows"] = len(out)
-    return normalize_basis(out, splits, report, unclear)
+    return normalize_basis(out, splits, report, unclear, units)
 
 
 def latest_by_end(rows: list, before: dt.date | None = None) -> list:
@@ -443,8 +463,10 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
                                   split_rows)
     divs = read(raw / "div" / f"{symbol}.json")
     rep = {"clean": clean, "basis_q": {}, "basis_a": {}}
-    quarters = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, rep["basis_q"], unclear="none")
-    years = statement_rows(read(raw / "inc_a" / f"{symbol}.json"), splits, rep["basis_a"], unclear="none")
+    quarters = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, rep["basis_q"], unclear="none",
+                              units="fix")
+    years = statement_rows(read(raw / "inc_a" / f"{symbol}.json"), splits, rep["basis_a"], unclear="none",
+                           units="fix")
     rep["annual_vs_quarters"] = annual_check(years, quarters)
     rep["spin_candidates"] = spin_candidates(bars, split_rows, read(raw / "earn" / f"{symbol}.json"))
     if truncate:

@@ -193,6 +193,35 @@ class PanelTest(unittest.TestCase):
             t = P.build("LKQ", self.snap, SPANS, truncate=cut, snapshot_end=cut, audit_known=orig)
             self.assertEqual(t.band["T"], full.band["T"][:len(t.dates)])
 
+    def test_an_eps_in_the_wrong_unit_is_fixed(self):
+        """One quarter's EPS 1000 times too large (APOL's 2008 Q2 in FMP) becomes net income / shares, and T is
+        as without the slip; a net income 1000 times too small (TPR's 2003 Q2) leaves the EPS alone."""
+        synth.company(self.snap, "UNT", seed=21, split=None)
+        base = P.build("UNT", self.snap, SPANS)
+        path = self.snap / "raw" / "inc_q" / "UNT.json"
+        rows = json.loads(path.read_text())
+        rows.sort(key=lambda r: r["date"])
+        eps_bad, ni_bad = rows[40], rows[60]
+        eps_bad["epsDiluted"] *= 1000
+        ni_bad["netIncome"] /= 1000
+        path.write_text(json.dumps(rows))
+        p = P.build("UNT", self.snap, SPANS)
+        fixed = p.report["basis_q"]["eps_units"]
+        self.assertEqual([u["end"] for u in fixed], [eps_bad["date"]])
+        want = eps_bad["netIncome"] / eps_bad["weightedAverageShsOutDil"]
+        self.assertAlmostEqual(fixed[0]["now"], want, places=6)
+        for a, b in zip(p.eps["T"], base.eps["T"]):
+            self.assertTrue(a is None and b is None or abs(a - b) <= 1e-6 * max(1.0, abs(b)))
+        for a, b in zip(p.band["T"], base.band["T"]):            # equal up to the EPS's rounding in the file
+            self.assertEqual(a is None, b is None)
+            if a is not None:
+                for k in ("p25", "median", "p75"):
+                    self.assertAlmostEqual(a[k], b[k], delta=1e-5 * abs(b[k]))
+                self.assertAlmostEqual(a["pct"], b["pct"], delta=0.01)
+        rep = {}                                    # the frozen walk's reading keeps the rows as filed
+        P.statement_rows(rows, [], rep)
+        self.assertEqual(rep["eps_units"], [])
+
     def test_split_after_the_day_changes_no_multiple(self):
         """A 2-for-1 split after the cut, with the statements restated or not: the P/E band at the cut is the
         same as without the split, and the range is in the new units."""
