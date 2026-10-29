@@ -20,7 +20,11 @@ Checks before any result is read, on the frozen snapshot (all in the cloud; SPEC
              open after a fair close on or after its tranche date and by the expiry, under the chase limit,
              tranche k after k - 1, never at an open that fills a sale of the plan; every sale at the open
              after its signal close, except the delisting and spin-off sales at the close of their bar, for its
-             shares at that price less the cost; shares bought = shares sold + shares held for every plan
+             shares at that price less the cost; shares bought = shares sold + shares held for every plan; each
+             run from 2008-01-02 to the last bar; SPY's session numbers, opens and closes on every bar as this
+             file reads them, and every replayed plan's DH_252 and other metrics recomputed from its trades
+  limits     none of the shapes the known limits of the split basis need (SPEC amendment 24): an epoch of T
+             that holds an unclear split and reaches a member day, a period filed on both sides of a split
   basis      the statement basis decisions, EPS x shares / net income outliers and annual-vs-quarters gaps of
              every company, for review by eye
   spins      the evidence to confirm each spin-off (the listed events and panel.spin_candidates): the /full
@@ -45,6 +49,7 @@ import bisect
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import random
 import sys
@@ -63,6 +68,7 @@ A = P.A
 sys.path.insert(0, str(HERE.parent.parent / "scripts"))
 import score as SC  # noqa: E402
 SEED = 20261029
+FIRST_DAY = "2008-01-02"            # SPEC 3.2: the window's first day (apart from run_pilot's)
 LAG = {"Q1": 45, "Q2": 45, "Q3": 45, "Q4": 90, "FY": 90}
 VOID = ("lapsed", "expired", "cancelled_below_stop", "spin", "unfilled")    # plans that never bought
 SPIN_LOOK = 5                       # sessions either side of a listed spin-off date searched for its drop
@@ -87,7 +93,7 @@ def check_calendar(snap: Path, comps: list, z: str) -> dict:
     off = {}
     for _, sym, sector, spans in comps:
         days = [str(r["date"])[:10] for r in P.read(snap / "raw" / "full" / f"{sym}.json") if r.get("date")]
-        n = sorted(d for d in days if R.FIRST_DAY <= d <= z and d not in a)
+        n = sorted(d for d in days if FIRST_DAY <= d <= z and d not in a)
         if n:
             off[sym] = {"bars": len(n), "first": n[:5]}
     return {"checked": len(rule), "failed": len(a ^ b), "only_full": sorted(a - b)[:10], "only_adj": sorted(b - a)[:10],
@@ -106,7 +112,7 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
         q_raw = P.read(snap / "raw" / "inc_q" / f"{sym}.json")
         reading = {"T": P.statement_rows(q_raw, sp, {}, unclear="mark", units="fix", eps_shares="later"),
                    "F": P.statement_rows(q_raw, sp, {}, unclear="none", units="fix", eps_shares="later")}
-        days = [i for i, d in enumerate(p.dates) if d >= R.FIRST_DAY and p.member[i]]
+        days = [i for i, d in enumerate(p.dates) if d >= FIRST_DAY and p.member[i]]
         for i in rnd.sample(days, min(len(days), per)):
             for v in ("T", "F"):
                 d = P.day(p.dates[i])
@@ -268,7 +274,7 @@ def check_truncation(snap: Path, comps: list, n: int, rnd: random.Random, z: str
     filing_cuts = 0
     for _, sym, sector, spans in comps:
         full = P.build(sym, snap, spans, versions=("T",), snapshot_end=z)
-        days = [d for i, d in enumerate(full.dates) if d >= R.FIRST_DAY and full.member[i]]
+        days = [d for i, d in enumerate(full.dates) if d >= FIRST_DAY and full.member[i]]
         rows = [r for part in ("inc_q", "inc_a") for r in P.read(snap / "raw" / part / f"{sym}.json") if r.get("date")]
         filings = sorted({filed(r)[0].isoformat() for r in rows} & set(days))
         on_filing = set(rnd.sample(filings, min(len(filings), per)))
@@ -298,6 +304,106 @@ WEIGHTS, EVERY, EXPIRY, CHASE = (0.10, 0.20, 0.30, 0.20, 0.20), 10, 120, 0.5    
 STOP_ATR, T_MIN, T_PROJ, T2_GAP, T2_FALL = 2.0, 1.5, 3.0, 1.0, 5.0             # R3, in ATR
 MIN_RR, MIN_RR0, MAX_STOP, COST = 1.5, 1.0, 0.15, 0.0005                       # R4; the cost one way
 ENDS_AT_CLOSE = ("delisted", "spin", "expired", "cancelled_below_stop")       # the other ends are at an open
+SOLD_AT_CLOSE = ("delisted", "spin")            # R10: the sales at the close of their bar
+H_LONG, H_SHORT = 252, 126                      # SPEC 5.1: the SPY sessions after the signal close
+METRICS = ("dh252", "dh126", "raw252", "tb252", "cost252", "dep252", "mae252")
+
+
+class Hedge:
+    """SPY and the bill as SPEC 4 and 5.1 read them, here apart from market, placebo.sessions and
+    run_pilot.hedge_of: the session number of a day (the last SPY session on or before it, on the rule's
+    calendar, SPY /full up to Z, which check 1 finds equal to the hedge's), SPY's adjOpen of a day (of the next
+    session when SPY did not trade that day, its close when that session has none) and its adjClose (the last
+    on or before the day), from raw/adj/SPY.json, and the 3-month bill's yield of the latest Treasury row on or
+    before a day."""
+
+    def __init__(self, snap: Path, z: str):
+        raw = Path(snap) / "raw"
+        self.cal = sorted({str(r["date"])[:10] for r in P.read(raw / "full" / "SPY.json")
+                           if r.get("date") and str(r["date"])[:10] <= z})
+        self.zi = len(self.cal) - 1                 # Z's session: a window ending later is not full
+        self.px = {str(r["date"])[:10]: (P.fnum(r.get("adjOpen")), P.fnum(r.get("adjClose")))
+                   for r in P.read(raw / "adj" / "SPY.json") if r.get("date") and P.fnum(r.get("adjClose"))}
+        self.days = sorted(self.px)
+        bill = sorted((str(r["date"])[:10], P.fnum(r.get("month3"))) for r in
+                      P.read(raw / "market" / "treasury.json") if r.get("date"))
+        bill = [(d, y / 100.0) for d, y in bill if y is not None]
+        self.bill_days, self.bill = [d for d, _ in bill], [y for _, y in bill]
+
+    def close(self, d: str):
+        k = bisect.bisect_right(self.days, d) - 1
+        return self.px[self.days[k]][1] if k >= 0 else None
+
+    def open(self, d: str):
+        k = bisect.bisect_left(self.days, d)
+        return self.px[self.days[k]][0] if k < len(self.days) and self.px[self.days[k]][0] else self.close(d)
+
+    def rate(self, d: str) -> float:
+        k = bisect.bisect_right(self.bill_days, d) - 1
+        return self.bill[k] if k >= 0 else 0.0
+
+    def on(self, dates: list) -> dict:
+        """On a company's bars: the session numbers, SPY's opens and closes, the bill's yield and the calendar
+        days since the bar before."""
+        return {"sess": [bisect.bisect_right(self.cal, d) - 1 for d in dates], "so": [self.open(d) for d in dates],
+                "sc": [self.close(d) for d in dates], "bill": [self.rate(d) for d in dates],
+                "gap": [0] + [(P.day(b) - P.day(a)).days for a, b in zip(dates, dates[1:])]}
+
+
+def plan_metrics(p, pl, on: dict) -> dict:
+    """SPEC 5.1 from a plan's trades (its buys and sales, which the replay audits), the panel's bars and SPY and
+    the bill on them (Hedge.on), here apart from sim.run: over the company's bars d after the signal close t0,
+    up to the 252nd SPY session after t0 or the plan's end, the overnight part on the shares held at the
+    previous close (the dividend included) and the intraday part on the shares held after the open's trades,
+    each less SPY's over the same span, minus the costs of the bar's trades; a sale at the close holds its
+    shares through the day. Per unit of the plan's size: DH_252, DH_126 (the bars within 126 sessions) and
+    raw_252 (without SPY), the bill's interest on the money in the stock overnight (tb252, SPEC 4's accrual),
+    the costs (cost252), the money in the stock at each close in years of 252 sessions (dep252) and the lowest
+    raw_252 after a bar (mae252, never above 0)."""
+    sess, so, sc = on["sess"], on["so"], on["sc"]
+    buys, at_open, at_close, cost = {}, {}, {}, {}
+    for b, price, q, cash, _ in pl.filled:
+        buys[b] = buys.get(b, 0.0) + q
+        cost[b] = cost.get(b, 0.0) + cash - q * price
+    for b, price, q, cash, why in pl.sold:
+        book = at_close if why in SOLD_AT_CLOSE else at_open
+        book[b] = book.get(b, 0.0) + q
+        cost[b] = cost.get(b, 0.0) + q * price - cash
+    m = dict.fromkeys(METRICS, 0.0)
+    held, t0 = 0.0, pl.start
+    for d in range(t0 + 1, (len(p.dates) - 1 if pl.end is None else pl.end) + 1):
+        k = sess[d] - sess[t0]
+        if k > H_LONG:
+            break
+        stock = spy = 0.0
+        if held > 0:                                # overnight
+            stock = held * (p.o[d] - p.c[d - 1] + p.div[d])
+            spy = held * p.c[d - 1] * (so[d] / sc[d - 1] - 1.0) if so[d] and sc[d - 1] else 0.0
+            m["tb252"] += held * p.c[d - 1] * (on["bill"][d - 1] * on["gap"][d] / 365.0)
+        held += buys.get(d, 0.0) - at_open.get(d, 0.0)
+        if held > 0:                                # intraday
+            stock += held * (p.c[d] - p.o[d])
+            spy += held * p.o[d] * (sc[d] / so[d] - 1.0) if so[d] and sc[d] else 0.0
+            m["dep252"] += held * p.c[d]
+        held -= at_close.get(d, 0.0)
+        c = cost.get(d, 0.0)
+        m["raw252"] += stock - c
+        m["dh252"] += stock - spy - c
+        m["cost252"] += c
+        if k <= H_SHORT:
+            m["dh126"] += stock - spy - c
+        m["mae252"] = min(m["mae252"], m["raw252"])
+    out = {x: y / pl.size for x, y in m.items()}
+    out["dep252"] /= 252.0
+    return out
+
+
+def metrics_diff(pl, mine: dict) -> dict | None:
+    """The metrics of a plan that differ from plan_metrics' by more than 1e-9 per unit of its size, or None."""
+    got = pl.metrics()
+    keys = [k for k in METRICS if abs(got[k] - mine[k]) > 1e-9]
+    return {"replay": "metrics", "plan": {k: got[k] for k in keys}, "rules": {k: mine[k] for k in keys}} \
+        if keys else None
 
 
 def temperature(rng) -> str | None:
@@ -426,7 +532,7 @@ def expected_starts(p, out: dict, v: str) -> list:
         for i in range(pl.start + 1, stop):
             busy[i] = True
     want = []
-    for i in range(bisect.bisect_left(p.dates, R.FIRST_DAY), n - 1):
+    for i in range(bisect.bisect_left(p.dates, FIRST_DAY), n - 1):
         rng = p.range_at(v, i)
         if not busy[i] and p.can_start(v, i) and rng is not None and p.atr[i] and p.c[i] < rng[1] and \
                 plan_levels(p.c[i], p.atr[i], rng)["ok"]:
@@ -464,40 +570,68 @@ def replay_diff(p, pl, rp: dict) -> dict | None:
 
 
 def plans_digest(p, plans: list, sess: list, zi: int) -> str:
-    """The md5 of plans as the rows of their table (run_pilot.TABLE_DIGEST), tabulated here apart from
-    placebo.columns, in start order: the start day and its year, whether the 252 and the 126 SPY sessions after
-    the start end by session zi (SPEC 5.2), the plan's metrics, its status and buys, the temperature at the start
-    and whether that close was below the mid. run_pilot.table_digest gives the same for a table that holds these
-    plans, so report.py can see that the plans audited here are the ones the results use."""
-    rows = []
+    """The md5 of plans as their table (run_pilot.TABLE_DIGEST's columns, each whole, the rows in start order),
+    tabulated here apart from placebo.row with this file's own session numbers (Hedge): the start's bar, day
+    and year, whether the 252 and the 126 SPY sessions after the start end by session zi (SPEC 5.2), the plan's
+    metrics, its status and buys, the temperature at the start and whether that close was below the mid.
+    run_pilot.table_digest gives the same for a table that holds these plans, so report.py can see that the
+    plans audited here are the ones the results (and the rows of plans.csv) use."""
+    cols = {k: [] for k in R.TABLE_DIGEST}
     for pl in sorted(plans, key=lambda x: x.start):
         day = p.dates[pl.start]
-        row = dict(pl.metrics(), day=day, year=int(day[:4]), full252=sess[pl.start] + 252 <= zi,
-                   full126=sess[pl.start] + 126 <= zi, status=pl.status, fills=len(pl.filled), temp0=pl.temp0,
+        row = dict(pl.metrics(), start=pl.start, day=day, year=int(day[:4]), full252=sess[pl.start] + H_LONG <= zi,
+                   full126=sess[pl.start] + H_SHORT <= zi, status=pl.status, fills=len(pl.filled), temp0=pl.temp0,
                    below_mid=pl.price < pl.mid0 if pl.mid0 else None)
-        rows.append([row[k] for k in R.TABLE_DIGEST])
-    return hashlib.md5(json.dumps(rows).encode("utf-8")).hexdigest()
+        for k in cols:
+            cols[k].append(row[k])
+    return hashlib.md5(json.dumps([cols[k] for k in R.TABLE_DIGEST]).encode("utf-8")).hexdigest()
 
 
 def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
     """The trade audit (SPEC check 6) on the method's runs of both versions, panels and runs as run_pilot makes
     them: every plan close against the signal rule, every plan replayed from its close by the rules as written
     above (levels, buys, sales, end), and the fills themselves: the prices, the trigger closes, the chase limit,
-    the cash of each sale, no buy and sale at one open, shares bought = shares sold + shares held. The placebo's
-    side too: its pool of start days (placebo.candidates, over the run's days) against the rules (over SPEC's:
-    from FIRST_DAY to the bar before the last), and every plan of its every-start table (placebo.every_start,
-    what placebo.pool tabulates), which must start on its pool day with size 1, replayed the same way. The
-    digests of the method's plans and of the table, tabulated here (plans_digest), go into the result for
-    report.py to match with the tables in results.json."""
+    the cash of each sale, no buy and sale at one open, shares bought = shares sold + shares held. The run's
+    span (SPEC 3.2: from FIRST_DAY to the last bar). The placebo's side too: its pool of start days
+    (placebo.candidates, over the run's days) against the rules (over SPEC's: from FIRST_DAY to the bar before
+    the last), and every plan of its every-start table (placebo.every_start, what placebo.pool tabulates),
+    which must start on its pool day with size 1, replayed the same way. The hedge: SPY's session numbers,
+    opens and closes on every bar (run_pilot.hedge_of, what sim.run and the tables count with) against this
+    file's own reading (Hedge), and the metrics of every plan replayed, recomputed from its trades
+    (plan_metrics). The digests of the method's plans and of the table, tabulated here (plans_digest), go into
+    the result for report.py to match with the tables in results.json."""
     rates, spy = M.load(snap)
-    zi = bisect.bisect_right(spy.days, z) - 1           # the last SPY session: a window ending later is not full
-    bad, fills, sells, plans, pool_days, pool_plans, tables = [], 0, 0, 0, 0, 0, {}
+    h = Hedge(snap, z)
+    zi = h.zi
+    bad, fills, sells, plans, pool_days, pool_plans, tables, worst = [], 0, 0, 0, 0, 0, {}, 0.0
+
+    def audit(p, pl, on, tag):
+        nonlocal worst
+        mine = plan_metrics(p, pl, on)
+        got = pl.metrics()
+        worst = max([worst] + [abs(got[k] - mine[k]) for k in METRICS])
+        diff = replay_diff(p, pl, replay_plan(p, pl, tag["version"])) or metrics_diff(pl, mine)
+        if diff:
+            bad.append(dict(tag, **diff))
+
     for key, sym, sector, spans in comps:
         p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z, spinoffs=spin.get(key, []))
         hedge = R.hedge_of(p, spy)
+        on = h.on(p.dates)
+        off = [i for i in range(len(p.dates)) if (hedge[2][i], hedge[0][i], hedge[1][i]) !=
+               (on["sess"][i], on["so"][i], on["sc"][i])]
+        if off:
+            bad.append({"symbol": sym, "replay": "hedge", "bars": len(off),
+                        "plan": [[p.dates[i], hedge[2][i], hedge[0][i], hedge[1][i]] for i in off[:3]],
+                        "rules": [[p.dates[i], on["sess"][i], on["so"][i], on["sc"][i]] for i in off[:3]]})
+        span = (bisect.bisect_left(p.dates, FIRST_DAY), len(p.dates) - 1)
         for v in R.VERSIONS:
             r = S.Rules(version=v)
             out = S.run(p, r, rates, first_day=R.FIRST_DAY, hedge=hedge)
+            if (out["first"], out["last"]) != span:
+                day = lambda i: p.dates[i] if 0 <= i < len(p.dates) else None          # noqa: E731
+                bad.append({"symbol": sym, "version": v, "replay": "range",
+                            "plan": [day(out["first"]), day(out["last"])], "rules": [day(span[0]), day(span[1])]})
             held_end = out["open_value"] / p.c[out["last"]] if out["open"] else 0.0
             every = PL.method_plans(out)
             got, want = sorted(pl.start for pl in every), expected_starts(p, out, v)
@@ -506,7 +640,7 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                             "plan": [p.dates[i] for i in sorted(set(got) - set(want))][:5],
                             "rules": [p.dates[i] for i in sorted(set(want) - set(got))][:5]})
             pool = PL.candidates(p, r, out["first"], out["last"])
-            mine = [i for i in range(bisect.bisect_left(p.dates, R.FIRST_DAY), len(p.dates) - 1)
+            mine = [i for i in range(span[0], span[1])
                     if p.range_at(v, i) is not None and p.atr[i] and p.can_start(v, i) and
                     plan_levels(p.c[i], p.atr[i], p.range_at(v, i))["ok"]]
             pool_days += len(pool)
@@ -515,26 +649,21 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                             "plan": [p.dates[i] for i in sorted(set(pool) - set(mine))][:5],
                             "rules": [p.dates[i] for i in sorted(set(mine) - set(pool))][:5]})
             table = PL.every_start(p, r, rates, hedge, out["first"], out["last"])
-            off = next((k for k, (i, pl) in enumerate(zip(pool, table)) if pl.start != i or pl.size != 1.0),
-                       None if len(table) == len(pool) else min(len(table), len(pool)))
-            if off is not None:
+            k_off = next((k for k, (i, pl) in enumerate(zip(pool, table)) if pl.start != i or pl.size != 1.0),
+                         None if len(table) == len(pool) else min(len(table), len(pool)))
+            if k_off is not None:
                 bad.append({"symbol": sym, "version": v, "replay": "table", "every_start": True,
-                            "plan": [p.dates[table[off].start], table[off].size] if off < len(table) else None,
-                            "rules": [p.dates[pool[off]], 1.0] if off < len(pool) else None})
-            tables.setdefault(v, {})[key] = {"method": plans_digest(p, every, hedge[2], zi),
-                                             "pool": plans_digest(p, table, hedge[2], zi)}
+                            "plan": [p.dates[table[k_off].start], table[k_off].size] if k_off < len(table) else None,
+                            "rules": [p.dates[pool[k_off]], 1.0] if k_off < len(pool) else None})
+            tables.setdefault(v, {})[key] = {"method": plans_digest(p, every, on["sess"], zi),
+                                             "pool": plans_digest(p, table, on["sess"], zi)}
             for pl in table:
                 pool_plans += 1
-                diff = replay_diff(p, pl, replay_plan(p, pl, v))
-                if diff:
-                    bad.append(dict({"symbol": sym, "version": v, "start": p.dates[pl.start], "every_start": True},
-                                    **diff))
+                audit(p, pl, on, {"symbol": sym, "version": v, "start": p.dates[pl.start], "every_start": True})
             for pl in every:
                 plans += 1
                 tag = {"symbol": sym, "version": v, "start": p.dates[pl.start]}
-                diff = replay_diff(p, pl, replay_plan(p, pl, v))
-                if diff:
-                    bad.append(dict(tag, **diff))
+                audit(p, pl, on, tag)
                 for k, f in enumerate(pl.filled):
                     sig = f[0] - 1
                     fills += 1
@@ -547,7 +676,7 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                 at_open = set()
                 for s in pl.sold:
                     sells += 1
-                    close = s[4] in R.AT_CLOSE
+                    close = s[4] in SOLD_AT_CLOSE
                     if s[1] != (p.c[s[0]] if close else p.o[s[0]]) or \
                             abs(s[3] - s[2] * s[1] * (1 - COST)) > 1e-9 * max(1.0, abs(s[3])):
                         bad.append(dict(tag, sale=[p.dates[s[0]], s[4], s[1], s[2], s[3]]))
@@ -564,7 +693,7 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                 if not pl.filled and (pl.sold or pl.status not in VOID):
                     bad.append(dict(tag, void=pl.status))
     return {"plans": plans, "fills": fills, "sales": sells, "pool_days": pool_days, "every_start_plans": pool_plans,
-            "failed": len(bad), "failures": bad[:20], "tables": tables}
+            "metrics_worst": worst, "failed": len(bad), "failures": bad[:20], "tables": tables}
 
 
 def check_spins(snap: Path, comps: list, events: dict, z: str) -> list:
@@ -626,6 +755,38 @@ def check_basis(snap: Path, comps: list, z: str) -> dict:
                 or keep["spin_candidates"]:
             out[sym] = json.loads(json.dumps(keep, default=str))
     return out
+
+
+def check_limits(snap: Path, comps: list, z: str) -> dict:
+    """The shapes that the known limits of the split basis need (SPEC v1 amendment 24); none may occur, and
+    then the limits change no day the results read. Limits 1, 2 and 4: an epoch of version T that holds an
+    unclear quarterly split (an epoch with an end, panel.build) and reaches the company's first member day on or
+    after FIRST_DAY (they change only the days of such an epoch, and no plan, pool day, sampled signal day or
+    band check comes before that day). Limit 3: a statement period, quarterly or annual, filed more than once
+    with filings on both sides of a split (by this file's reading of the filing dates)."""
+    reach, refiled, epochs = [], [], 0
+    for key, sym, sector, spans in comps:
+        p = P.build(sym, snap, spans, versions=("T",), snapshot_end=z)
+        first = next((d for d, m in zip(p.dates, p.member) if m and d >= FIRST_DAY), None)
+        for u, _ in p.epochs["T"]:
+            if u is not None:
+                epochs += 1
+                if first is not None and u >= first:
+                    reach.append({"symbol": sym, "epoch_end": u, "first_member_day": first})
+        splits = [x for x, f in P.split_factors(P.read(snap / "raw" / "splits" / f"{sym}.json"))
+                  if abs(math.log(f)) >= P.SPLIT_MIN]
+        for part in ("inc_q", "inc_a"):
+            known = {}
+            for r in P.read(snap / "raw" / part / f"{sym}.json"):
+                if r.get("date"):
+                    known.setdefault(str(r["date"])[:10], set()).add(filed(r)[0])
+            for end, ks in sorted(known.items()):
+                cross = [x.isoformat() for x in splits if min(ks) < x <= max(ks)]
+                if cross:
+                    refiled.append({"symbol": sym, "statements": part, "end": end, "splits": cross,
+                                    "filed": sorted(k.isoformat() for k in ks)})
+    return {"checked": len(comps), "held_epochs": epochs, "failed": len(reach) + len(refiled), "reaching": reach,
+            "refiled_across_split": refiled}
 
 
 def panel_facts(snap: Path, comps: list, z: str, spin: dict) -> dict:
@@ -713,6 +874,17 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
         parts += [f"大幅单日涨跌 {len(b['spin_candidates'])} 次"] if b.get("spin_candidates") else []
         if parts:
             w.append(f"- {sym}：" + "；".join(parts))
+    lim = res.get("limits")
+    if lim:
+        w.append("\n## 拆股口径的已知限制（SPEC 修订 24）\n")
+        w.append(f"- T 版里口径不明的拆股留下的时期 {lim['held_epochs']} 段，伸到公司第一个指数内交易日（{FIRST_DAY} "
+                 f"以后）的 {len(lim['reaching'])} 段"
+                 + "".join(f"；{x['symbol']} 到 {x['epoch_end']}（第一个指数内交易日 {x['first_member_day']}）"
+                           for x in lim["reaching"]))
+        w.append(f"- 同一期报表在拆股前后各报过一次：{len(lim['refiled_across_split'])} 期"
+                 + "".join(f"；{x['symbol']} {x['end']}（{'季报' if x['statements'] == 'inc_q' else '年报'}，"
+                           f"{'、'.join(x['filed'])} 公布，拆股 {'、'.join(x['splits'])}）"
+                           for x in lim["refiled_across_split"]))
     w.append("\n## 分拆核对（据此在 spinoffs.json 里标 confirmed）\n")
     w.append("| 公司 | 日期 | 来源 | 当天相对 SPY | 调整价隐含的分配 | 附近最大跌幅 | 附近拆股行 |")
     w.append("|---|---|---|---|---|---|---|")
@@ -762,8 +934,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pairs", type=int, default=200)
     ap.add_argument("--sample", default=str(HERE / "sample.json"))
     ap.add_argument("--spinoffs", default=str(HERE / "spinoffs.json"))
-    ap.add_argument("--only", nargs="*", default=["calendar", "band", "pipeline", "truncation", "fills", "basis",
-                                                  "spins", "review"])
+    ap.add_argument("--only", nargs="*", default=["calendar", "band", "pipeline", "truncation", "fills", "limits",
+                                                  "basis", "spins", "review"])
     ap.add_argument("--same", nargs=2, metavar="OUT", help="compare two run_pilot outputs (check 8) and stop")
     a = ap.parse_args(argv)
     if a.same:
@@ -815,6 +987,8 @@ def main(argv=None) -> int:
         res["truncation"] = check_truncation(snap, comps, a.pairs, rnd, z)
     if "fills" in a.only:
         res["fills"] = check_fills(snap, comps, z, spin)
+    if "limits" in a.only:
+        res["limits"] = check_limits(snap, comps, z)
     if "basis" in a.only or "review" in a.only:
         res["basis"] = check_basis(snap, comps, z)
     if "spins" in a.only or "review" in a.only:

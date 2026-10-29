@@ -104,7 +104,7 @@ class RunTest(unittest.TestCase):
         rows = csv_rows(self.out / "plans.csv")
         void = [x for x in rows if x["first_fill"] == ""]
         self.assertGreater(len(void), 0)
-        self.assertTrue(all(x["ret"] == "" and x["tranches"] == "0" and float(x["dh252"]) == 0.0 for x in void))
+        self.assertTrue(all(x["ret"] == "" and x["fills"] == "0" and float(x["dh252"]) == 0.0 for x in void))
         self.assertTrue({x["status"] for x in void} <= {"lapsed", "expired", "cancelled_below_stop", "spin",
                                                          "unfilled"})
 
@@ -115,8 +115,9 @@ class RunTest(unittest.TestCase):
                     snapshot_end=self.res["walk"]["z"])
         out = S.run(p, S.Rules(), rates, first_day=R.FIRST_DAY)
         rows = [x for x in csv_rows(self.out / "plans.csv") if x["symbol"] == "CCC" and x["run"] == "method_T"]
-        self.assertEqual(sorted(x["start"] for x in rows), sorted(p.dates[pl.start] for pl in PL.method_plans(out)))
-        self.assertFalse(any("2015-02-27" <= x["start"] <= "2016-03-01" for x in rows))   # spin-off blackout
+        self.assertEqual(sorted(x["day"] for x in rows), sorted(p.dates[pl.start] for pl in PL.method_plans(out)))
+        self.assertEqual(sorted(int(x["start"]) for x in rows), sorted(pl.start for pl in PL.method_plans(out)))
+        self.assertFalse(any("2015-02-27" <= x["day"] <= "2016-03-01" for x in rows))     # spin-off blackout
 
     def test_primary_test(self):
         for v in ("T", "F"):
@@ -198,44 +199,68 @@ class RunTest(unittest.TestCase):
                   review={"written": True}, checks_code=RP.checks_code())
         ch["fills"] = {"failed": 0, "plans": 60, "pool_days": 900, "every_start_plans": 900, "tables": full["tables"]}
 
+        plans = csv_rows(self.out / "plans.csv")
+
+        def gate(res, c, r, rows=plans):
+            return RP.checks_pass(res, c, r, rows)
+
         def same(res):
             return {"same": True, "diff": [], "results": [RP.results_digest(res)] * 2}
         repro = same(full)
-        self.assertEqual(RP.checks_pass(full, ch, repro), (True, []))
-        ok, notes = RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], failed=2)), repro)
+        self.assertEqual(gate(full, ch, repro), (True, []))
+        ok, notes = gate(full, dict(ch, fills=dict(ch["fills"], failed=2)), repro)
         self.assertFalse(ok)
-        self.assertFalse(RP.checks_pass(full, ch, None)[0])
-        self.assertFalse(RP.checks_pass(full, {k: v for k, v in ch.items() if k != "band"}, repro)[0])
+        self.assertFalse(gate(full, ch, None)[0])
+        self.assertFalse(gate(full, {k: v for k, v in ch.items() if k != "band"}, repro)[0])
         before = dict(self.res["inputs"], spinoffs={})          # checks made before the spin-off was confirmed
-        self.assertFalse(RP.checks_pass(full, dict(ch, inputs=before), repro)[0])
-        self.assertFalse(RP.checks_pass(full, {k: v for k, v in ch.items() if k != "inputs"}, repro)[0])
-        self.assertFalse(RP.checks_pass(full, dict(ch, review={}), repro)[0])      # no data review table
-        self.assertFalse(RP.checks_pass(full, dict(ch, band={"failed": 0, "checked": 199}), repro)[0])
-        self.assertFalse(RP.checks_pass(full, dict(ch, truncation={"failed": 0, "checked": 18}), repro)[0])
-        self.assertFalse(RP.checks_pass(full, dict(ch, checks_code={"checks.py": "0" * 32}), repro)[0])
-        self.assertFalse(RP.checks_pass(full, {k: v for k, v in ch.items() if k != "checks_code"}, repro)[0])
-        self.assertFalse(RP.checks_pass(full, ch, dict(repro, results=["0" * 32] * 2))[0])   # other results
-        self.assertFalse(RP.checks_pass(dict(full, theta=1), ch, repro)[0])
-        self.assertTrue(RP.checks_pass(dict(full, created="later"), ch, repro)[0])
+        self.assertFalse(gate(full, dict(ch, inputs=before), repro)[0])
+        self.assertFalse(gate(full, {k: v for k, v in ch.items() if k != "inputs"}, repro)[0])
+        self.assertFalse(gate(full, dict(ch, review={}), repro)[0])      # no data review table
+        self.assertFalse(gate(full, dict(ch, band={"failed": 0, "checked": 199}), repro)[0])
+        self.assertFalse(gate(full, dict(ch, truncation={"failed": 0, "checked": 18}), repro)[0])
+        self.assertFalse(gate(full, dict(ch, checks_code={"checks.py": "0" * 32}), repro)[0])
+        self.assertFalse(gate(full, {k: v for k, v in ch.items() if k != "checks_code"}, repro)[0])
+        self.assertFalse(gate(full, ch, dict(repro, results=["0" * 32] * 2))[0])   # other results
+        self.assertFalse(gate(dict(full, theta=1), ch, repro)[0])
+        self.assertTrue(gate(dict(full, created="later"), ch, repro)[0])
         for es, pool in ((899, 900), (0, 0)):                   # every plan of the every-start tables replayed
-            self.assertFalse(RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], every_start_plans=es,
-                                                                      pool_days=pool)), repro)[0])
+            self.assertFalse(gate(full, dict(ch, fills=dict(ch["fills"], every_start_plans=es,
+                                                            pool_days=pool)), repro)[0])
         off = json.loads(json.dumps(full["tables"]))           # check 6 replayed other plans than the tables'
         off["T"]["AAA"]["pool"] = "0" * 32
-        self.assertEqual(RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], tables=off)), repro),
+        self.assertEqual(gate(full, dict(ch, fills=dict(ch["fills"], tables=off)), repro),
                          (False, ["成交检查重放的计划和这次结果用的表对不上：T 版 AAA"]))
         bare = {k: v for k, v in full.items() if k != "tables"}
-        for res, fills in ((full, {k: v for k, v in ch["fills"].items() if k != "tables"}), (bare, ch["fills"])):
-            ok, notes = RP.checks_pass(res, dict(ch, fills=fills), same(res))
-            self.assertEqual((ok, len(notes)), (False, 1))
-            self.assertIn("对不上", notes[0])
+        for res, fills, n in ((full, {k: v for k, v in ch["fills"].items() if k != "tables"}, 1),
+                              (bare, ch["fills"], 2)):           # without tables plans.csv has none to match too
+            ok, notes = gate(res, dict(ch, fills=fills), same(res))
+            self.assertEqual((ok, len(notes)), (False, n))
+            self.assertTrue(all("对不上" in x for x in notes))
+        one = [r for r in plans if r["run"] == "method_T"][0]       # plans.csv's rows of the method's runs
+        for rows in ([dict(r, dh252=repr(float(r["dh252"]) + 1e-6)) if r is one else r for r in plans],
+                     [r for r in plans if r is not one],
+                     plans + [dict(one, start=str(int(one["start"]) + 1))],
+                     [dict(r, full252=str(r["full252"] != "True")) if r is one else r for r in plans]):
+            self.assertEqual(gate(full, ch, repro, rows),
+                             (False, [f"plans.csv 里的计划和这次结果的表对不上：T 版 {one['symbol']}"]))
+        self.assertEqual(gate(full, ch, repro, plans + [dict(one, symbol="ZZZ")]),
+                         (False, ["plans.csv 里的计划和这次结果的表对不上：T 版 ZZZ"]))
+        self.assertTrue(gate(full, ch, repro, [dict(r, ret="0.5") for r in plans])[0])    # the descriptive rest
+        self.assertEqual(gate(full, {k: v for k, v in ch.items() if k != "limits"}, repro),
+                         (False, ["没有跑已知限制检查"]))
+        self.assertEqual(gate(full, dict(ch, limits={"failed": 1, "checked": 4}), repro),
+                         (False, ["已知限制检查失败 1 项"]))
         none = json.loads(json.dumps(full))                     # F without a full-window plan draws no replica
         none["primary"]["F"]["dh252"] = {"metric": "dh252", "companies": 0, "plans": 0, "pool": 0, "theta": None,
                                          "void_plans": 0}
-        self.assertEqual(RP.checks_pass(none, ch, same(none)), (True, []))
+        self.assertEqual(gate(none, ch, same(none)), (True, []))
+        none["primary"]["T"]["dh252"] = dict(none["primary"]["F"]["dh252"])    # T must draw its replicas
+        ok, notes = gate(none, ch, same(none))
+        self.assertFalse(ok)
+        self.assertIn("T 没有做随机择时", notes[0])
         quick = dict(full, primary={"T": full["primary"]["T"]}, variants={}, variant_tests={})
         for res in (self.res, quick, dict(full, variant_tests={})):    # 200 replicas; --quick; no variants
-            ok, notes = RP.checks_pass(res, ch, same(res))
+            ok, notes = gate(res, ch, same(res))
             self.assertFalse(ok)
             self.assertIn("完整运行", notes[0])
 

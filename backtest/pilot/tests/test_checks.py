@@ -243,6 +243,68 @@ class ChecksTest(unittest.TestCase):
         self.assertNotEqual(got["T"]["pool"], self.res["fills"]["tables"]["T"][key]["pool"])    # F's pool ends
         self.assertEqual(got["F"]["pool"], self.res["fills"]["tables"]["F"][key]["pool"])       # at its horizon
 
+        def longer(*a, **k):                    # a column with a value more than the table has rows
+            cols = pool0(*a, **k)
+            return dict(cols, dh252=cols["dh252"] + [0.0])
+
+        def shifted(*a, **k):                   # the start's bar one late, its day right
+            cols = pool0(*a, **k)
+            return dict(cols, start=[i + 1 for i in cols["start"]])
+        for fault in (longer, shifted):
+            with mock.patch.object(C.PL, "pool", fault):
+                got = digests(R.company_runs(args))
+            for v in R.VERSIONS:
+                self.assertNotEqual(got[v]["pool"], self.res["fills"]["tables"][v][key]["pool"], fault.__name__)
+
+    def test_the_hedge_and_the_metrics_are_audited_apart(self):
+        """Check 6 reads SPY's sessions, opens and closes itself (Hedge) and recomputes the metrics of every
+        plan it replays from the plan's trades (plan_metrics): on the code as it is nothing differs by more than
+        1e-9. The hedge's opens taken from its closes, its session numbers one late, sim's window a session
+        short, the metrics scaled after the run, or a run from a day after 2008-01-02, each with the trades
+        unchanged, fail it."""
+        self.assertLess(self.res["fills"]["metrics_worst"], 1e-9)
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        hedge0, sess0, metrics0 = R.hedge_of, C.PL.sessions, C.S.Plan.metrics
+
+        def closes(p, spy):
+            o, c, s = hedge0(p, spy)
+            return c, c, s
+
+        def late(dates, days):
+            return [s + 1 for s in sess0(dates, days)]
+
+        def scaled(pl):
+            m = metrics0(pl)
+            return dict(m, dh252=m["dh252"] * 1.01)
+        for patch, kinds in ((mock.patch.object(C.R, "hedge_of", closes), {"hedge", "metrics"}),
+                             (mock.patch.object(C.PL, "sessions", late), {"hedge"}),
+                             (mock.patch.object(C.S, "H_LONG", 251), {"metrics"}),
+                             (mock.patch.object(C.S.Plan, "metrics", scaled), {"metrics"}),
+                             (mock.patch.object(C.R, "FIRST_DAY", "2008-01-03"), {"range"})):
+            with patch:
+                got = C.check_fills(self.snap, comps[:1], walk["z"], {})
+            self.assertTrue(kinds <= {f.get("replay") for f in got["failures"]}, (kinds, got["failures"][:2]))
+        p = P.build(comps[0][1], self.snap, comps[0][3], snapshot_end=walk["z"])
+        self.assertIn("2008-01-02", p.dates)                        # the late run lost a bar
+
+    def test_the_limits_check_finds_the_shapes_it_guards(self):
+        """Check 'limits' (SPEC amendment 24): the clean synthetic companies pass; an unclear split whose epoch
+        reaches member days (synth.late_verdict A) and a quarter filed again after a split (B) fail it."""
+        self.assertEqual({k: self.res["limits"][k] for k in ("checked", "held_epochs", "failed")},
+                         {"checked": 2, "held_epochs": 0, "failed": 0})
+        tmp = tempfile.TemporaryDirectory()
+        snap = Path(tmp.name)
+        got = {}
+        for shape in ("A", "B"):
+            synth.late_verdict(snap, f"LV{shape}0", shape, False)
+            got[shape] = C.check_limits(snap, [(f"LV{shape}0", f"LV{shape}0", "Tech", [["2005-01-03", "2030-01-01"]])],
+                                        "2026-10-23")
+        self.assertEqual([x["symbol"] for x in got["A"]["reaching"]], ["LVA0"])
+        self.assertEqual([(x["end"], x["splits"]) for x in got["B"]["refiled_across_split"]],
+                         [("2016-03-31", ["2016-06-06"])])
+        self.assertTrue(all(x["failed"] for x in got.values()))
+        tmp.cleanup()
+
     def test_a_run_that_starts_late_fails_the_pool_check(self):
         """Check 6 tests the pool of start days against the rule over SPEC's range (2008-01-02 to the bar before
         the last), not over the run's own first and last bars: a method run that starts after the first pool

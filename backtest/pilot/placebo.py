@@ -44,19 +44,23 @@ COLUMNS = ("start", "day", "year", "full252", "full126", "dh252", "dh126", "raw2
            "mae252", "status", "fills", "temp0", "below_mid")
 
 
+def row(p, pl, sess: list, zi: int) -> dict:
+    """A plan's row of its table (COLUMNS): its hedged metric per unit of the planned position and whether its
+    window is full (the 252nd / 126th SPY session after the start is session zi or earlier)."""
+    out = {"start": pl.start, "day": p.dates[pl.start], "year": int(p.dates[pl.start][:4]),
+           "full252": sess[pl.start] + S.H_LONG <= zi, "full126": sess[pl.start] + S.H_SHORT <= zi,
+           "status": pl.status, "fills": len(pl.filled), "temp0": pl.temp0,
+           "below_mid": pl.price < pl.mid0 if pl.mid0 else None}
+    out.update(pl.metrics())
+    return {k: out[k] for k in COLUMNS}
+
+
 def columns(p, plans: list, sess: list, zi: int) -> dict:
-    """Plans (closed, open or void) as columns, by start: their hedged metric per unit of the planned position
-    and whether its window is full (the 252nd / 126th SPY session after the start is session zi or earlier)."""
+    """Plans (closed, open or void) as columns, by start (their rows, row())."""
     out = {k: [] for k in COLUMNS}
     for pl in sorted(plans, key=lambda x: x.start):
-        m = pl.metrics()
-        row = {"start": pl.start, "day": p.dates[pl.start], "year": int(p.dates[pl.start][:4]),
-               "full252": sess[pl.start] + S.H_LONG <= zi, "full126": sess[pl.start] + S.H_SHORT <= zi,
-               "status": pl.status, "fills": len(pl.filled), "temp0": pl.temp0,
-               "below_mid": pl.price < pl.mid0 if pl.mid0 else None}
-        row.update(m)
-        for k in COLUMNS:
-            out[k].append(row[k])
+        for k, x in row(p, pl, sess, zi).items():
+            out[k].append(x)
     return out
 
 

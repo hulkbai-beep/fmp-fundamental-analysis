@@ -43,7 +43,10 @@ EXITS = {"stop": "止损", "breakeven": "保本止损", "trailing": "移动止�
          "unfilled": "期末还在等首批"}
 NO_RESULT, PROMISING, NOT_PROMISING, INCONCLUSIVE = "没有结果（检查没通过）", "有希望", "不看好", "说不准"
 CHECKS = (("calendar", "交易日历"), ("band", "区间"), ("pipeline", "和技能对数"), ("truncation", "未来数据"),
-          ("fills", "成交"))
+          ("fills", "成交"), ("limits", "已知限制"))
+FLAG = {"True": True, "False": False, "": None}
+CSV_TYPES = {"start": int, "year": int, "fills": int, "full252": FLAG.get, "full126": FLAG.get,
+             "below_mid": FLAG.get, "temp0": lambda x: x or None, "day": str, "status": str}   # else a metric
 CHECKS_CODE = (HERE / "checks.py", HERE.parent.parent / "scripts" / "score.py")    # the code the checks come from
 MIN_SAMPLED = 200                               # band triples and truncation cuts, at least (SPEC 8.3 and 8.5)
 
@@ -77,24 +80,33 @@ def checks_code() -> dict:
     return {f.name: hashlib.md5(f.read_bytes()).hexdigest() for f in CHECKS_CODE}
 
 
-def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, list]:
+def csv_table(rows: list) -> dict:
+    """A table (run_pilot.TABLE_DIGEST's columns) from the plans.csv rows of one run of one company, read back
+    to the values the run wrote."""
+    rows = sorted(rows, key=lambda r: int(r["start"]))
+    return {k: [CSV_TYPES.get(k, float)(r[k]) for r in rows] for k in R.TABLE_DIGEST}
+
+
+def checks_pass(res: dict, ch: dict | None, repro: dict | None, plans: list) -> tuple[bool, list]:
     """Section 8 of SPEC v1, as far as the files show it: the results are of the full run fixed beforehand (both
     versions, SPEC 5.2's replicas, the four variants), every every-start table reproduces its plans, the
     replacement walk matches the PC's, checks.py's checks all pass and were made from the inputs of these
     results (snapshot, sample, confirmed spin-offs, code) by the checks' code as it is now, on at least 200 band
     triples and truncation cuts and on every plan of the every-start tables, the plans the trade audit replayed
-    being those of these results' tables (their digests), with the data review table written, and two runs gave
+    being those of these results' tables (their digests) and of the method's rows of plans.csv (the plans
+    argument, which the report's tables of plans read), with the data review table written, and two runs gave
     these same results. The unit tests, the snapshot's integrity and the signature on the data review are steps
     of the run, not of these files."""
     notes = []
     prim = res.get("primary", {})
     reps = {v: ((x.get("dh252") or {}).get("placebo") or {}).get("replicas") for v, x in prim.items()
-            if (x.get("dh252") or {}).get("theta") is not None}     # a version without a plan to test draws none
+            if v == R.MAIN or (x.get("dh252") or {}).get("theta") is not None}   # F without a plan draws none
     if sorted(prim) != sorted(R.VERSIONS) or any(n != ST.PLAN_REPS for n in reps.values()) or \
             sorted(res.get("variants") or {}) != sorted(R.VARIANTS) or \
             sorted(res.get("variant_tests") or {}) != sorted(R.VARIANTS):
         notes.append(f"不是事先定好的完整运行（T、F 两版，随机择时各 {ST.PLAN_REPS} 次，四个对照版本）：这次的版本 "
-                     + ("、".join(f"{v} 随机择时 {n} 次" for v, n in sorted(reps.items())) or "没有")
+                     + ("、".join(f"{v} 随机择时 {n} 次" if n is not None else f"{v} 没有做随机择时"
+                                 for v, n in sorted(reps.items())) or "没有")
                      + f"，对照版本 {len(res.get('variant_tests') or {})} 个")
     tables = {f"{v} 版": x.get("every_start", {}) for v, x in res.get("primary", {}).items()}
     tables.update({NAMES.get(k, k): x.get("every_start", {}) for k, x in res.get("variant_tests", {}).items()})
@@ -104,6 +116,15 @@ def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, l
             notes.append(f"{name}的每天起步表和实际计划对不上：{', '.join(bad[:5])}")
     if res.get("walk", {}).get("same_as_pc") is False:
         notes.append("替换规则在云端和你电脑上的结果不同")
+    by = {}
+    for r in plans:
+        by.setdefault((r["run"], r["symbol"]), []).append(r)
+    tabled = {(f"method_{v}", c): d.get("method") for v, x in (res.get("tables") or {}).items() for c, d in x.items()}
+    off = [f"{run[7:]} 版 {c}" for run, c in sorted(set(tabled) | {k for k in by if k[0].startswith("method_")})
+           if R.table_digest(csv_table(by.get((run, c), []))) != tabled.get((run, c))]
+    if off:
+        notes.append(f"plans.csv 里的计划和这次结果的表对不上：{'、'.join(off[:5])}"
+                     + (f" 等 {len(off)} 处" if len(off) > 5 else ""))
     if ch is None:
         notes.append("没有提供 checks.json")
     else:
@@ -301,7 +322,7 @@ def main(argv=None) -> int:
     w.append(f"公司 {len(res['companies'])} 家；替换 {len(swaps)} 家"
              + ("：" + "，".join(f"{x['out']} → {x['in']}（{x['why']}）" for x in swaps) if swaps else "") + "\n")
     t, fv = prim.get("T", {}), prim.get("F", {})
-    ok, notes = checks_pass(res, ch, repro)
+    ok, notes = checks_pass(res, ch, repro, plans)
     label, why = decide(t.get("dh252", {}), sig, ok)
     w.append("## 结论（按事先定好的规则）\n")
     w.append(f"**{label}**\n")

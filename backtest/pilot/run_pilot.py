@@ -98,11 +98,12 @@ def tiers(exits: list) -> set:
 
 def plan_rows(p, out: dict, run: str, version: str, sector: str, key: str, sess: list, zi: int) -> list:
     """One row per plan the run started: closed, open at the end, or void (it never bought: lapsed at the
-    chase limit, expired, cancelled below its stop or before a spin-off, or still waiting at the end)."""
+    chase limit, expired, cancelled below its stop or before a spin-off, or still waiting at the end). A row
+    is the plan's row of its table (placebo.row: report.py checks that the rows of the method's runs give the
+    digest of their tables, which check 6 audits) and what the report's tables of plans add."""
     rows = []
-    items = [(pl, False) for pl in out["plans"]] + ([(out["open"], True)] if out["open"] else []) + \
-        [(pl, False) for pl in out["voids"]]
-    for pl, is_open in items:
+    for pl in PL.method_plans(out):
+        is_open = pl is out["open"]
         inv = pl.invested()
         mtm = out["open_value"] if is_open else 0.0
         end = out["last"] if is_open else pl.end
@@ -110,22 +111,19 @@ def plan_rows(p, out: dict, run: str, version: str, sector: str, key: str, sess:
         bought = sum(f[2] for f in pl.filled)
         tp = tiers([s[4] for s in pl.sold])
         rows.append({
-            "symbol": key, "sector": sector, "run": run, "version": version,
-            "start": p.dates[pl.start], "year": int(p.dates[pl.start][:4]),
+            "symbol": key, "sector": sector, "run": run, "version": version, **PL.row(p, pl, sess, zi),
             "first_fill": p.dates[first] if first is not None else None,
-            "end": p.dates[end], "open_at_end": is_open, "status": "open" if is_open else pl.status,
+            "end": p.dates[end], "open_at_end": is_open,
             "P": pl.price, "atr_pct": pl.atr / pl.price, "stop0": pl.stop0, "t1": pl.t1, "t2": pl.t2,
-            "t1_src": pl.t1_src, "rr": pl.rr, "pct0": pl.pct0, "temp0": pl.temp0,
-            "below_mid": pl.price / pl.mid0 - 1 if pl.mid0 else None,
-            "tranches": len(pl.filled), "filled_frac": inv / pl.size, "blocked": pl.blocked,
+            "t1_src": pl.t1_src, "rr": pl.rr, "pct0": pl.pct0,
+            "vs_mid": pl.price / pl.mid0 - 1 if pl.mid0 else None,
+            "filled_frac": inv / pl.size, "blocked": pl.blocked,
             "avg_vs_P": inv / bought / pl.price - 1 if bought else None,
             "days_to_fill": first - pl.start if first is not None else None,
             "tp1": 1 in tp, "tp2": 2 in tp, "tp3": 3 in tp,
             "invested": inv, "proceeds": pl.proceeds(), "mtm": mtm,
             "ret": (pl.proceeds() + mtm - inv) / inv if inv else None,
             "sessions": end - first + 1 if first is not None else 0,
-            "full252": sess[pl.start] + S.H_LONG <= zi,
-            **pl.metrics(),
         })
     return rows
 
@@ -483,15 +481,15 @@ def pool_dump(results: list, v: str) -> dict:
     return {r["symbol"]: {k: r["pool"][v][k] for k in keep} for r in results if v in r["pool"]}
 
 
-TABLE_DIGEST = tuple(k for k in PL.COLUMNS if k != "start")     # a table's rows as their digest reads them
+TABLE_DIGEST = PL.COLUMNS                       # the columns of a table its digest reads, in this order
 
 
 def table_digest(cols: dict) -> str:
-    """The md5 of a table's rows (every column but the start's bar number) in start order: checks.plans_digest,
-    which tabulates the plans check 6 audits by itself, gives the same when the table holds those plans and
-    tabulates them right (report.py matches the two)."""
-    rows = [list(r) for r in zip(*(cols[k] for k in TABLE_DIGEST))]
-    return hashlib.md5(json.dumps(rows).encode("utf-8")).hexdigest()
+    """The md5 of a table, column by column whole (a column longer or shorter than the others shows), its rows
+    in start order: checks.plans_digest, which tabulates the plans check 6 audits by itself, gives the same when
+    the table holds those plans and tabulates them right (report.py matches the two, and the rows of plans.csv
+    with them)."""
+    return hashlib.md5(json.dumps([cols[k] for k in TABLE_DIGEST]).encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------- main
