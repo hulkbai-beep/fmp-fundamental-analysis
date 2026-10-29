@@ -28,6 +28,7 @@ import panel as P  # noqa: E402
 import placebo as PL  # noqa: E402
 import sim as S  # noqa: E402
 import stats as ST  # noqa: E402
+import status as SU  # noqa: E402
 
 FIRST_DAY = "2008-01-02"
 VERSIONS = ("T", "F", "FY")
@@ -46,60 +47,21 @@ VARIANTS = {                                    # descriptive only, on version T
     "no_stop": {"no_stop": True},
     "exit_all_above_high": {"exit_all_at": "high"},
 }
-MIN_BAR_COVER = 0.90                            # a usable company's bars cover this share of its member weekdays
-MIN_QUARTERS = 8
-
-
 # ---------------------------------------------------------------- the companies
-def weekdays(a: str, b: str) -> int:
-    d0, d1 = dt.date.fromisoformat(a), dt.date.fromisoformat(b)
-    n = (d1 - d0).days
-    return n // 7 * 5 + sum((d0 + dt.timedelta(days=k)).weekday() < 5 for k in range(n % 7))
-
-
-def usable(snap: Path, sym: str, spans: list, end: str) -> tuple[bool, str]:
-    """The pre-registered replacement rule: bars covering 90% of the member weekdays in the window and at
-    least 8 quarterly income statements."""
-    raw = snap / "raw"
-    bars = P.read(raw / "full" / f"{sym}.json")
-    q = P.read(raw / "inc_q" / f"{sym}.json")
-    if not bars:
-        return False, "no bars"
-    if len(q) < MIN_QUARTERS:
-        return False, f"{len(q)} quarterly statements"
-    days = sorted({str(r["date"])[:10] for r in bars})
-    need = have = 0
-    for a, b in spans:
-        a, b = max(a, FIRST_DAY), min(b, end)
-        if a >= b:
-            continue
-        need += weekdays(a, b)
-        have += bisect.bisect_left(days, b) - bisect.bisect_left(days, a)
-    if need and have / need < MIN_BAR_COVER:
-        return False, f"bars cover {have / need:.0%} of member weekdays"
-    return True, ""
-
-
-def choose(snap: Path, sample: dict, end: str) -> tuple[list, list]:
-    """The 50 companies after replacements, [(symbol, sector, spans)], and the replacements made: a drawn
-    company without usable data gives way to the next usable spare of its sector, in the drawn order."""
-    recs, out, swaps, used = sample["records"], [], [], set()
-    for sym in sample["sample"]:
-        r = recs[sym]
-        ok, why = usable(snap, r["series"], r["spans"], end)
-        if ok:
-            out.append((r["series"], r["sector"], r["spans"]))
-            continue
-        for alt in sample["spares"][r["sector"]]:
-            ra = recs[alt]
-            if alt not in used and usable(snap, ra["series"], ra["spans"], end)[0]:
-                used.add(alt)
-                out.append((ra["series"], ra["sector"], ra["spans"]))
-                swaps.append({"out": sym, "why": why, "in": alt})
-                break
-        else:
-            swaps.append({"out": sym, "why": why, "in": None})
-    return out, swaps
+def choose(snap: Path, sample: dict) -> tuple[list, dict]:
+    """The companies after the pre-registered replacement walk (status.py), [(key, series, sector, spans)], and
+    the walk's record. The walk is rerun here on the snapshot and must reach the decisions fetch.py recorded on
+    the PC (status.json); a snapshot without status.json (the tests) is walked up to SPY's last session."""
+    pc_path = snap / "status.json"
+    pc = json.loads(pc_path.read_text(encoding="utf-8")) if pc_path.exists() else None
+    z = pc["z"] if pc else SU.sessions(snap, "9999-12-31")[-1]
+    st = SU.walk(sample, snap, SU.sessions(snap, z), z)
+    st["z"] = z
+    if pc:
+        keys = ("companies", "replacements", "review")
+        mine, theirs = ({k: x[k] for k in keys} for x in (st, pc))
+        st["same_as_pc"] = json.dumps(mine, sort_keys=True) == json.dumps(theirs, sort_keys=True)
+    return [tuple(c) for c in st["companies"]], st
 
 
 # ---------------------------------------------------------------- runs of one company
@@ -115,7 +77,7 @@ def tiers(exits: list) -> set:
     return {int(t) for e in exits if e.startswith("tp_") for t in e[3:].split("+")}
 
 
-def plan_rows(p, out: dict, run: str, version: str, sector: str) -> list:
+def plan_rows(p, out: dict, run: str, version: str, sector: str, key: str | None = None) -> list:
     rows = []
     items = [(pl, False) for pl in out["plans"]] + ([(out["open"], True)] if out["open"] else [])
     for pl, is_open in items:
@@ -125,7 +87,7 @@ def plan_rows(p, out: dict, run: str, version: str, sector: str) -> list:
         first = pl.filled[0][0]
         tp = tiers([s[4] for s in pl.sold])
         rows.append({
-            "symbol": p.symbol, "sector": sector, "run": run, "version": version,
+            "symbol": key or p.symbol, "sector": sector, "run": run, "version": version,
             "start": p.dates[pl.start], "year": int(p.dates[pl.start][:4]), "first_fill": p.dates[first],
             "end": p.dates[end], "open_at_end": is_open, "status": "open" if is_open else pl.status,
             "P": pl.price, "atr_pct": pl.atr / pl.price, "stop0": pl.stop0, "t1": pl.t1, "t2": pl.t2,
@@ -245,17 +207,17 @@ def compact(out: dict, dates: list, cal: list, accr: list, marks: list) -> dict:
 def company_runs(args) -> dict:
     """Every run of one company: the method on each version (with its placebo replicas and its SPY mirror),
     the variants on T, buy-and-hold, and the panel's report. Executed in a worker process."""
-    snap, sym, sector, spans, spinoffs, versions, variants, replicas, cal, accr = args
+    snap, key, series, sector, spans, spin_days, versions, variants, replicas, cal, accr = args
     marks = ST.month_ends(cal)
     rates, spy = M.load(snap)
-    p = P.build(sym, snap, spans, versions=versions, spinoffs=spinoffs.get(sym, []))
-    res = {"symbol": sym, "sector": sector, "runs": {}, "plans": [], "placebo": {}, "eligible": {},
-           "report": report_of(p)}
+    p = P.build(series, snap, spans, versions=versions, spinoffs=spin_days)
+    res = {"symbol": key, "series": series, "sector": sector, "runs": {}, "plans": [], "placebo": {},
+           "eligible": {}, "report": report_of(p)}
     for v in versions:
         r = S.Rules(version=v)
         out = S.run(p, r, rates, first_day=FIRST_DAY)
         res["runs"][f"method_{v}"] = compact(out, p.dates, cal, accr, marks)
-        res["plans"] += plan_rows(p, out, f"method_{v}", v, sector)
+        res["plans"] += plan_rows(p, out, f"method_{v}", v, sector, key)
         res["runs"][f"spy_matched_{v}"] = compact(mirror_spy(p, out, spy, rates), p.dates, cal, accr, marks)
         res["eligible"][v] = PL.eligible_days(p, out, r)
         if v in PLACEBO_VERSIONS and replicas:
@@ -266,15 +228,15 @@ def company_runs(args) -> dict:
             for k in range(replicas):
                 o = PL.replica(p, r, rates, h, k, cands, first_day=FIRST_DAY)
                 c = compact(o, p.dates, cal, accr, marks)
-                rows = plan_rows(p, o, "placebo", v, sector)
+                rows = plan_rows(p, o, "placebo", v, sector, key)
                 reps.append({"monthly": c["monthly"], "held_share": c["held_share"], "plans": c["plans"],
                              "rets": [x["ret"] for x in rows], "years": [x["year"] for x in rows]})
             res["placebo"][v] = {"h": h, "candidates": len(cands), "target": target, "reps": reps}
     for name, kw in variants.items():
         out = S.run(p, replace(S.Rules(version=MAIN), **kw), rates, first_day=FIRST_DAY)
         res["runs"][name] = compact(out, p.dates, cal, accr, marks)
-        res["plans"] += plan_rows(p, out, name, MAIN, sector)
-    adj_o, adj_c = adj_series(snap, sym, p.dates)
+        res["plans"] += plan_rows(p, out, name, MAIN, sector, key)
+    adj_o, adj_c = adj_series(snap, series, p.dates)
     res["runs"]["buy_hold_member"] = compact(buy_hold(p, adj_o, adj_c, rates), p.dates, cal, accr, marks)
     return res
 
@@ -386,14 +348,19 @@ def main(argv=None) -> int:
     sample = json.loads(Path(a.sample).read_text(encoding="utf-8"))
     spin = json.loads(Path(a.spinoffs).read_text(encoding="utf-8"))
     spinoffs = {k: [x["date"] for x in v if x.get("confirmed")] for k, v in spin["events"].items()}
+    comps, walk = choose(snap, sample)
+    if walk.get("same_as_pc") is False:
+        print("snapshot refused: the replacement walk here differs from the PC's (status.json)")
+        return 2
+    swaps = walk["replacements"]
     rates, spy = M.load(snap)
-    cal = [d for d in spy.days if d >= FIRST_DAY]
+    cal = [d for d in spy.days if FIRST_DAY <= d <= walk["z"]]
     accr = accrual(cal, rates)
-    comps, swaps = choose(snap, sample, cal[-1])
     versions = (MAIN,) if a.quick else VERSIONS
     variants = {} if a.quick else VARIANTS
     reps = 20 if a.quick else a.replicas
-    jobs = [(snap, s, sec, spans, spinoffs, versions, variants, reps, cal, accr) for s, sec, spans in comps]
+    jobs = [(snap, key, series, sec, spans, spinoffs.get(key, []), versions, variants, reps, cal, accr)
+            for key, series, sec, spans in comps]
     with Pool(a.workers) as pool:
         results = pool.map(company_runs, jobs)
     marks = ST.month_ends(cal)
@@ -409,7 +376,8 @@ def main(argv=None) -> int:
     plans = [row for r in results for row in r["plans"]]
     res = {"created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "snapshot": {"created": man.get("created"), "last_day": cal[-1], "files": len(man["files"])},
-           "companies": [{"symbol": c[0], "sector": c[1]} for c in comps], "replacements": swaps,
+           "companies": [{"symbol": c[0], "series": c[1], "sector": c[2]} for c in comps], "replacements": swaps,
+           "walk": {k: walk.get(k) for k in ("z", "same_as_pc", "review", "assessed")},
            "first_day": FIRST_DAY, "rules": asdict(S.Rules()), "variants": variants, "summary": summary,
            "compare": compare(results, plans, cal, accr, versions, [spy_plain[k] for k in marks]),
            "placebo_calibration": {r["symbol"]: {v: {k: x for k, x in pl.items() if k != "reps"}
@@ -422,7 +390,8 @@ def main(argv=None) -> int:
         w.writeheader()
         w.writerows(plans)
     (out / "portfolio.json").write_text(json.dumps({"dates": cal, "series": port}), encoding="utf-8")
-    print(f"{len(comps)} companies ({len(swaps)} replaced), {len(plans)} plan rows; results in {out}")
+    print(f"{len(comps)} companies ({sum(1 for x in swaps if x['in'])} replaced), {len(plans)} plan rows; "
+          f"results in {out}")
     return 0
 
 

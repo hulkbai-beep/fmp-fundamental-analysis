@@ -63,6 +63,7 @@ class RunTest(unittest.TestCase):
         manifest(cls.snap)
         cls.sample = root / "sample.json"
         cls.sample.write_text(json.dumps({"sample": ["AAA", "BBB", "CCC", "DDD"],
+                                          "order": {"Tech": ["AAA", "BBB", "EEE"], "Energy": ["CCC", "DDD"]},
                                           "spares": {"Tech": ["EEE"], "Energy": []}, "records": recs}))
         spin = root / "spin.json"
         spin.write_text(json.dumps({"events": {"CCC": [{"date": "2015-03-02", "confirmed": True}]}}))
@@ -77,7 +78,8 @@ class RunTest(unittest.TestCase):
     def test_ran(self):
         self.assertEqual(self.rc, 0)
         self.assertEqual([c["symbol"] for c in self.res["companies"]], ["AAA", "EEE", "CCC", "DDD"])
-        self.assertEqual(self.res["replacements"], [{"out": "BBB", "why": "no bars", "in": "EEE"}])
+        self.assertEqual(self.res["replacements"], [{"out": "BBB", "why": "bars on 0% of member sessions",
+                                                     "in": "EEE", "tried": []}])
         self.assertTrue((self.out / "plans.csv").exists())
 
     def test_method_matches_a_direct_run(self):
@@ -99,6 +101,22 @@ class RunTest(unittest.TestCase):
         s = self.res["summary"]
         self.assertTrue(all(k in s for k in ("method_T", "buy_hold_member", "spy", "spy_matched_T")))
         self.assertLess(s["method_T"]["held_share"], s["buy_hold_member"]["held_share"])
+
+    def test_walk_must_match_the_pc(self):
+        sample = json.loads(self.sample.read_text())
+        comps, st = R.choose(self.snap, sample)
+        self.assertNotIn("same_as_pc", st)                              # no status.json: nothing to compare
+        pc = self.snap / "status.json"
+        try:
+            pc.write_text(json.dumps(dict(st, z=st["z"])))
+            self.assertTrue(R.choose(self.snap, sample)[1]["same_as_pc"])
+            st["replacements"][0]["in"] = None
+            pc.write_text(json.dumps(st))
+            self.assertFalse(R.choose(self.snap, sample)[1]["same_as_pc"])
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+                                     "--sample", str(self.sample)]), 2)
+        finally:
+            pc.unlink()
 
     def test_manifest_refuses_a_changed_file(self):
         f = self.snap / "raw" / "inc_q" / "AAA.json"

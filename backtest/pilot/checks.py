@@ -51,7 +51,7 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random) -> dict:
     bad, done = [], 0
     picked = rnd.sample(comps, min(len(comps), 25))
     per = max(1, n // len(picked))
-    for sym, sector, spans in picked:
+    for _, sym, sector, spans in picked:
         p = P.build(sym, snap, spans)
         sp = P.split_factors(P.read(snap / "raw" / "splits" / f"{sym}.json"))
         years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {})
@@ -88,7 +88,7 @@ def check_pipeline(snap: Path, comps: list) -> dict:
     """The skill's price_range at the last day against the pilot's band code on the same inputs."""
     raw = snap / "raw"
     rows, skipped = [], []
-    for sym, sector, spans in comps:
+    for _, sym, sector, spans in comps:
         bars = sorted((str(r["date"])[:10], P.fnum(r.get("close"))) for r in P.read(raw / "full" / f"{sym}.json"))
         bars = [(d, c) for d, c in bars if c]
         est = P.read(raw / "est" / f"{sym}.json")
@@ -140,7 +140,7 @@ def check_pipeline(snap: Path, comps: list) -> dict:
 def check_truncation(snap: Path, comps: list, n: int, rnd: random.Random) -> dict:
     bad, done = [], 0
     per = max(1, n // len(comps))
-    for sym, sector, spans in comps:
+    for _, sym, sector, spans in comps:
         full = P.build(sym, snap, spans, versions=("T",))
         days = [d for i, d in enumerate(full.dates) if d >= R.FIRST_DAY and full.member[i]]
         for cut in sorted(rnd.sample(days, min(len(days), per))):
@@ -160,7 +160,7 @@ def check_truncation(snap: Path, comps: list, n: int, rnd: random.Random) -> dic
 def check_fills(snap: Path, comps: list) -> dict:
     rates, _ = M.load(snap)
     bad, fills, sells = [], 0, 0
-    for sym, sector, spans in comps:
+    for _, sym, sector, spans in comps:
         p = P.build(sym, snap, spans)
         for v in R.VERSIONS:
             r = S.Rules(version=v)
@@ -183,7 +183,7 @@ def check_fills(snap: Path, comps: list) -> dict:
 
 def check_basis(snap: Path, comps: list) -> dict:
     out = {}
-    for sym, sector, spans in comps:
+    for _, sym, sector, spans in comps:
         p = P.build(sym, snap, spans, versions=("T",))
         rep = p.report
         keep = {k: rep[k] for k in ("basis_q", "basis_a", "annual_vs_quarters", "spin_candidates")}
@@ -208,8 +208,10 @@ def main(argv=None) -> int:
         print("snapshot refused: files differ from the manifest")
         return 2
     sample = json.loads(Path(a.sample).read_text(encoding="utf-8"))
-    _, spy = M.load(snap)
-    comps, _ = R.choose(snap, sample, spy.days[-1])
+    comps, walk = R.choose(snap, sample)
+    if walk.get("same_as_pc") is False:
+        print("snapshot refused: the replacement walk here differs from the PC's (status.json)")
+        return 2
     rnd = random.Random(SEED)
     res = {}
     if "band" in a.only:

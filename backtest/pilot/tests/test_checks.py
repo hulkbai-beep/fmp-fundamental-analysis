@@ -37,7 +37,8 @@ class ChecksTest(unittest.TestCase):
             recs[sym] = {"series": sym, "sector": "Tech", "spans": [["2006-01-03", "2030-01-01"]]}
         TR.manifest(cls.snap)
         cls.sample = root / "sample.json"
-        cls.sample.write_text(json.dumps({"sample": ["AAA", "CCC"], "spares": {"Tech": []}, "records": recs}))
+        cls.sample.write_text(json.dumps({"sample": ["AAA", "CCC"], "order": {"Tech": ["AAA", "CCC"]},
+                                          "spares": {"Tech": []}, "records": recs}))
         cls.rc = C.main(["--snap", str(cls.snap), "--out", str(cls.out), "--pairs", "20", "--sample", str(cls.sample)])
         cls.res = json.loads((cls.out / "checks.json").read_text())
 

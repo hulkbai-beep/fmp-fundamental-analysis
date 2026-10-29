@@ -50,7 +50,8 @@ def load(snap: Path) -> tuple[Rates, Spy]:
 
 
 def check_manifest(snap: Path) -> list:
-    """Files whose md5 differs from the manifest (or that are missing): the analysis refuses such a snapshot."""
+    """Files that differ from the manifest, are missing, or are not listed in it, and bookkeeping files (run,
+    status, fetch log) that differ from their recorded md5: the analysis refuses such a snapshot."""
     import hashlib
     snap = Path(snap)
     man = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
@@ -59,4 +60,13 @@ def check_manifest(snap: Path) -> list:
         p = snap / rel
         if not p.exists() or hashlib.md5(p.read_bytes()).hexdigest() != meta["md5"]:
             bad.append(rel)
+    listed = set(man["files"])
+    for p in sorted((snap / "raw").rglob("*")):
+        rel = str(p.relative_to(snap)).replace("\\", "/")
+        if p.is_file() and rel not in listed:
+            bad.append(rel)
+    for name, h in man.get("meta_files", {}).items():
+        p = snap / name
+        if not p.exists() or hashlib.md5(p.read_bytes()).hexdigest() != h:
+            bad.append(name)
     return bad

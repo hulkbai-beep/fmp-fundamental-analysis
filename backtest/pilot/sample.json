@@ -543,6 +543,203 @@
    "kind": "pool",
    "cuts": {}
   },
+  "FMC": {
+   "tickers": [
+    "FMC"
+   ],
+   "series": "FMC",
+   "spans": [
+    [
+     "2009-08-19",
+     "2025-03-24"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IP": {
+   "tickers": [
+    "IP"
+   ],
+   "series": "IP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IFF": {
+   "tickers": [
+    "IFF"
+   ],
+   "series": "IFF",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DD": {
+   "tickers": [
+    "DD"
+   ],
+   "series": "DD",
+   "spans": [
+    [
+     "2019-06-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": "2019-06-03",
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {
+    "DD": [
+     "2019-06-03",
+     "old DuPont until 2017-08 and DowDuPont until 2019-05 are joined under DD"
+    ]
+   }
+  },
+  "ARG": {
+   "tickers": [
+    "ARG"
+   ],
+   "series": "ARG",
+   "spans": [
+    [
+     "2009-09-09",
+     "2016-05-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LYB": {
+   "tickers": [
+    "LYB"
+   ],
+   "series": "LYB",
+   "spans": [
+    [
+     "2012-09-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EMN": {
+   "tickers": [
+    "EMN"
+   ],
+   "series": "EMN",
+   "spans": [
+    [
+     "1996-01-02",
+     "2025-11-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MLM": {
+   "tickers": [
+    "MLM"
+   ],
+   "series": "MLM",
+   "spans": [
+    [
+     "2014-07-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ALB": {
+   "tickers": [
+    "ALB"
+   ],
+   "series": "ALB",
+   "spans": [
+    [
+     "2016-07-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CLF": {
+   "tickers": [
+    "CLF"
+   ],
+   "series": "CLF",
+   "spans": [
+    [
+     "2009-12-21",
+     "2014-04-02"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CF": {
+   "tickers": [
+    "CF"
+   ],
+   "series": "CF",
+   "spans": [
+    [
+     "2008-08-27",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LIN": {
+   "tickers": [
+    "LIN"
+   ],
+   "series": "LIN",
+   "spans": [
+    [
+     "2018-11-06",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
   "IPG": {
    "tickers": [
     "IPG"
@@ -568,6 +765,204 @@
     [
      "2025-03-24",
      "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NYT": {
+   "tickers": [
+    "NYT"
+   ],
+   "series": "NYT",
+   "spans": [
+    [
+     "1996-01-02",
+     "2010-12-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TMUS": {
+   "tickers": [
+    "TMUS"
+   ],
+   "series": "TMUS",
+   "spans": [
+    [
+     "2009-06-30",
+     "2013-05-01"
+    ],
+    [
+     "2019-07-15",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IAC": {
+   "tickers": [
+    "IAC"
+   ],
+   "series": "IAC",
+   "spans": [
+    [
+     "2006-12-01",
+     "2008-08-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DISH": {
+   "tickers": [
+    "DISH"
+   ],
+   "series": "DISH",
+   "spans": [
+    [
+     "2017-03-13",
+     "2023-06-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MTCH": {
+   "tickers": [
+    "MTCH"
+   ],
+   "series": "MTCH",
+   "spans": [
+    [
+     "2021-09-20",
+     "2026-03-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CHTR": {
+   "tickers": [
+    "CHTR"
+   ],
+   "series": "CHTR",
+   "spans": [
+    [
+     "2016-09-08",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MDP": {
+   "tickers": [
+    "MDP"
+   ],
+   "series": "MDP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2011-01-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WBD": {
+   "tickers": [
+    "DISCA",
+    "DISCK",
+    "WBD"
+   ],
+   "series": "WBD",
+   "spans": [
+    [
+     "2010-03-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TTD": {
+   "tickers": [
+    "TTD"
+   ],
+   "series": "TTD",
+   "spans": [
+    [
+     "2025-07-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TKO": {
+   "tickers": [
+    "TKO"
+   ],
+   "series": "TKO",
+   "spans": [
+    [
+     "2025-03-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PSKY": {
+   "tickers": [
+    "PSKY"
+   ],
+   "series": "PSKY",
+   "spans": [
+    [
+     "2025-08-08",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LVLT": {
+   "tickers": [
+    "LVLT"
+   ],
+   "series": "LVLT",
+   "spans": [
+    [
+     "2014-11-05",
+     "2017-10-13"
     ]
    ],
    "bars_from": null,
@@ -703,6 +1098,697 @@
    "kind": "pool",
    "cuts": {}
   },
+  "FL": {
+   "tickers": [
+    "FL"
+   ],
+   "series": "FL",
+   "spans": [
+    [
+     "2016-04-04",
+     "2019-08-09"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WHR": {
+   "tickers": [
+    "WHR"
+   ],
+   "series": "WHR",
+   "spans": [
+    [
+     "1996-01-02",
+     "2024-03-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LEG": {
+   "tickers": [
+    "LEG"
+   ],
+   "series": "LEG",
+   "spans": [
+    [
+     "1999-10-18",
+     "2021-12-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MHK": {
+   "tickers": [
+    "MHK"
+   ],
+   "series": "MHK",
+   "spans": [
+    [
+     "2013-12-23",
+     "2025-12-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LULU": {
+   "tickers": [
+    "LULU"
+   ],
+   "series": "LULU",
+   "spans": [
+    [
+     "2023-10-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BALL": {
+   "tickers": [
+    "BALL",
+    "BLL"
+   ],
+   "series": "BALL",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BBBY": {
+   "tickers": [
+    "BBBY"
+   ],
+   "series": "BBBY",
+   "spans": [
+    [
+     "1999-10-01",
+     "2017-07-26"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AMCR": {
+   "tickers": [
+    "AMCR"
+   ],
+   "series": "AMCR",
+   "spans": [
+    [
+     "2019-06-07",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CCL": {
+   "tickers": [
+    "CCL"
+   ],
+   "series": "CCL",
+   "spans": [
+    [
+     "1998-12-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GPS": {
+   "tickers": [
+    "GPS"
+   ],
+   "series": "GPS",
+   "spans": [
+    [
+     "1996-01-02",
+     "2022-02-02"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SIG": {
+   "tickers": [
+    "SIG"
+   ],
+   "series": "SIG",
+   "spans": [
+    [
+     "2015-07-29",
+     "2018-03-19"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ROST": {
+   "tickers": [
+    "ROST"
+   ],
+   "series": "ROST",
+   "spans": [
+    [
+     "2009-12-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "URBN": {
+   "tickers": [
+    "URBN"
+   ],
+   "series": "URBN",
+   "spans": [
+    [
+     "2010-02-08",
+     "2017-03-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TSCO": {
+   "tickers": [
+    "TSCO"
+   ],
+   "series": "TSCO",
+   "spans": [
+    [
+     "2014-01-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ODP": {
+   "tickers": [
+    "ODP"
+   ],
+   "series": "ODP",
+   "spans": [
+    [
+     "1999-06-24",
+     "2010-12-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXPE": {
+   "tickers": [
+    "EXPE"
+   ],
+   "series": "EXPE",
+   "spans": [
+    [
+     "2007-10-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TRIP": {
+   "tickers": [
+    "TRIP"
+   ],
+   "series": "TRIP",
+   "spans": [
+    [
+     "2011-12-21",
+     "2019-12-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AN": {
+   "tickers": [
+    "AN"
+   ],
+   "series": "AN",
+   "spans": [
+    [
+     "2003-02-24",
+     "2017-08-08"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HOT": {
+   "tickers": [
+    "HOT"
+   ],
+   "series": "HOT",
+   "spans": [
+    [
+     "2000-11-17",
+     "2016-09-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "KSS": {
+   "tickers": [
+    "KSS"
+   ],
+   "series": "KSS",
+   "spans": [
+    [
+     "1998-08-14",
+     "2020-09-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CZR": {
+   "tickers": [
+    "CZR"
+   ],
+   "series": "CZR",
+   "spans": [
+    [
+     "2021-03-22",
+     "2025-09-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MAR": {
+   "tickers": [
+    "MAR"
+   ],
+   "series": "MAR",
+   "spans": [
+    [
+     "1998-05-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GPC": {
+   "tickers": [
+    "GPC"
+   ],
+   "series": "GPC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HRB": {
+   "tickers": [
+    "HRB"
+   ],
+   "series": "HRB",
+   "spans": [
+    [
+     "1996-01-02",
+     "2020-09-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WSM": {
+   "tickers": [
+    "WSM"
+   ],
+   "series": "WSM",
+   "spans": [
+    [
+     "2025-03-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PHM": {
+   "tickers": [
+    "PHM"
+   ],
+   "series": "PHM",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HOG": {
+   "tickers": [
+    "HOG"
+   ],
+   "series": "HOG",
+   "spans": [
+    [
+     "2000-01-31",
+     "2020-06-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HBI": {
+   "tickers": [
+    "HBI"
+   ],
+   "series": "HBI",
+   "spans": [
+    [
+     "2015-03-23",
+     "2021-12-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VFC": {
+   "tickers": [
+    "VFC"
+   ],
+   "series": "VFC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2024-04-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ETSY": {
+   "tickers": [
+    "ETSY"
+   ],
+   "series": "ETSY",
+   "spans": [
+    [
+     "2020-09-21",
+     "2024-09-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "UAA": {
+   "tickers": [
+    "UA",
+    "UAA"
+   ],
+   "series": "UAA",
+   "spans": [
+    [
+     "2014-05-01",
+     "2022-06-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "OI": {
+   "tickers": [
+    "OI"
+   ],
+   "series": "OI",
+   "spans": [
+    [
+     "2009-01-02",
+     "2016-12-02"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HLT": {
+   "tickers": [
+    "HLT"
+   ],
+   "series": "HLT",
+   "spans": [
+    [
+     "2017-06-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IGT": {
+   "tickers": [
+    "IGT"
+   ],
+   "series": "IGT",
+   "spans": [
+    [
+     "2001-09-04",
+     "2014-06-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GME": {
+   "tickers": [
+    "GME"
+   ],
+   "series": "GME",
+   "spans": [
+    [
+     "2007-12-14",
+     "2016-04-25"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GT": {
+   "tickers": [
+    "GT"
+   ],
+   "series": "GT",
+   "spans": [
+    [
+     "1996-01-02",
+     "2019-02-27"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MAT": {
+   "tickers": [
+    "MAT"
+   ],
+   "series": "MAT",
+   "spans": [
+    [
+     "1996-01-02",
+     "2019-06-07"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DRI": {
+   "tickers": [
+    "DRI"
+   ],
+   "series": "DRI",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ORLY": {
+   "tickers": [
+    "ORLY"
+   ],
+   "series": "ORLY",
+   "spans": [
+    [
+     "2009-03-27",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ULTA": {
+   "tickers": [
+    "ULTA"
+   ],
+   "series": "ULTA",
+   "spans": [
+    [
+     "2016-04-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SW": {
+   "tickers": [
+    "SW",
+    "WRK"
+   ],
+   "series": "SW",
+   "spans": [
+    [
+     "2015-07-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "JWN": {
+   "tickers": [
+    "JWN"
+   ],
+   "series": "JWN",
+   "spans": [
+    [
+     "1996-01-02",
+     "2020-06-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AAP": {
+   "tickers": [
+    "AAP"
+   ],
+   "series": "AAP",
+   "spans": [
+    [
+     "2015-07-09",
+     "2023-08-25"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
   "APOL": {
    "tickers": [
     "APOL"
@@ -727,6 +1813,198 @@
    "spans": [
     [
      "2007-04-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NWL": {
+   "tickers": [
+    "NWL"
+   ],
+   "series": "NWL",
+   "spans": [
+    [
+     "1996-01-02",
+     "2023-09-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MKC": {
+   "tickers": [
+    "MKC"
+   ],
+   "series": "MKC",
+   "spans": [
+    [
+     "2003-03-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TAP": {
+   "tickers": [
+    "TAP"
+   ],
+   "series": "TAP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "COTY": {
+   "tickers": [
+    "COTY"
+   ],
+   "series": "COTY",
+   "spans": [
+    [
+     "2016-10-03",
+     "2020-09-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CAG": {
+   "tickers": [
+    "CAG"
+   ],
+   "series": "CAG",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-06-30"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SVU": {
+   "tickers": [
+    "SVU"
+   ],
+   "series": "SVU",
+   "spans": [
+    [
+     "1996-01-02",
+     "2012-05-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CPB": {
+   "tickers": [
+    "CPB"
+   ],
+   "series": "CPB",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-06-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CCEP": {
+   "tickers": [
+    "CCEP"
+   ],
+   "series": "CCEP",
+   "spans": [
+    [
+     "2016-01-04",
+     "2016-05-31"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SJM": {
+   "tickers": [
+    "SJM"
+   ],
+   "series": "SJM",
+   "spans": [
+    [
+     "2008-11-06",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HRL": {
+   "tickers": [
+    "HRL"
+   ],
+   "series": "HRL",
+   "spans": [
+    [
+     "2009-03-04",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GMCR": {
+   "tickers": [
+    "GMCR"
+   ],
+   "series": "GMCR",
+   "spans": [
+    [
+     "2014-03-24",
+     "2016-03-03"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CHD": {
+   "tickers": [
+    "CHD"
+   ],
+   "series": "CHD",
+   "spans": [
+    [
+     "2015-12-29",
      "2026-10-29"
     ]
    ],
@@ -760,6 +2038,199 @@
     [
      "2024-11-26",
      "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXE": {
+   "tickers": [
+    "EXE"
+   ],
+   "series": "EXE",
+   "spans": [
+    [
+     "2025-03-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "KMI": {
+   "tickers": [
+    "KMI"
+   ],
+   "series": "KMI",
+   "spans": [
+    [
+     "2012-05-25",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FANG": {
+   "tickers": [
+    "FANG"
+   ],
+   "series": "FANG",
+   "spans": [
+    [
+     "2018-12-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FTI": {
+   "tickers": [
+    "FTI"
+   ],
+   "series": "FTI",
+   "spans": [
+    [
+     "2009-06-05",
+     "2021-02-12"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ENPH": {
+   "tickers": [
+    "ENPH"
+   ],
+   "series": "ENPH",
+   "spans": [
+    [
+     "2021-01-07",
+     "2025-09-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CTRA": {
+   "tickers": [
+    "COG",
+    "CTRA"
+   ],
+   "series": "CTRA",
+   "spans": [
+    [
+     "2008-06-23",
+     "2026-05-07"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DVN": {
+   "tickers": [
+    "DVN"
+   ],
+   "series": "DVN",
+   "spans": [
+    [
+     "2000-08-30",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VLO": {
+   "tickers": [
+    "VLO"
+   ],
+   "series": "VLO",
+   "spans": [
+    [
+     "2004-04-29",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SWN": {
+   "tickers": [
+    "SWN"
+   ],
+   "series": "SWN",
+   "spans": [
+    [
+     "2008-06-06",
+     "2017-04-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CNX": {
+   "tickers": [
+    "CNX"
+   ],
+   "series": "CNX",
+   "spans": [
+    [
+     "2006-06-28",
+     "2016-03-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "OKE": {
+   "tickers": [
+    "OKE"
+   ],
+   "series": "OKE",
+   "spans": [
+    [
+     "2010-03-15",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MRO": {
+   "tickers": [
+    "MRO"
+   ],
+   "series": "MRO",
+   "spans": [
+    [
+     "1996-01-02",
+     "2024-11-26"
     ]
    ],
    "bars_from": null,
@@ -896,6 +2367,712 @@
    "kind": "pool",
    "cuts": {}
   },
+  "BNY": {
+   "tickers": [
+    "BK",
+    "BNY"
+   ],
+   "series": "BNY",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SLM": {
+   "tickers": [
+    "SLM"
+   ],
+   "series": "SLM",
+   "spans": [
+    [
+     "1998-07-01",
+     "2014-05-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TRV": {
+   "tickers": [
+    "TRV"
+   ],
+   "series": "TRV",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BEN": {
+   "tickers": [
+    "BEN"
+   ],
+   "series": "BEN",
+   "spans": [
+    [
+     "1998-04-29",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MA": {
+   "tickers": [
+    "MA"
+   ],
+   "series": "MA",
+   "spans": [
+    [
+     "2008-07-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BRK-B": {
+   "tickers": [
+    "BRK-B"
+   ],
+   "series": "BRK-B",
+   "spans": [
+    [
+     "2010-02-16",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GS": {
+   "tickers": [
+    "GS"
+   ],
+   "series": "GS",
+   "spans": [
+    [
+     "2002-07-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TFC": {
+   "tickers": [
+    "TFC"
+   ],
+   "series": "TFC",
+   "spans": [
+    [
+     "2019-12-09",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NDAQ": {
+   "tickers": [
+    "NDAQ"
+   ],
+   "series": "NDAQ",
+   "spans": [
+    [
+     "2008-10-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AON": {
+   "tickers": [
+    "AON"
+   ],
+   "series": "AON",
+   "spans": [
+    [
+     "1996-04-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CMA": {
+   "tickers": [
+    "CMA"
+   ],
+   "series": "CMA",
+   "spans": [
+    [
+     "1996-01-02",
+     "2024-06-24"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BAC": {
+   "tickers": [
+    "BAC"
+   ],
+   "series": "BAC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PNC": {
+   "tickers": [
+    "PNC"
+   ],
+   "series": "PNC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "RF": {
+   "tickers": [
+    "RF"
+   ],
+   "series": "RF",
+   "spans": [
+    [
+     "1998-08-28",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CFG": {
+   "tickers": [
+    "CFG"
+   ],
+   "series": "CFG",
+   "spans": [
+    [
+     "2016-02-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AIZ": {
+   "tickers": [
+    "AIZ"
+   ],
+   "series": "AIZ",
+   "spans": [
+    [
+     "2007-04-10",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MET": {
+   "tickers": [
+    "MET"
+   ],
+   "series": "MET",
+   "spans": [
+    [
+     "2000-12-11",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NTRS": {
+   "tickers": [
+    "NTRS"
+   ],
+   "series": "NTRS",
+   "spans": [
+    [
+     "1998-01-30",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CME": {
+   "tickers": [
+    "CME"
+   ],
+   "series": "CME",
+   "spans": [
+    [
+     "2006-08-11",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MRSH": {
+   "tickers": [
+    "MMC",
+    "MRSH"
+   ],
+   "series": "MRSH",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IVZ": {
+   "tickers": [
+    "IVZ"
+   ],
+   "series": "IVZ",
+   "spans": [
+    [
+     "2008-08-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AMG": {
+   "tickers": [
+    "AMG"
+   ],
+   "series": "AMG",
+   "spans": [
+    [
+     "2014-07-01",
+     "2019-12-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AMP": {
+   "tickers": [
+    "AMP"
+   ],
+   "series": "AMP",
+   "spans": [
+    [
+     "2005-10-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FMCC": {
+   "tickers": [
+    "FMCC"
+   ],
+   "series": "FMCC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2008-09-11"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SBNY": {
+   "tickers": [
+    "SBNY"
+   ],
+   "series": "SBNY",
+   "spans": [
+    [
+     "2021-12-20",
+     "2023-03-15"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SPGI": {
+   "tickers": [
+    "SPGI"
+   ],
+   "series": "SPGI",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PFG": {
+   "tickers": [
+    "PFG"
+   ],
+   "series": "PFG",
+   "spans": [
+    [
+     "2002-07-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MTG": {
+   "tickers": [
+    "MTG"
+   ],
+   "series": "MTG",
+   "spans": [
+    [
+     "1996-07-19",
+     "2008-10-31"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HBAN": {
+   "tickers": [
+    "HBAN"
+   ],
+   "series": "HBAN",
+   "spans": [
+    [
+     "1997-08-06",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BX": {
+   "tickers": [
+    "BX"
+   ],
+   "series": "BX",
+   "spans": [
+    [
+     "2023-09-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TROW": {
+   "tickers": [
+    "TROW"
+   ],
+   "series": "TROW",
+   "spans": [
+    [
+     "1999-10-13",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WFC": {
+   "tickers": [
+    "WFC"
+   ],
+   "series": "WFC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ICE": {
+   "tickers": [
+    "ICE"
+   ],
+   "series": "ICE",
+   "spans": [
+    [
+     "2007-09-26",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SCHW": {
+   "tickers": [
+    "SCHW"
+   ],
+   "series": "SCHW",
+   "spans": [
+    [
+     "1997-06-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AJG": {
+   "tickers": [
+    "AJG"
+   ],
+   "series": "AJG",
+   "spans": [
+    [
+     "2016-05-31",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "KEY": {
+   "tickers": [
+    "KEY"
+   ],
+   "series": "KEY",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MSCI": {
+   "tickers": [
+    "MSCI"
+   ],
+   "series": "MSCI",
+   "spans": [
+    [
+     "2018-04-04",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "C": {
+   "tickers": [
+    "C"
+   ],
+   "series": "C",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GNW": {
+   "tickers": [
+    "GNW"
+   ],
+   "series": "GNW",
+   "spans": [
+    [
+     "2005-12-02",
+     "2015-11-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MCO": {
+   "tickers": [
+    "MCO"
+   ],
+   "series": "MCO",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WRB": {
+   "tickers": [
+    "WRB"
+   ],
+   "series": "WRB",
+   "spans": [
+    [
+     "2019-12-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ACGL": {
+   "tickers": [
+    "ACGL"
+   ],
+   "series": "ACGL",
+   "spans": [
+    [
+     "2022-11-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LNC": {
+   "tickers": [
+    "LNC"
+   ],
+   "series": "LNC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2023-09-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CINF": {
+   "tickers": [
+    "CINF"
+   ],
+   "series": "CINF",
+   "spans": [
+    [
+     "1997-12-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
   "THC": {
    "tickers": [
     "THC"
@@ -969,6 +3146,472 @@
     [
      "2017-01-05",
      "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BIO": {
+   "tickers": [
+    "BIO"
+   ],
+   "series": "BIO",
+   "spans": [
+    [
+     "2020-06-22",
+     "2024-09-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PRGO": {
+   "tickers": [
+    "PRGO"
+   ],
+   "series": "PRGO",
+   "spans": [
+    [
+     "2011-12-19",
+     "2021-09-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HCA": {
+   "tickers": [
+    "HCA"
+   ],
+   "series": "HCA",
+   "spans": [
+    [
+     "2015-01-27",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MTD": {
+   "tickers": [
+    "MTD"
+   ],
+   "series": "MTD",
+   "spans": [
+    [
+     "2016-09-06",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VRTX": {
+   "tickers": [
+    "VRTX"
+   ],
+   "series": "VRTX",
+   "spans": [
+    [
+     "2013-09-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CI": {
+   "tickers": [
+    "CI"
+   ],
+   "series": "CI",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EVHC": {
+   "tickers": [
+    "EVHC"
+   ],
+   "series": "EVHC",
+   "spans": [
+    [
+     "2016-12-02",
+     "2018-10-11"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SYK": {
+   "tickers": [
+    "SYK"
+   ],
+   "series": "SYK",
+   "spans": [
+    [
+     "2000-12-12",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PODD": {
+   "tickers": [
+    "PODD"
+   ],
+   "series": "PODD",
+   "spans": [
+    [
+     "2023-03-15",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ALXN": {
+   "tickers": [
+    "ALXN"
+   ],
+   "series": "ALXN",
+   "spans": [
+    [
+     "2012-05-25",
+     "2021-07-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "COR": {
+   "tickers": [
+    "ABC",
+    "COR"
+   ],
+   "series": "COR",
+   "spans": [
+    [
+     "2001-08-30",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HUM": {
+   "tickers": [
+    "HUM"
+   ],
+   "series": "HUM",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BAX": {
+   "tickers": [
+    "BAX"
+   ],
+   "series": "BAX",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EW": {
+   "tickers": [
+    "EW"
+   ],
+   "series": "EW",
+   "spans": [
+    [
+     "2011-04-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DGX": {
+   "tickers": [
+    "DGX"
+   ],
+   "series": "DGX",
+   "spans": [
+    [
+     "2002-12-12",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HOLX": {
+   "tickers": [
+    "HOLX"
+   ],
+   "series": "HOLX",
+   "spans": [
+    [
+     "2016-03-30",
+     "2026-04-09"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CNC": {
+   "tickers": [
+    "CNC"
+   ],
+   "series": "CNC",
+   "spans": [
+    [
+     "2016-03-30",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ABMD": {
+   "tickers": [
+    "ABMD"
+   ],
+   "series": "ABMD",
+   "spans": [
+    [
+     "2018-05-31",
+     "2022-12-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NKTR": {
+   "tickers": [
+    "NKTR"
+   ],
+   "series": "NKTR",
+   "spans": [
+    [
+     "2018-03-19",
+     "2019-10-03"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BIIB": {
+   "tickers": [
+    "BIIB"
+   ],
+   "series": "BIIB",
+   "spans": [
+    [
+     "2003-11-13",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HSIC": {
+   "tickers": [
+    "HSIC"
+   ],
+   "series": "HSIC",
+   "spans": [
+    [
+     "2015-03-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CERN": {
+   "tickers": [
+    "CERN"
+   ],
+   "series": "CERN",
+   "spans": [
+    [
+     "2010-04-30",
+     "2022-06-08"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "COO": {
+   "tickers": [
+    "COO"
+   ],
+   "series": "COO",
+   "spans": [
+    [
+     "2016-09-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "STE": {
+   "tickers": [
+    "STE"
+   ],
+   "series": "STE",
+   "spans": [
+    [
+     "2019-12-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ESRX": {
+   "tickers": [
+    "ESRX"
+   ],
+   "series": "ESRX",
+   "spans": [
+    [
+     "2003-09-26",
+     "2018-12-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CTLT": {
+   "tickers": [
+    "CTLT"
+   ],
+   "series": "CTLT",
+   "spans": [
+    [
+     "2020-09-21",
+     "2024-12-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DVA": {
+   "tickers": [
+    "DVA"
+   ],
+   "series": "DVA",
+   "spans": [
+    [
+     "2008-07-31",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "RVTY": {
+   "tickers": [
+    "PKI",
+    "RVTY"
+   ],
+   "series": "RVTY",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ILMN": {
+   "tickers": [
+    "ILMN"
+   ],
+   "series": "ILMN",
+   "spans": [
+    [
+     "2015-11-19",
+     "2024-06-24"
     ]
    ],
    "bars_from": null,
@@ -1088,6 +3731,701 @@
    "kind": "pool",
    "cuts": {}
   },
+  "RSG": {
+   "tickers": [
+    "RSG"
+   ],
+   "series": "RSG",
+   "spans": [
+    [
+     "2008-12-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WM": {
+   "tickers": [
+    "WM"
+   ],
+   "series": "WM",
+   "spans": [
+    [
+     "1998-07-17",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FLS": {
+   "tickers": [
+    "FLS"
+   ],
+   "series": "FLS",
+   "spans": [
+    [
+     "2008-10-02",
+     "2021-03-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ALLE": {
+   "tickers": [
+    "ALLE"
+   ],
+   "series": "ALLE",
+   "spans": [
+    [
+     "2013-12-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AME": {
+   "tickers": [
+    "AME"
+   ],
+   "series": "AME",
+   "spans": [
+    [
+     "2013-09-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "COL": {
+   "tickers": [
+    "COL"
+   ],
+   "series": "COL",
+   "spans": [
+    [
+     "2001-07-02",
+     "2018-11-27"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "URI": {
+   "tickers": [
+    "URI"
+   ],
+   "series": "URI",
+   "spans": [
+    [
+     "2014-09-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LUV": {
+   "tickers": [
+    "LUV"
+   ],
+   "series": "LUV",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CTAS": {
+   "tickers": [
+    "CTAS"
+   ],
+   "series": "CTAS",
+   "spans": [
+    [
+     "2001-03-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SNA": {
+   "tickers": [
+    "SNA"
+   ],
+   "series": "SNA",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EMR": {
+   "tickers": [
+    "EMR"
+   ],
+   "series": "EMR",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXPD": {
+   "tickers": [
+    "EXPD"
+   ],
+   "series": "EXPD",
+   "spans": [
+    [
+     "2007-10-10",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "RHI": {
+   "tickers": [
+    "RHI"
+   ],
+   "series": "RHI",
+   "spans": [
+    [
+     "2000-12-05",
+     "2024-06-24"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IEX": {
+   "tickers": [
+    "IEX"
+   ],
+   "series": "IEX",
+   "spans": [
+    [
+     "2019-08-09",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PNR": {
+   "tickers": [
+    "PNR"
+   ],
+   "series": "PNR",
+   "spans": [
+    [
+     "2012-10-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "RRD": {
+   "tickers": [
+    "RRD"
+   ],
+   "series": "RRD",
+   "spans": [
+    [
+     "1996-01-02",
+     "2012-12-12"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FAST": {
+   "tickers": [
+    "FAST"
+   ],
+   "series": "FAST",
+   "spans": [
+    [
+     "2008-09-15",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FLR": {
+   "tickers": [
+    "FLR"
+   ],
+   "series": "FLR",
+   "spans": [
+    [
+     "2000-12-22",
+     "2019-06-03"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ROL": {
+   "tickers": [
+    "ROL"
+   ],
+   "series": "ROL",
+   "spans": [
+    [
+     "2018-10-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TEX": {
+   "tickers": [
+    "TEX"
+   ],
+   "series": "TEX",
+   "spans": [
+    [
+     "2006-12-20",
+     "2008-11-06"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GHC": {
+   "tickers": [
+    "GHC"
+   ],
+   "series": "GHC",
+   "spans": [
+    [
+     "2007-12-31",
+     "2014-09-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BNI": {
+   "tickers": [
+    "BNI"
+   ],
+   "series": "BNI",
+   "spans": [
+    [
+     "1996-01-02",
+     "2010-02-16"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CVG": {
+   "tickers": [
+    "CVG"
+   ],
+   "series": "CVG",
+   "spans": [
+    [
+     "2000-06-13",
+     "2009-12-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PWR": {
+   "tickers": [
+    "PWR"
+   ],
+   "series": "PWR",
+   "spans": [
+    [
+     "2009-07-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GNRC": {
+   "tickers": [
+    "GNRC"
+   ],
+   "series": "GNRC",
+   "spans": [
+    [
+     "2021-03-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "JBHT": {
+   "tickers": [
+    "JBHT"
+   ],
+   "series": "JBHT",
+   "spans": [
+    [
+     "2015-07-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SWK": {
+   "tickers": [
+    "SWK"
+   ],
+   "series": "SWK",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GD": {
+   "tickers": [
+    "GD"
+   ],
+   "series": "GD",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "UAL": {
+   "tickers": [
+    "UAL"
+   ],
+   "series": "UAL",
+   "spans": [
+    [
+     "2015-09-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AYI": {
+   "tickers": [
+    "AYI"
+   ],
+   "series": "AYI",
+   "spans": [
+    [
+     "2016-05-03",
+     "2018-06-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HII": {
+   "tickers": [
+    "HII"
+   ],
+   "series": "HII",
+   "spans": [
+    [
+     "2018-01-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AAL": {
+   "tickers": [
+    "AAL"
+   ],
+   "series": "AAL",
+   "spans": [
+    [
+     "2015-03-23",
+     "2024-09-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TT": {
+   "tickers": [
+    "TT"
+   ],
+   "series": "TT",
+   "spans": [
+    [
+     "2020-03-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": "2020-03-03",
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {
+    "TT": [
+     "2020-03-03",
+     "Trane Inc. until 2008; FMP's TT is Trane Technologies (formerly Ingersoll-Rand)"
+    ]
+   }
+  },
+  "AXON": {
+   "tickers": [
+    "AXON"
+   ],
+   "series": "AXON",
+   "spans": [
+    [
+     "2023-05-04",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "KSU": {
+   "tickers": [
+    "KSU"
+   ],
+   "series": "KSU",
+   "spans": [
+    [
+     "2013-05-24",
+     "2021-12-14"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PH": {
+   "tickers": [
+    "PH"
+   ],
+   "series": "PH",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "OTIS": {
+   "tickers": [
+    "OTIS"
+   ],
+   "series": "OTIS",
+   "spans": [
+    [
+     "2020-04-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AOS": {
+   "tickers": [
+    "AOS"
+   ],
+   "series": "AOS",
+   "spans": [
+    [
+     "2017-07-26",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ALK": {
+   "tickers": [
+    "ALK"
+   ],
+   "series": "ALK",
+   "spans": [
+    [
+     "2016-05-13",
+     "2023-12-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ITW": {
+   "tickers": [
+    "ITW"
+   ],
+   "series": "ITW",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HWM": {
+   "tickers": [
+    "ARNC",
+    "HWM"
+   ],
+   "series": "HWM",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HUBB": {
+   "tickers": [
+    "HUBB"
+   ],
+   "series": "HUBB",
+   "spans": [
+    [
+     "2023-10-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "J": {
+   "tickers": [
+    "J",
+    "JEC"
+   ],
+   "series": "J",
+   "spans": [
+    [
+     "2007-10-26",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
   "UDR": {
    "tickers": [
     "UDR"
@@ -1113,6 +4451,214 @@
     [
      "2006-04-03",
      "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IRM": {
+   "tickers": [
+    "IRM"
+   ],
+   "series": "IRM",
+   "spans": [
+    [
+     "2009-01-06",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VNO": {
+   "tickers": [
+    "VNO"
+   ],
+   "series": "VNO",
+   "spans": [
+    [
+     "2005-08-12",
+     "2023-01-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PSA": {
+   "tickers": [
+    "PSA"
+   ],
+   "series": "PSA",
+   "spans": [
+    [
+     "2005-08-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "O": {
+   "tickers": [
+    "O"
+   ],
+   "series": "O",
+   "spans": [
+    [
+     "2015-04-07",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AMT": {
+   "tickers": [
+    "AMT"
+   ],
+   "series": "AMT",
+   "spans": [
+    [
+     "2007-11-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXR": {
+   "tickers": [
+    "EXR"
+   ],
+   "series": "EXR",
+   "spans": [
+    [
+     "2016-01-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HST": {
+   "tickers": [
+    "HST"
+   ],
+   "series": "HST",
+   "spans": [
+    [
+     "2007-03-20",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DLR": {
+   "tickers": [
+    "DLR"
+   ],
+   "series": "DLR",
+   "spans": [
+    [
+     "2016-05-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MAA": {
+   "tickers": [
+    "MAA"
+   ],
+   "series": "MAA",
+   "spans": [
+    [
+     "2016-12-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AIV": {
+   "tickers": [
+    "AIV"
+   ],
+   "series": "AIV",
+   "spans": [
+    [
+     "2003-03-14",
+     "2020-12-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VTR": {
+   "tickers": [
+    "VTR"
+   ],
+   "series": "VTR",
+   "spans": [
+    [
+     "2009-03-04",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FRT": {
+   "tickers": [
+    "FRT"
+   ],
+   "series": "FRT",
+   "spans": [
+    [
+     "2016-02-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SLG": {
+   "tickers": [
+    "SLG"
+   ],
+   "series": "SLG",
+   "spans": [
+    [
+     "2015-03-23",
+     "2021-03-22"
     ]
    ],
    "bars_from": null,
@@ -1248,507 +4794,6 @@
    "kind": "pool",
    "cuts": {}
   },
-  "AVP": {
-   "tickers": [
-    "AVP"
-   ],
-   "series": "AVP",
-   "spans": [
-    [
-     "1996-01-02",
-     "2015-03-23"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Unknown",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "FLIR": {
-   "tickers": [
-    "FLIR"
-   ],
-   "series": "FLIR",
-   "spans": [
-    [
-     "2009-01-02",
-     "2021-05-14"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Unknown",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "FE": {
-   "tickers": [
-    "FE"
-   ],
-   "series": "FE",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Utilities",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "EXC": {
-   "tickers": [
-    "EXC"
-   ],
-   "series": "EXC",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Utilities",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "FMC": {
-   "tickers": [
-    "FMC"
-   ],
-   "series": "FMC",
-   "spans": [
-    [
-     "2009-08-19",
-     "2025-03-24"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Basic Materials",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "IP": {
-   "tickers": [
-    "IP"
-   ],
-   "series": "IP",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Basic Materials",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "IFF": {
-   "tickers": [
-    "IFF"
-   ],
-   "series": "IFF",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Basic Materials",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "NYT": {
-   "tickers": [
-    "NYT"
-   ],
-   "series": "NYT",
-   "spans": [
-    [
-     "1996-01-02",
-     "2010-12-20"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Communication Services",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "TMUS": {
-   "tickers": [
-    "TMUS"
-   ],
-   "series": "TMUS",
-   "spans": [
-    [
-     "2009-06-30",
-     "2013-05-01"
-    ],
-    [
-     "2019-07-15",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Communication Services",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "IAC": {
-   "tickers": [
-    "IAC"
-   ],
-   "series": "IAC",
-   "spans": [
-    [
-     "2006-12-01",
-     "2008-08-21"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Communication Services",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "FL": {
-   "tickers": [
-    "FL"
-   ],
-   "series": "FL",
-   "spans": [
-    [
-     "2016-04-04",
-     "2019-08-09"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Consumer Cyclical",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "WHR": {
-   "tickers": [
-    "WHR"
-   ],
-   "series": "WHR",
-   "spans": [
-    [
-     "1996-01-02",
-     "2024-03-18"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Consumer Cyclical",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "LEG": {
-   "tickers": [
-    "LEG"
-   ],
-   "series": "LEG",
-   "spans": [
-    [
-     "1999-10-18",
-     "2021-12-20"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Consumer Cyclical",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "NWL": {
-   "tickers": [
-    "NWL"
-   ],
-   "series": "NWL",
-   "spans": [
-    [
-     "1996-01-02",
-     "2023-09-18"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Consumer Defensive",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "MKC": {
-   "tickers": [
-    "MKC"
-   ],
-   "series": "MKC",
-   "spans": [
-    [
-     "2003-03-21",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Consumer Defensive",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "TAP": {
-   "tickers": [
-    "TAP"
-   ],
-   "series": "TAP",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Consumer Defensive",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "EXE": {
-   "tickers": [
-    "EXE"
-   ],
-   "series": "EXE",
-   "spans": [
-    [
-     "2025-03-24",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Energy",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "KMI": {
-   "tickers": [
-    "KMI"
-   ],
-   "series": "KMI",
-   "spans": [
-    [
-     "2012-05-25",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Energy",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "FANG": {
-   "tickers": [
-    "FANG"
-   ],
-   "series": "FANG",
-   "spans": [
-    [
-     "2018-12-03",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Energy",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "BNY": {
-   "tickers": [
-    "BK",
-    "BNY"
-   ],
-   "series": "BNY",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Financial Services",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "SLM": {
-   "tickers": [
-    "SLM"
-   ],
-   "series": "SLM",
-   "spans": [
-    [
-     "1998-07-01",
-     "2014-05-01"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Financial Services",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "TRV": {
-   "tickers": [
-    "TRV"
-   ],
-   "series": "TRV",
-   "spans": [
-    [
-     "1996-01-02",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Financial Services",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "BIO": {
-   "tickers": [
-    "BIO"
-   ],
-   "series": "BIO",
-   "spans": [
-    [
-     "2020-06-22",
-     "2024-09-23"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Healthcare",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "PRGO": {
-   "tickers": [
-    "PRGO"
-   ],
-   "series": "PRGO",
-   "spans": [
-    [
-     "2011-12-19",
-     "2021-09-20"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Healthcare",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "HCA": {
-   "tickers": [
-    "HCA"
-   ],
-   "series": "HCA",
-   "spans": [
-    [
-     "2015-01-27",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Healthcare",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "RSG": {
-   "tickers": [
-    "RSG"
-   ],
-   "series": "RSG",
-   "spans": [
-    [
-     "2008-12-05",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Industrials",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "WM": {
-   "tickers": [
-    "WM"
-   ],
-   "series": "WM",
-   "spans": [
-    [
-     "1998-07-17",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Industrials",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "FLS": {
-   "tickers": [
-    "FLS"
-   ],
-   "series": "FLS",
-   "spans": [
-    [
-     "2008-10-02",
-     "2021-03-22"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Industrials",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "IRM": {
-   "tickers": [
-    "IRM"
-   ],
-   "series": "IRM",
-   "spans": [
-    [
-     "2009-01-06",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Real Estate",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "VNO": {
-   "tickers": [
-    "VNO"
-   ],
-   "series": "VNO",
-   "spans": [
-    [
-     "2005-08-12",
-     "2023-01-04"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Real Estate",
-   "kind": "pool",
-   "cuts": {}
-  },
-  "PSA": {
-   "tickers": [
-    "PSA"
-   ],
-   "series": "PSA",
-   "spans": [
-    [
-     "2005-08-19",
-     "2026-10-29"
-    ]
-   ],
-   "bars_from": null,
-   "sector": "Real Estate",
-   "kind": "pool",
-   "cuts": {}
-  },
   "TDC": {
    "tickers": [
     "TDC"
@@ -1795,6 +4840,707 @@
    ],
    "bars_from": null,
    "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TWX": {
+   "tickers": [
+    "TWX"
+   ],
+   "series": "TWX",
+   "spans": [
+    [
+     "1996-01-02",
+     "2018-06-15"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TER": {
+   "tickers": [
+    "TER"
+   ],
+   "series": "TER",
+   "spans": [
+    [
+     "1999-11-15",
+     "2013-12-23"
+    ],
+    [
+     "2020-09-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "UIS": {
+   "tickers": [
+    "UIS"
+   ],
+   "series": "UIS",
+   "spans": [
+    [
+     "1996-01-02",
+     "2008-11-11"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ADSK": {
+   "tickers": [
+    "ADSK"
+   ],
+   "series": "ADSK",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CIEN": {
+   "tickers": [
+    "CIEN"
+   ],
+   "series": "CIEN",
+   "spans": [
+    [
+     "2001-08-30",
+     "2009-12-21"
+    ],
+    [
+     "2026-02-09",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "APP": {
+   "tickers": [
+    "APP"
+   ],
+   "series": "APP",
+   "spans": [
+    [
+     "2025-09-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FFIV": {
+   "tickers": [
+    "FFIV"
+   ],
+   "series": "FFIV",
+   "spans": [
+    [
+     "2010-12-20",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ADP": {
+   "tickers": [
+    "ADP"
+   ],
+   "series": "ADP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WDAY": {
+   "tickers": [
+    "WDAY"
+   ],
+   "series": "WDAY",
+   "spans": [
+    [
+     "2024-12-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "JNPR": {
+   "tickers": [
+    "JNPR"
+   ],
+   "series": "JNPR",
+   "spans": [
+    [
+     "2006-06-02",
+     "2025-07-09"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FTV": {
+   "tickers": [
+    "FTV"
+   ],
+   "series": "FTV",
+   "spans": [
+    [
+     "2016-07-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DDOG": {
+   "tickers": [
+    "DDOG"
+   ],
+   "series": "DDOG",
+   "spans": [
+    [
+     "2025-07-09",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WDC": {
+   "tickers": [
+    "WDC"
+   ],
+   "series": "WDC",
+   "spans": [
+    [
+     "2009-07-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GDDY": {
+   "tickers": [
+    "GDDY"
+   ],
+   "series": "GDDY",
+   "spans": [
+    [
+     "2024-06-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MCHP": {
+   "tickers": [
+    "MCHP"
+   ],
+   "series": "MCHP",
+   "spans": [
+    [
+     "2007-09-07",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MPWR": {
+   "tickers": [
+    "MPWR"
+   ],
+   "series": "MPWR",
+   "spans": [
+    [
+     "2021-02-12",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LLTC": {
+   "tickers": [
+    "LLTC"
+   ],
+   "series": "LLTC",
+   "spans": [
+    [
+     "2000-04-03",
+     "2017-03-13"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TYL": {
+   "tickers": [
+    "TYL"
+   ],
+   "series": "TYL",
+   "spans": [
+    [
+     "2020-06-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VRSK": {
+   "tickers": [
+    "VRSK"
+   ],
+   "series": "VRSK",
+   "spans": [
+    [
+     "2015-10-08",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ON": {
+   "tickers": [
+    "ON"
+   ],
+   "series": "ON",
+   "spans": [
+    [
+     "2022-06-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "KLAC": {
+   "tickers": [
+    "KLAC"
+   ],
+   "series": "KLAC",
+   "spans": [
+    [
+     "1997-09-15",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FICO": {
+   "tickers": [
+    "FICO"
+   ],
+   "series": "FICO",
+   "spans": [
+    [
+     "2023-03-20",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "UBER": {
+   "tickers": [
+    "UBER"
+   ],
+   "series": "UBER",
+   "spans": [
+    [
+     "2023-12-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "XLNX": {
+   "tickers": [
+    "XLNX"
+   ],
+   "series": "XLNX",
+   "spans": [
+    [
+     "1999-11-08",
+     "2022-02-15"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "GEN": {
+   "tickers": [
+    "GEN",
+    "NLOK"
+   ],
+   "series": "GEN",
+   "spans": [
+    [
+     "2019-11-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SWKS": {
+   "tickers": [
+    "SWKS"
+   ],
+   "series": "SWKS",
+   "spans": [
+    [
+     "2015-03-12",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IPGP": {
+   "tickers": [
+    "IPGP"
+   ],
+   "series": "IPGP",
+   "spans": [
+    [
+     "2018-03-07",
+     "2022-06-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TRMB": {
+   "tickers": [
+    "TRMB"
+   ],
+   "series": "TRMB",
+   "spans": [
+    [
+     "2021-01-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "APH": {
+   "tickers": [
+    "APH"
+   ],
+   "series": "APH",
+   "spans": [
+    [
+     "2008-09-30",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HPE": {
+   "tickers": [
+    "HPE"
+   ],
+   "series": "HPE",
+   "spans": [
+    [
+     "2015-11-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VIAV": {
+   "tickers": [
+    "VIAV"
+   ],
+   "series": "VIAV",
+   "spans": [
+    [
+     "2000-07-27",
+     "2013-12-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "INTU": {
+   "tickers": [
+    "INTU"
+   ],
+   "series": "INTU",
+   "spans": [
+    [
+     "2000-12-11",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "XYZ": {
+   "tickers": [
+    "XYZ"
+   ],
+   "series": "XYZ",
+   "spans": [
+    [
+     "2025-07-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PTC": {
+   "tickers": [
+    "PTC"
+   ],
+   "series": "PTC",
+   "spans": [
+    [
+     "2021-04-20",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NXPI": {
+   "tickers": [
+    "NXPI"
+   ],
+   "series": "NXPI",
+   "spans": [
+    [
+     "2021-03-22",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CDW": {
+   "tickers": [
+    "CDW"
+   ],
+   "series": "CDW",
+   "spans": [
+    [
+     "2019-09-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TEL": {
+   "tickers": [
+    "TEL"
+   ],
+   "series": "TEL",
+   "spans": [
+    [
+     "2007-07-02",
+     "2009-06-26"
+    ],
+    [
+     "2011-10-17",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IT": {
+   "tickers": [
+    "IT"
+   ],
+   "series": "IT",
+   "spans": [
+    [
+     "2017-04-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "QRVO": {
+   "tickers": [
+    "QRVO"
+   ],
+   "series": "QRVO",
+   "spans": [
+    [
+     "2015-06-12",
+     "2024-12-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BR": {
+   "tickers": [
+    "BR"
+   ],
+   "series": "BR",
+   "spans": [
+    [
+     "2018-06-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ADI": {
+   "tickers": [
+    "ADI"
+   ],
+   "series": "ADI",
+   "spans": [
+    [
+     "1999-10-12",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AVP": {
+   "tickers": [
+    "AVP"
+   ],
+   "series": "AVP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2015-03-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FLIR": {
+   "tickers": [
+    "FLIR"
+   ],
+   "series": "FLIR",
+   "spans": [
+    [
+     "2009-01-02",
+     "2021-05-14"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
    "kind": "pool",
    "cuts": {}
   },
@@ -1846,6 +5592,198 @@
    "kind": "pool",
    "cuts": {}
   },
+  "SYMC": {
+   "tickers": [
+    "SYMC"
+   ],
+   "series": "SYMC",
+   "spans": [
+    [
+     "2003-03-31",
+     "2019-11-05"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LM": {
+   "tickers": [
+    "LM"
+   ],
+   "series": "LM",
+   "spans": [
+    [
+     "2006-04-24",
+     "2016-12-02"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FII": {
+   "tickers": [
+    "FII"
+   ],
+   "series": "FII",
+   "spans": [
+    [
+     "2003-04-16",
+     "2013-01-02"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DDR": {
+   "tickers": [
+    "DDR"
+   ],
+   "series": "DDR",
+   "spans": [
+    [
+     "2007-03-23",
+     "2009-03-30"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VAR": {
+   "tickers": [
+    "VAR"
+   ],
+   "series": "VAR",
+   "spans": [
+    [
+     "2007-02-12",
+     "2021-04-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CTX": {
+   "tickers": [
+    "CTX"
+   ],
+   "series": "CTX",
+   "spans": [
+    [
+     "1996-01-02",
+     "2009-08-19"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CCE": {
+   "tickers": [
+    "CCE"
+   ],
+   "series": "CCE",
+   "spans": [
+    [
+     "1998-10-08",
+     "2016-05-31"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WCG": {
+   "tickers": [
+    "WCG"
+   ],
+   "series": "WCG",
+   "spans": [
+    [
+     "2018-09-17",
+     "2020-01-28"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "JCP": {
+   "tickers": [
+    "JCP"
+   ],
+   "series": "JCP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2013-12-02"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ANDV": {
+   "tickers": [
+    "ANDV"
+   ],
+   "series": "ANDV",
+   "spans": [
+    [
+     "2007-09-27",
+     "2018-10-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FE": {
+   "tickers": [
+    "FE"
+   ],
+   "series": "FE",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXC": {
+   "tickers": [
+    "EXC"
+   ],
+   "series": "EXC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
   "SRE": {
    "tickers": [
     "SRE"
@@ -1893,6 +5831,175 @@
    "sector": "Utilities",
    "kind": "pool",
    "cuts": {}
+  },
+  "ED": {
+   "tickers": [
+    "ED"
+   ],
+   "series": "ED",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AES": {
+   "tickers": [
+    "AES"
+   ],
+   "series": "AES",
+   "spans": [
+    [
+     "1998-10-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WEC": {
+   "tickers": [
+    "WEC"
+   ],
+   "series": "WEC",
+   "spans": [
+    [
+     "2008-10-31",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PNW": {
+   "tickers": [
+    "PNW"
+   ],
+   "series": "PNW",
+   "spans": [
+    [
+     "1999-10-04",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DTE": {
+   "tickers": [
+    "DTE"
+   ],
+   "series": "DTE",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "D": {
+   "tickers": [
+    "D"
+   ],
+   "series": "D",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PEG": {
+   "tickers": [
+    "PEG"
+   ],
+   "series": "PEG",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NI": {
+   "tickers": [
+    "NI"
+   ],
+   "series": "NI",
+   "spans": [
+    [
+     "2000-11-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PCG": {
+   "tickers": [
+    "PCG"
+   ],
+   "series": "PCG",
+   "spans": [
+    [
+     "1996-01-02",
+     "2019-01-18"
+    ],
+    [
+     "2022-10-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "JNS": {
+   "tickers": [
+    "JNS"
+   ],
+   "series": "JNS",
+   "spans": [
+    [
+     "2000-07-13",
+     "2011-11-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
   }
+ },
+ "records_source": {
+  "file": "fmp-technical-analysis/references/ladder_v3/entities.json",
+  "md5": "c4b5d377f4be071a4d5b31c4ef8c2f43",
+  "note": "records of every company in the seeded orders (the replacement walk); the draw is unchanged"
  }
 }
