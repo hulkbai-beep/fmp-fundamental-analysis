@@ -1,0 +1,14 @@
+{
+ "rule": "Spin-offs in the sample. Prices are not adjusted for a distribution, so for a while the trailing (T) or fiscal-year (F, FY) EPS still holds the unit the price no longer does and the P/E reads cheap. After a confirmed ex-date: no new T plan for 365 days, no new F or FY plan until the end of that fiscal year (panel.build). Dates are from memory and count only once confirmed against the snapshot (the one-day move on the ex-date and panel's spin_candidates); open positions are not touched.",
+ "events": {
+  "MS": [{"date": "2007-07-02", "what": "Discover Financial Services", "confirmed": false}],
+  "MSI": [{"date": "2011-01-04", "what": "Motorola Mobility (with the 1-for-7 reverse split)", "confirmed": false}],
+  "MDLZ": [{"date": "2012-10-02", "what": "Kraft Foods Group", "confirmed": false}],
+  "PENN": [{"date": "2013-11-04", "what": "Gaming and Leisure Properties", "confirmed": false}],
+  "MTW": [{"date": "2016-03-04", "what": "Manitowoc Foodservice (Welbilt)", "confirmed": false}],
+  "XRX": [{"date": "2017-01-03", "what": "Conduent", "confirmed": false}],
+  "CTXS": [{"date": "2017-02-01", "what": "GoTo business to LogMeIn (Reverse Morris Trust)", "confirmed": false}],
+  "EXC": [{"date": "2022-02-02", "what": "Constellation Energy", "confirmed": false}],
+  "FBHS": [{"date": "2022-12-15", "what": "MasterBrand", "confirmed": false}]
+ }
+}

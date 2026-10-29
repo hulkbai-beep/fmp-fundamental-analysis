@@ -1,0 +1,1898 @@
+{
+ "seed": 20261029,
+ "rule": "Draw the 50-company sample for the forward-P/E band pilot (fundamental buy method).\n\nPool: ladder V3 entities.json, kind \"pool\" (S&P 500 members on some day 2008-01..2025-10 with FMP bars\ncovering membership + 3 years before; without the seven large caps and the 96 previously tested stocks).\nExcluded: every company V3 drew (main, held out, the six reserve batches, the spares), so no V3 list is touched.\nStratified by FMP sector, largest remainder in proportion to the remaining pool, seeded order per stratum.",
+ "pool_size": 340,
+ "pool_by_sector": {
+  "Industrials": 50,
+  "Consumer Cyclical": 51,
+  "Healthcare": 34,
+  "Financial Services": 52,
+  "Technology": 52,
+  "Utilities": 15,
+  "Real Estate": 15,
+  "Unknown": 15,
+  "Basic Materials": 14,
+  "Consumer Defensive": 14,
+  "Communication Services": 14,
+  "Energy": 14
+ },
+ "alloc": {
+  "Industrials": 7,
+  "Consumer Cyclical": 8,
+  "Healthcare": 5,
+  "Financial Services": 8,
+  "Technology": 8,
+  "Utilities": 2,
+  "Real Estate": 2,
+  "Unknown": 2,
+  "Basic Materials": 2,
+  "Consumer Defensive": 2,
+  "Communication Services": 2,
+  "Energy": 2
+ },
+ "sample": [
+  "ASH",
+  "BLDR",
+  "IPG",
+  "DASH",
+  "MGM",
+  "TPR",
+  "FOSL",
+  "PENN",
+  "SEE",
+  "PKG",
+  "BC",
+  "ABNB",
+  "APOL",
+  "MDLZ",
+  "TRGP",
+  "TPL",
+  "EG",
+  "NAVI",
+  "MKTX",
+  "FRC",
+  "AIG",
+  "STT",
+  "MS",
+  "FNMA",
+  "THC",
+  "TECH",
+  "TFX",
+  "STJ",
+  "IDXX",
+  "MTW",
+  "FBHS",
+  "TXT",
+  "LII",
+  "SRCL",
+  "XRX",
+  "EFX",
+  "UDR",
+  "BXP",
+  "CTSH",
+  "ANET",
+  "MSI",
+  "JKHY",
+  "CTXS",
+  "FTNT",
+  "LXK",
+  "BRCM",
+  "AVP",
+  "FLIR",
+  "FE",
+  "EXC"
+ ],
+ "spares": {
+  "Basic Materials": [
+   "FMC",
+   "IP",
+   "IFF"
+  ],
+  "Communication Services": [
+   "NYT",
+   "TMUS",
+   "IAC"
+  ],
+  "Consumer Cyclical": [
+   "FL",
+   "WHR",
+   "LEG"
+  ],
+  "Consumer Defensive": [
+   "NWL",
+   "MKC",
+   "TAP"
+  ],
+  "Energy": [
+   "EXE",
+   "KMI",
+   "FANG"
+  ],
+  "Financial Services": [
+   "BNY",
+   "SLM",
+   "TRV"
+  ],
+  "Healthcare": [
+   "BIO",
+   "PRGO",
+   "HCA"
+  ],
+  "Industrials": [
+   "RSG",
+   "WM",
+   "FLS"
+  ],
+  "Real Estate": [
+   "IRM",
+   "VNO",
+   "PSA"
+  ],
+  "Technology": [
+   "TDC",
+   "MXIM",
+   "FISV"
+  ],
+  "Unknown": [
+   "QEP",
+   "TSS",
+   "AKS"
+  ],
+  "Utilities": [
+   "SRE",
+   "VST",
+   "AWK"
+  ]
+ },
+ "order": {
+  "Basic Materials": [
+   "ASH",
+   "BLDR",
+   "FMC",
+   "IP",
+   "IFF",
+   "DD",
+   "ARG",
+   "LYB",
+   "EMN",
+   "MLM",
+   "ALB",
+   "CLF",
+   "CF",
+   "LIN"
+  ],
+  "Communication Services": [
+   "IPG",
+   "DASH",
+   "NYT",
+   "TMUS",
+   "IAC",
+   "DISH",
+   "MTCH",
+   "CHTR",
+   "MDP",
+   "WBD",
+   "TTD",
+   "TKO",
+   "PSKY",
+   "LVLT"
+  ],
+  "Consumer Cyclical": [
+   "MGM",
+   "TPR",
+   "FOSL",
+   "PENN",
+   "SEE",
+   "PKG",
+   "BC",
+   "ABNB",
+   "FL",
+   "WHR",
+   "LEG",
+   "MHK",
+   "LULU",
+   "BALL",
+   "BBBY",
+   "AMCR",
+   "CCL",
+   "GPS",
+   "SIG",
+   "ROST",
+   "URBN",
+   "TSCO",
+   "ODP",
+   "EXPE",
+   "TRIP",
+   "AN",
+   "HOT",
+   "KSS",
+   "CZR",
+   "MAR",
+   "GPC",
+   "HRB",
+   "WSM",
+   "PHM",
+   "HOG",
+   "HBI",
+   "VFC",
+   "ETSY",
+   "UAA",
+   "OI",
+   "HLT",
+   "IGT",
+   "GME",
+   "GT",
+   "MAT",
+   "DRI",
+   "ORLY",
+   "ULTA",
+   "SW",
+   "JWN",
+   "AAP"
+  ],
+  "Consumer Defensive": [
+   "APOL",
+   "MDLZ",
+   "NWL",
+   "MKC",
+   "TAP",
+   "COTY",
+   "CAG",
+   "SVU",
+   "CPB",
+   "CCEP",
+   "SJM",
+   "HRL",
+   "GMCR",
+   "CHD"
+  ],
+  "Energy": [
+   "TRGP",
+   "TPL",
+   "EXE",
+   "KMI",
+   "FANG",
+   "FTI",
+   "ENPH",
+   "CTRA",
+   "DVN",
+   "VLO",
+   "SWN",
+   "CNX",
+   "OKE",
+   "MRO"
+  ],
+  "Financial Services": [
+   "EG",
+   "NAVI",
+   "MKTX",
+   "FRC",
+   "AIG",
+   "STT",
+   "MS",
+   "FNMA",
+   "BNY",
+   "SLM",
+   "TRV",
+   "BEN",
+   "MA",
+   "BRK-B",
+   "GS",
+   "TFC",
+   "NDAQ",
+   "AON",
+   "CMA",
+   "BAC",
+   "PNC",
+   "RF",
+   "CFG",
+   "AIZ",
+   "MET",
+   "NTRS",
+   "CME",
+   "MRSH",
+   "IVZ",
+   "AMG",
+   "AMP",
+   "FMCC",
+   "SBNY",
+   "SPGI",
+   "PFG",
+   "MTG",
+   "HBAN",
+   "BX",
+   "TROW",
+   "WFC",
+   "ICE",
+   "SCHW",
+   "AJG",
+   "KEY",
+   "MSCI",
+   "C",
+   "GNW",
+   "MCO",
+   "WRB",
+   "ACGL",
+   "LNC",
+   "CINF"
+  ],
+  "Healthcare": [
+   "THC",
+   "TECH",
+   "TFX",
+   "STJ",
+   "IDXX",
+   "BIO",
+   "PRGO",
+   "HCA",
+   "MTD",
+   "VRTX",
+   "CI",
+   "EVHC",
+   "SYK",
+   "PODD",
+   "ALXN",
+   "COR",
+   "HUM",
+   "BAX",
+   "EW",
+   "DGX",
+   "HOLX",
+   "CNC",
+   "ABMD",
+   "NKTR",
+   "BIIB",
+   "HSIC",
+   "CERN",
+   "COO",
+   "STE",
+   "ESRX",
+   "CTLT",
+   "DVA",
+   "RVTY",
+   "ILMN"
+  ],
+  "Industrials": [
+   "MTW",
+   "FBHS",
+   "TXT",
+   "LII",
+   "SRCL",
+   "XRX",
+   "EFX",
+   "RSG",
+   "WM",
+   "FLS",
+   "ALLE",
+   "AME",
+   "COL",
+   "URI",
+   "LUV",
+   "CTAS",
+   "SNA",
+   "EMR",
+   "EXPD",
+   "RHI",
+   "IEX",
+   "PNR",
+   "RRD",
+   "FAST",
+   "FLR",
+   "ROL",
+   "TEX",
+   "GHC",
+   "BNI",
+   "CVG",
+   "PWR",
+   "GNRC",
+   "JBHT",
+   "SWK",
+   "GD",
+   "UAL",
+   "AYI",
+   "HII",
+   "AAL",
+   "TT",
+   "AXON",
+   "KSU",
+   "PH",
+   "OTIS",
+   "AOS",
+   "ALK",
+   "ITW",
+   "HWM",
+   "HUBB",
+   "J"
+  ],
+  "Real Estate": [
+   "UDR",
+   "BXP",
+   "IRM",
+   "VNO",
+   "PSA",
+   "O",
+   "AMT",
+   "EXR",
+   "HST",
+   "DLR",
+   "MAA",
+   "AIV",
+   "VTR",
+   "FRT",
+   "SLG"
+  ],
+  "Technology": [
+   "CTSH",
+   "ANET",
+   "MSI",
+   "JKHY",
+   "CTXS",
+   "FTNT",
+   "LXK",
+   "BRCM",
+   "TDC",
+   "MXIM",
+   "FISV",
+   "TWX",
+   "TER",
+   "UIS",
+   "ADSK",
+   "CIEN",
+   "APP",
+   "FFIV",
+   "ADP",
+   "WDAY",
+   "JNPR",
+   "FTV",
+   "DDOG",
+   "WDC",
+   "GDDY",
+   "MCHP",
+   "MPWR",
+   "LLTC",
+   "TYL",
+   "VRSK",
+   "ON",
+   "KLAC",
+   "FICO",
+   "UBER",
+   "XLNX",
+   "GEN",
+   "SWKS",
+   "IPGP",
+   "TRMB",
+   "APH",
+   "HPE",
+   "VIAV",
+   "INTU",
+   "XYZ",
+   "PTC",
+   "NXPI",
+   "CDW",
+   "TEL",
+   "IT",
+   "QRVO",
+   "BR",
+   "ADI"
+  ],
+  "Unknown": [
+   "AVP",
+   "FLIR",
+   "QEP",
+   "TSS",
+   "AKS",
+   "SYMC",
+   "LM",
+   "FII",
+   "DDR",
+   "VAR",
+   "CTX",
+   "CCE",
+   "WCG",
+   "JCP",
+   "ANDV"
+  ],
+  "Utilities": [
+   "FE",
+   "EXC",
+   "SRE",
+   "VST",
+   "AWK",
+   "ED",
+   "AES",
+   "WEC",
+   "PNW",
+   "DTE",
+   "D",
+   "PEG",
+   "NI",
+   "PCG",
+   "JNS"
+  ]
+ },
+ "records": {
+  "ASH": {
+   "tickers": [
+    "ASH"
+   ],
+   "series": "ASH",
+   "spans": [
+    [
+     "1996-01-02",
+     "2008-11-14"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BLDR": {
+   "tickers": [
+    "BLDR"
+   ],
+   "series": "BLDR",
+   "spans": [
+    [
+     "2023-12-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IPG": {
+   "tickers": [
+    "IPG"
+   ],
+   "series": "IPG",
+   "spans": [
+    [
+     "1996-01-02",
+     "2025-11-28"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "DASH": {
+   "tickers": [
+    "DASH"
+   ],
+   "series": "DASH",
+   "spans": [
+    [
+     "2025-03-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MGM": {
+   "tickers": [
+    "MGM"
+   ],
+   "series": "MGM",
+   "spans": [
+    [
+     "2017-07-26",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TPR": {
+   "tickers": [
+    "TPR"
+   ],
+   "series": "TPR",
+   "spans": [
+    [
+     "2004-09-01",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FOSL": {
+   "tickers": [
+    "FOSL"
+   ],
+   "series": "FOSL",
+   "spans": [
+    [
+     "2012-04-04",
+     "2016-01-05"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PENN": {
+   "tickers": [
+    "PENN"
+   ],
+   "series": "PENN",
+   "spans": [
+    [
+     "2021-03-22",
+     "2022-09-19"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SEE": {
+   "tickers": [
+    "SEE"
+   ],
+   "series": "SEE",
+   "spans": [
+    [
+     "1998-04-01",
+     "2023-12-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PKG": {
+   "tickers": [
+    "PKG"
+   ],
+   "series": "PKG",
+   "spans": [
+    [
+     "2017-07-26",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BC": {
+   "tickers": [
+    "BC"
+   ],
+   "series": "BC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2008-06-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ABNB": {
+   "tickers": [
+    "ABNB"
+   ],
+   "series": "ABNB",
+   "spans": [
+    [
+     "2023-09-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "APOL": {
+   "tickers": [
+    "APOL"
+   ],
+   "series": "APOL",
+   "spans": [
+    [
+     "2002-05-15",
+     "2013-07-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MDLZ": {
+   "tickers": [
+    "MDLZ"
+   ],
+   "series": "MDLZ",
+   "spans": [
+    [
+     "2007-04-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TRGP": {
+   "tickers": [
+    "TRGP"
+   ],
+   "series": "TRGP",
+   "spans": [
+    [
+     "2022-10-12",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TPL": {
+   "tickers": [
+    "TPL"
+   ],
+   "series": "TPL",
+   "spans": [
+    [
+     "2024-11-26",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EG": {
+   "tickers": [
+    "EG",
+    "RE"
+   ],
+   "series": "EG",
+   "spans": [
+    [
+     "2017-06-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NAVI": {
+   "tickers": [
+    "NAVI"
+   ],
+   "series": "NAVI",
+   "spans": [
+    [
+     "2014-05-01",
+     "2018-06-05"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MKTX": {
+   "tickers": [
+    "MKTX"
+   ],
+   "series": "MKTX",
+   "spans": [
+    [
+     "2019-07-01",
+     "2025-09-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FRC": {
+   "tickers": [
+    "FRC"
+   ],
+   "series": "FRC",
+   "spans": [
+    [
+     "2019-01-02",
+     "2023-05-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AIG": {
+   "tickers": [
+    "AIG"
+   ],
+   "series": "AIG",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "STT": {
+   "tickers": [
+    "STT"
+   ],
+   "series": "STT",
+   "spans": [
+    [
+     "1997-08-18",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MS": {
+   "tickers": [
+    "MS"
+   ],
+   "series": "MS",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FNMA": {
+   "tickers": [
+    "FNMA"
+   ],
+   "series": "FNMA",
+   "spans": [
+    [
+     "1996-01-02",
+     "2008-09-11"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "THC": {
+   "tickers": [
+    "THC"
+   ],
+   "series": "THC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2016-04-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TECH": {
+   "tickers": [
+    "TECH"
+   ],
+   "series": "TECH",
+   "spans": [
+    [
+     "2021-08-30",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TFX": {
+   "tickers": [
+    "TFX"
+   ],
+   "series": "TFX",
+   "spans": [
+    [
+     "2019-01-18",
+     "2025-03-24"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "STJ": {
+   "tickers": [
+    "STJ"
+   ],
+   "series": "STJ",
+   "spans": [
+    [
+     "1996-01-02",
+     "2017-01-05"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IDXX": {
+   "tickers": [
+    "IDXX"
+   ],
+   "series": "IDXX",
+   "spans": [
+    [
+     "2017-01-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MTW": {
+   "tickers": [
+    "MTW"
+   ],
+   "series": "MTW",
+   "spans": [
+    [
+     "2007-11-16",
+     "2009-09-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FBHS": {
+   "tickers": [
+    "FBHS"
+   ],
+   "series": "FBHS",
+   "spans": [
+    [
+     "2016-06-24",
+     "2022-12-19"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TXT": {
+   "tickers": [
+    "TXT"
+   ],
+   "series": "TXT",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LII": {
+   "tickers": [
+    "LII"
+   ],
+   "series": "LII",
+   "spans": [
+    [
+     "2024-12-23",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SRCL": {
+   "tickers": [
+    "SRCL"
+   ],
+   "series": "SRCL",
+   "spans": [
+    [
+     "2008-11-19",
+     "2018-12-03"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "XRX": {
+   "tickers": [
+    "XRX"
+   ],
+   "series": "XRX",
+   "spans": [
+    [
+     "1996-01-02",
+     "2021-03-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EFX": {
+   "tickers": [
+    "EFX"
+   ],
+   "series": "EFX",
+   "spans": [
+    [
+     "1997-06-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "UDR": {
+   "tickers": [
+    "UDR"
+   ],
+   "series": "UDR",
+   "spans": [
+    [
+     "2016-03-07",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BXP": {
+   "tickers": [
+    "BXP"
+   ],
+   "series": "BXP",
+   "spans": [
+    [
+     "2006-04-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CTSH": {
+   "tickers": [
+    "CTSH"
+   ],
+   "series": "CTSH",
+   "spans": [
+    [
+     "2006-11-17",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "ANET": {
+   "tickers": [
+    "ANET"
+   ],
+   "series": "ANET",
+   "spans": [
+    [
+     "2018-08-28",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MSI": {
+   "tickers": [
+    "MSI"
+   ],
+   "series": "MSI",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "JKHY": {
+   "tickers": [
+    "JKHY"
+   ],
+   "series": "JKHY",
+   "spans": [
+    [
+     "2018-11-13",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "CTXS": {
+   "tickers": [
+    "CTXS"
+   ],
+   "series": "CTXS",
+   "spans": [
+    [
+     "1999-12-01",
+     "2022-10-03"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FTNT": {
+   "tickers": [
+    "FTNT"
+   ],
+   "series": "FTNT",
+   "spans": [
+    [
+     "2018-10-11",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LXK": {
+   "tickers": [
+    "LXK"
+   ],
+   "series": "LXK",
+   "spans": [
+    [
+     "1999-08-13",
+     "2012-10-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BRCM": {
+   "tickers": [
+    "BRCM"
+   ],
+   "series": "BRCM",
+   "spans": [
+    [
+     "2000-07-03",
+     "2016-02-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AVP": {
+   "tickers": [
+    "AVP"
+   ],
+   "series": "AVP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2015-03-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FLIR": {
+   "tickers": [
+    "FLIR"
+   ],
+   "series": "FLIR",
+   "spans": [
+    [
+     "2009-01-02",
+     "2021-05-14"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FE": {
+   "tickers": [
+    "FE"
+   ],
+   "series": "FE",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXC": {
+   "tickers": [
+    "EXC"
+   ],
+   "series": "EXC",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FMC": {
+   "tickers": [
+    "FMC"
+   ],
+   "series": "FMC",
+   "spans": [
+    [
+     "2009-08-19",
+     "2025-03-24"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IP": {
+   "tickers": [
+    "IP"
+   ],
+   "series": "IP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IFF": {
+   "tickers": [
+    "IFF"
+   ],
+   "series": "IFF",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Basic Materials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NYT": {
+   "tickers": [
+    "NYT"
+   ],
+   "series": "NYT",
+   "spans": [
+    [
+     "1996-01-02",
+     "2010-12-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TMUS": {
+   "tickers": [
+    "TMUS"
+   ],
+   "series": "TMUS",
+   "spans": [
+    [
+     "2009-06-30",
+     "2013-05-01"
+    ],
+    [
+     "2019-07-15",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IAC": {
+   "tickers": [
+    "IAC"
+   ],
+   "series": "IAC",
+   "spans": [
+    [
+     "2006-12-01",
+     "2008-08-21"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Communication Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FL": {
+   "tickers": [
+    "FL"
+   ],
+   "series": "FL",
+   "spans": [
+    [
+     "2016-04-04",
+     "2019-08-09"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WHR": {
+   "tickers": [
+    "WHR"
+   ],
+   "series": "WHR",
+   "spans": [
+    [
+     "1996-01-02",
+     "2024-03-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "LEG": {
+   "tickers": [
+    "LEG"
+   ],
+   "series": "LEG",
+   "spans": [
+    [
+     "1999-10-18",
+     "2021-12-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Cyclical",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "NWL": {
+   "tickers": [
+    "NWL"
+   ],
+   "series": "NWL",
+   "spans": [
+    [
+     "1996-01-02",
+     "2023-09-18"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MKC": {
+   "tickers": [
+    "MKC"
+   ],
+   "series": "MKC",
+   "spans": [
+    [
+     "2003-03-21",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TAP": {
+   "tickers": [
+    "TAP"
+   ],
+   "series": "TAP",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Consumer Defensive",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "EXE": {
+   "tickers": [
+    "EXE"
+   ],
+   "series": "EXE",
+   "spans": [
+    [
+     "2025-03-24",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "KMI": {
+   "tickers": [
+    "KMI"
+   ],
+   "series": "KMI",
+   "spans": [
+    [
+     "2012-05-25",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FANG": {
+   "tickers": [
+    "FANG"
+   ],
+   "series": "FANG",
+   "spans": [
+    [
+     "2018-12-03",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Energy",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BNY": {
+   "tickers": [
+    "BK",
+    "BNY"
+   ],
+   "series": "BNY",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SLM": {
+   "tickers": [
+    "SLM"
+   ],
+   "series": "SLM",
+   "spans": [
+    [
+     "1998-07-01",
+     "2014-05-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TRV": {
+   "tickers": [
+    "TRV"
+   ],
+   "series": "TRV",
+   "spans": [
+    [
+     "1996-01-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Financial Services",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "BIO": {
+   "tickers": [
+    "BIO"
+   ],
+   "series": "BIO",
+   "spans": [
+    [
+     "2020-06-22",
+     "2024-09-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PRGO": {
+   "tickers": [
+    "PRGO"
+   ],
+   "series": "PRGO",
+   "spans": [
+    [
+     "2011-12-19",
+     "2021-09-20"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "HCA": {
+   "tickers": [
+    "HCA"
+   ],
+   "series": "HCA",
+   "spans": [
+    [
+     "2015-01-27",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Healthcare",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "RSG": {
+   "tickers": [
+    "RSG"
+   ],
+   "series": "RSG",
+   "spans": [
+    [
+     "2008-12-05",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "WM": {
+   "tickers": [
+    "WM"
+   ],
+   "series": "WM",
+   "spans": [
+    [
+     "1998-07-17",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FLS": {
+   "tickers": [
+    "FLS"
+   ],
+   "series": "FLS",
+   "spans": [
+    [
+     "2008-10-02",
+     "2021-03-22"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Industrials",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "IRM": {
+   "tickers": [
+    "IRM"
+   ],
+   "series": "IRM",
+   "spans": [
+    [
+     "2009-01-06",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VNO": {
+   "tickers": [
+    "VNO"
+   ],
+   "series": "VNO",
+   "spans": [
+    [
+     "2005-08-12",
+     "2023-01-04"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "PSA": {
+   "tickers": [
+    "PSA"
+   ],
+   "series": "PSA",
+   "spans": [
+    [
+     "2005-08-19",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Real Estate",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TDC": {
+   "tickers": [
+    "TDC"
+   ],
+   "series": "TDC",
+   "spans": [
+    [
+     "2007-10-01",
+     "2017-06-19"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "MXIM": {
+   "tickers": [
+    "MXIM"
+   ],
+   "series": "MXIM",
+   "spans": [
+    [
+     "2018-12-03",
+     "2021-08-30"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "FISV": {
+   "tickers": [
+    "FI",
+    "FISV"
+   ],
+   "series": "FISV",
+   "spans": [
+    [
+     "2001-04-02",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Technology",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "QEP": {
+   "tickers": [
+    "QEP"
+   ],
+   "series": "QEP",
+   "spans": [
+    [
+     "2010-07-01",
+     "2015-07-01"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "TSS": {
+   "tickers": [
+    "TSS"
+   ],
+   "series": "TSS",
+   "spans": [
+    [
+     "2008-01-02",
+     "2019-09-23"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AKS": {
+   "tickers": [
+    "AKS"
+   ],
+   "series": "AKS",
+   "spans": [
+    [
+     "2008-07-01",
+     "2011-12-19"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Unknown",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "SRE": {
+   "tickers": [
+    "SRE"
+   ],
+   "series": "SRE",
+   "spans": [
+    [
+     "1998-06-29",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "VST": {
+   "tickers": [
+    "VST"
+   ],
+   "series": "VST",
+   "spans": [
+    [
+     "2024-05-08",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  },
+  "AWK": {
+   "tickers": [
+    "AWK"
+   ],
+   "series": "AWK",
+   "spans": [
+    [
+     "2016-03-04",
+     "2026-10-29"
+    ]
+   ],
+   "bars_from": null,
+   "sector": "Utilities",
+   "kind": "pool",
+   "cuts": {}
+  }
+ }
+}

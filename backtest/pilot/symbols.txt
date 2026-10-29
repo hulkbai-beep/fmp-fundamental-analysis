@@ -1,0 +1,88 @@
+# Forward-P/E band pilot: the 50 drawn companies (seed 20261029, see draw_sample.py), then 3 spares per sector
+# (used only to replace a drawn company without usable data, in this order within its sector).
+ASH  # ASH Basic Materials
+BLDR  # BLDR Basic Materials
+IPG  # IPG Communication Services
+DASH  # DASH Communication Services
+MGM  # MGM Consumer Cyclical
+TPR  # TPR Consumer Cyclical
+FOSL  # FOSL Consumer Cyclical
+PENN  # PENN Consumer Cyclical
+SEE  # SEE Consumer Cyclical
+PKG  # PKG Consumer Cyclical
+BC  # BC Consumer Cyclical
+ABNB  # ABNB Consumer Cyclical
+APOL  # APOL Consumer Defensive
+MDLZ  # MDLZ Consumer Defensive
+TRGP  # TRGP Energy
+TPL  # TPL Energy
+EG  # EG Financial Services
+NAVI  # NAVI Financial Services
+MKTX  # MKTX Financial Services
+FRC  # FRC Financial Services
+AIG  # AIG Financial Services
+STT  # STT Financial Services
+MS  # MS Financial Services
+FNMA  # FNMA Financial Services
+THC  # THC Healthcare
+TECH  # TECH Healthcare
+TFX  # TFX Healthcare
+STJ  # STJ Healthcare
+IDXX  # IDXX Healthcare
+MTW  # MTW Industrials
+FBHS  # FBHS Industrials
+TXT  # TXT Industrials
+LII  # LII Industrials
+SRCL  # SRCL Industrials
+XRX  # XRX Industrials
+EFX  # EFX Industrials
+UDR  # UDR Real Estate
+BXP  # BXP Real Estate
+CTSH  # CTSH Technology
+ANET  # ANET Technology
+MSI  # MSI Technology
+JKHY  # JKHY Technology
+CTXS  # CTXS Technology
+FTNT  # FTNT Technology
+LXK  # LXK Technology
+BRCM  # BRCM Technology
+AVP  # AVP Unknown
+FLIR  # FLIR Unknown
+FE  # FE Utilities
+EXC  # EXC Utilities
+FMC  # spare Basic Materials
+IP  # spare Basic Materials
+IFF  # spare Basic Materials
+NYT  # spare Communication Services
+TMUS  # spare Communication Services
+IAC  # spare Communication Services
+FL  # spare Consumer Cyclical
+WHR  # spare Consumer Cyclical
+LEG  # spare Consumer Cyclical
+NWL  # spare Consumer Defensive
+MKC  # spare Consumer Defensive
+TAP  # spare Consumer Defensive
+EXE  # spare Energy
+KMI  # spare Energy
+FANG  # spare Energy
+BNY  # spare Financial Services
+SLM  # spare Financial Services
+TRV  # spare Financial Services
+BIO  # spare Healthcare
+PRGO  # spare Healthcare
+HCA  # spare Healthcare
+RSG  # spare Industrials
+WM  # spare Industrials
+FLS  # spare Industrials
+IRM  # spare Real Estate
+VNO  # spare Real Estate
+PSA  # spare Real Estate
+TDC  # spare Technology
+MXIM  # spare Technology
+FISV  # spare Technology
+QEP  # spare Unknown
+TSS  # spare Unknown
+AKS  # spare Unknown
+SRE  # spare Utilities
+VST  # spare Utilities
+AWK  # spare Utilities
