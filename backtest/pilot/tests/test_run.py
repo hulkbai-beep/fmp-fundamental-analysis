@@ -71,6 +71,8 @@ class RunTest(unittest.TestCase):
                                           "spares": {"Tech": ["EEE"], "Energy": []}, "records": recs}))
         spin = root / "spin.json"
         spin.write_text(json.dumps({"events": {"CCC": [{"date": "2015-03-02", "confirmed": True}]}}))
+        cls.out.mkdir(parents=True)
+        (cls.out / "repro.json").write_text(json.dumps({"same": True, "diff": []}))   # from an earlier run
         cls.rc = R.main(["--snap", str(cls.snap), "--out", str(cls.out), "--plan-replicas", "200", "--workers", "4",
                          "--sample", str(cls.sample), "--spinoffs", str(spin)])
         cls.res = json.loads((cls.out / "results.json").read_text())
@@ -90,6 +92,9 @@ class RunTest(unittest.TestCase):
         self.assertEqual(sorted(pools), ["AAA", "CCC", "DDD", "EEE"])
         status = json.loads((self.out / "status.json").read_text())
         self.assertEqual(status["z"], self.res["walk"]["z"])
+        self.assertFalse((self.out / "repro.json").exists())          # an earlier comparison is not about these
+        self.assertEqual(self.res["inputs"]["spinoffs"], {"CCC": ["2015-03-02"]})
+        self.assertEqual(sorted(self.res["inputs"]["code"]), sorted(f.name for f in R.CODE))
 
     def test_void_plans_are_rows(self):
         rows = csv_rows(self.out / "plans.csv")
@@ -182,13 +187,25 @@ class RunTest(unittest.TestCase):
 
     def test_checks_gate_the_result(self):
         import report as RP
-        ch = {k: {"failed": 0} for k, _ in RP.CHECKS}
-        self.assertEqual(RP.checks_pass(self.res, ch, {"same": True, "diff": []}), (True, []))
-        ok, notes = RP.checks_pass(self.res, dict(ch, fills={"failed": 2}), {"same": True, "diff": []})
+        ch = dict({k: {"failed": 0, "checked": 200} for k, _ in RP.CHECKS}, inputs=self.res["inputs"],
+                  review={"written": True}, checks_code=RP.checks_code())
+        repro = {"same": True, "diff": [], "results": [RP.results_digest(self.res)] * 2}
+        self.assertEqual(RP.checks_pass(self.res, ch, repro), (True, []))
+        ok, notes = RP.checks_pass(self.res, dict(ch, fills={"failed": 2}), repro)
         self.assertFalse(ok)
         self.assertFalse(RP.checks_pass(self.res, ch, None)[0])
-        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "band"},
-                                        {"same": True, "diff": []})[0])
+        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "band"}, repro)[0])
+        before = dict(self.res["inputs"], spinoffs={})          # checks made before the spin-off was confirmed
+        self.assertFalse(RP.checks_pass(self.res, dict(ch, inputs=before), repro)[0])
+        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "inputs"}, repro)[0])
+        self.assertFalse(RP.checks_pass(self.res, dict(ch, review={}), repro)[0])      # no data review table
+        self.assertFalse(RP.checks_pass(self.res, dict(ch, band={"failed": 0, "checked": 199}), repro)[0])
+        self.assertFalse(RP.checks_pass(self.res, dict(ch, truncation={"failed": 0, "checked": 18}), repro)[0])
+        self.assertFalse(RP.checks_pass(self.res, dict(ch, checks_code={"checks.py": "0" * 32}), repro)[0])
+        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "checks_code"}, repro)[0])
+        self.assertFalse(RP.checks_pass(self.res, ch, dict(repro, results=["0" * 32] * 2))[0])   # other results
+        self.assertFalse(RP.checks_pass(dict(self.res, theta=1), ch, repro)[0])
+        self.assertTrue(RP.checks_pass(dict(self.res, created="later"), ch, repro)[0])
 
     def test_benchmarks(self):
         c = self.res["compare"]["T"]

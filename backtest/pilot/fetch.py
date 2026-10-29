@@ -45,7 +45,6 @@ import status as ST  # noqa: E402
 EOD_ROW_CAP = 5000            # FMP returns at most this many daily rows per request, the newest ones
 CHUNK_YEARS = 18              # calendar years per daily request when the span does not fit the cap
 CHUNK_FIT_SHARE = 0.97        # a span whose estimated sessions fit 0.97 x the cap takes one request
-EXHAUSTED_DAYS = 10           # a chunk ending this far after its `from` means the series starts there
 MAX_CHUNKS = 4
 FIRST_DAY = dt.date(2008, 1, 2)
 LOOKBACK = 1096               # round(365.25 x 3): the band window (analyze.price_range)
@@ -112,7 +111,9 @@ def fits(start: dt.date, to: dt.date) -> bool:
 
 def daily_history(get, endpoint: str, symbol: str, start: dt.date, end: dt.date) -> tuple[list, str | None, int]:
     """(rows start..end oldest first, problem or None, requests). One request when the span fits under the row
-    cap, else newest-first chunks; an empty newest chunk does not end the walk (a series that ended earlier)."""
+    cap, else newest-first chunks; an empty newest chunk does not end the walk (a series that ended earlier),
+    and neither does a chunk whose first bar comes well after its start (a gap in the series looks the same as
+    its beginning, so the walk goes on to the requested start)."""
     seen, to, n = {}, end, 0
     for _ in range(MAX_CHUNKS):
         frm = start if fits(start, to) else \
@@ -131,7 +132,7 @@ def daily_history(get, endpoint: str, symbol: str, start: dt.date, end: dt.date)
         earliest = min(day(r["date"]) for r in chunk)
         if len(chunk) >= EOD_ROW_CAP:
             to = earliest - dt.timedelta(days=1)
-        elif frm <= start or (earliest - frm).days > EXHAUSTED_DAYS:
+        elif frm <= start:
             break
         else:
             to = frm - dt.timedelta(days=1)

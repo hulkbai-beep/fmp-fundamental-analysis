@@ -114,12 +114,30 @@ class SignalTest(unittest.TestCase):
         self.assertAlmostEqual(ST.spearman([1, 2, 3, 4], [4, 3, 2, 1]), -1.0)
 
     def test_gap(self):
-        rows = [(2008 + k % 10, k % 2 == 0, 0.1 if k % 2 == 0 else -0.1, {252: 0.05 if k % 2 == 0 else 0.0})
-                for k in range(200)]
+        rows = [(2008 + k % 10, k % 2 == 0, 0.1 if k % 2 == 0 else -0.1, {252: 0.05 if k % 2 == 0 else 0.0},
+                 f"C{k % 7}") for k in range(200)]
         out = ST.signal_test(rows, "s")
         self.assertAlmostEqual(out["h252"]["gap"]["theta"], 0.05)
         self.assertAlmostEqual(out["below_share"], 0.5)
         self.assertGreater(out["h252"]["ic"], 0.8)
+        sch = out["h252"]["gap_schemes"]
+        self.assertEqual(sorted(sch), ["by_year", "company", "two_years"])
+        self.assertEqual((sch["by_year"]["G"], sch["two_years"]["G"], sch["company"]["G"]), (10, 5, 7))
+
+    def test_the_gap_interval_is_the_wider_of_two_year_blocks_and_companies(self):
+        """A gap that differs by company: resampling single years mixes every company into every block and
+        reads too precise; the company clusters see it, and the gap's interval is theirs."""
+        rnd = random.Random(4)
+        level = {f"C{c}": rnd.gauss(0, 0.05) for c in range(12)}
+        rows = []
+        for k in range(1200):
+            c, below = f"C{k % 12}", rnd.random() < 0.4
+            rows.append((2008 + rnd.randrange(18), below, 0.0, {252: level[c] * below + rnd.gauss(0, 0.02)}, c))
+        out = ST.signal_test(rows, "w")["h252"]
+        sch, g = out["gap_schemes"], out["gap"]
+        self.assertEqual(g["scheme"], "company")
+        self.assertEqual(g["se"], max(sch["two_years"]["se"], sch["company"]["se"]))
+        self.assertGreater(g["hi"] - g["lo"], 1.5 * (sch["by_year"]["hi"] - sch["by_year"]["lo"]))
 
 
 class YearlyExcessTest(unittest.TestCase):

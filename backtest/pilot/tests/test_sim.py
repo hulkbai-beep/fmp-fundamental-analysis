@@ -152,6 +152,13 @@ class SimTest(unittest.TestCase):
         again = S.run(self.p, S.Rules(), flat_rate)
         self.assertEqual(again["end_value"], self.out["end_value"])
 
+    def test_temperature_at_its_ties(self):
+        """SPEC R1: fair <= 0.75 < rich < 0.95 <= hot, unknown without a range."""
+        for pct, want in ((0.5, "fair"), (0.75, "fair"), (0.7500001, "rich"), (0.9499999, "rich"), (0.95, "hot"),
+                          (1.0, "hot")):
+            self.assertEqual(S.temp_of((1.0, 2.0, 3.0, pct), self.r), want, pct)
+        self.assertIsNone(S.temp_of(None, self.r))
+
 
 def bars(p) -> list:
     """sim.run's hedge argument with the company's own bars as the session calendar."""

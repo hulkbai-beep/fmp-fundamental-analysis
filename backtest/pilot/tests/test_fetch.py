@@ -93,11 +93,20 @@ class DailyHistoryTest(unittest.TestCase):
 
     def test_shapes(self):
         self.assertEqual(self.check(dt.date(1990, 1, 2), Z, F.GLOBAL_START, Z), 2)       # needs two requests
-        self.assertEqual(self.check(dt.date(2020, 12, 9), Z, F.GLOBAL_START, Z), 1)       # began inside the chunk
+        self.assertEqual(self.check(dt.date(2020, 12, 9), Z, F.GLOBAL_START, Z), 2)       # began inside the chunk
         self.check(dt.date(1990, 1, 2), dt.date(2016, 2, 1), F.GLOBAL_START, Z)          # delisted 2016
         self.check(dt.date(1990, 1, 2), dt.date(2008, 6, 30), F.GLOBAL_START, Z)         # ended before the first chunk
         self.assertEqual(self.check(dt.date(1990, 1, 2), Z, dt.date(2011, 3, 1), Z), 1)  # fits the cap: one request
         self.assertEqual(self.check(dt.date(1993, 1, 29), Z, F.MARKET_START, Z), 1)
+
+    def test_a_gap_after_a_chunk_start_does_not_end_the_walk(self):
+        """No bars for two weeks just after the first chunk's start (a halt, or a hole in FMP's data) looks like
+        the start of the series in that chunk; the walk still goes on to the requested start."""
+        f = FakeEOD(dt.date(1990, 1, 2), Z)
+        f.days = [d for d in f.days if not dt.date(2008, 10, 24) <= d <= dt.date(2008, 11, 9)]
+        rows, problem, n = F.daily_history(f.get, "historical-price-eod/full", "X", F.GLOBAL_START, Z)
+        self.assertEqual([r["date"] for r in rows], [d.isoformat() for d in f.days if F.GLOBAL_START <= d <= Z])
+        self.assertIsNone(problem)
 
     def test_last_session_and_start(self):
         self.assertEqual(F.last_session(dt.datetime(2026, 10, 29, 20, 30)), dt.date(2026, 10, 29))   # 16:30 EDT

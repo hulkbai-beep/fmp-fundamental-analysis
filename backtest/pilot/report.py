@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import statistics
 import sys
@@ -38,6 +39,9 @@ EXITS = {"stop": "止损", "breakeven": "保本止损", "trailing": "移动止�
 NO_RESULT, PROMISING, NOT_PROMISING, INCONCLUSIVE = "没有结果（检查没通过）", "有希望", "不看好", "说不准"
 CHECKS = (("calendar", "交易日历"), ("band", "区间"), ("pipeline", "和技能对数"), ("truncation", "未来数据"),
           ("fills", "成交"))
+HERE = Path(__file__).resolve().parent
+CHECKS_CODE = (HERE / "checks.py", HERE.parent.parent / "scripts" / "score.py")    # the code the checks come from
+MIN_SAMPLED = 200                               # band triples and truncation cuts, at least (SPEC 8.3 and 8.5)
 
 
 def pct(x, d=1):
@@ -59,10 +63,22 @@ def pp(x, d=2):
     return "—" if x is None else f"{100 * x:+.{d}f} 个百分点"
 
 
+def results_digest(res: dict) -> str:
+    """The md5 of a results.json apart from its creation time (check 8 compares results this way)."""
+    return hashlib.md5(json.dumps({k: v for k, v in res.items() if k != "created"}, sort_keys=True,
+                                  default=str).encode("utf-8")).hexdigest()
+
+
+def checks_code() -> dict:
+    return {f.name: hashlib.md5(f.read_bytes()).hexdigest() for f in CHECKS_CODE}
+
+
 def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, list]:
     """Section 8 of SPEC v1, as far as the files show it: every every-start table reproduces its plans, the
-    replacement walk matches the PC's, checks.py's checks all pass, and two runs gave the same results. The unit
-    tests, the snapshot's integrity and the signed data review are steps of the run, not of these files."""
+    replacement walk matches the PC's, checks.py's checks all pass and were made from the inputs of these
+    results (snapshot, sample, confirmed spin-offs, code) by the checks' code as it is now, on at least 200 band
+    triples and truncation cuts, with the data review table written, and two runs gave these same results. The unit tests, the snapshot's integrity and the signature on the data review are
+    steps of the run, not of these files."""
     notes = []
     tables = {f"{v} 版": x.get("every_start", {}) for v, x in res.get("primary", {}).items()}
     tables.update({NAMES.get(k, k): x.get("every_start", {}) for k, x in res.get("variant_tests", {}).items()})
@@ -75,15 +91,26 @@ def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, l
     if ch is None:
         notes.append("没有提供 checks.json")
     else:
+        if ch.get("inputs") is None or ch["inputs"] != res.get("inputs"):
+            notes.append("检查和这次运行用的不是同一份快照、样本、分拆确认或代码")
+        if ch.get("checks_code") != checks_code():
+            notes.append("检查不是用现在的检查代码（checks.py、score.py）做的")
+        for k, name in (("band", "区间"), ("truncation", "未来数据")):
+            if k in ch and (ch[k].get("checked") or 0) < MIN_SAMPLED:
+                notes.append(f"{name}检查只查了 {ch[k].get('checked') or 0} 项，至少要 {MIN_SAMPLED} 项")
         for k, name in CHECKS:
             if k not in ch:
                 notes.append(f"没有跑{name}检查")
             elif ch[k].get("failed"):
                 notes.append(f"{name}检查失败 {ch[k]['failed']} 项")
+        if not (ch.get("review") or {}).get("written"):
+            notes.append("没有生成数据核对表（review.md）")
     if repro is None:
         notes.append("没有提供重跑对比（repro.json）")
-    elif repro.get("diff"):
-        notes.append(f"两次运行结果不同：{', '.join(repro['diff'])}")
+    elif repro.get("diff") or not repro.get("same"):
+        notes.append(f"两次运行结果不同：{', '.join(repro.get('diff') or ['?'])}")
+    elif (repro.get("results") or [None])[0] != results_digest(res):
+        notes.append("重跑对比（repro.json）比的不是这份结果")
     return not notes, notes
 
 
@@ -154,9 +181,12 @@ def signal_lines(sig: dict) -> list:
         g = x.get("gap") or {}
         if g.get("theta") is None:
             continue
+        unit = {"two_years": "个两年块", "company": "家公司"}.get(g.get("scheme"), "个年份块")
+        y1 = (x.get("gap_schemes") or {}).get("by_year")
         out.append(f"- 之后 {h} 个交易日扣掉 SPY 的收益，低于中位减其他日子：{pct(g['theta'], 2)}（90% 区间 "
-                   f"{pct(g['lo'], 2)} 到 {pct(g['hi'], 2)}，{g['G']} 个年份块）；IC {num(x.get('ic'), 3)}"
-                   + ("（主项）" if h == 252 else "（只作参考）"))
+                   f"{pct(g['lo'], 2)} 到 {pct(g['hi'], 2)}，按 {g['G']} {unit}重抽"
+                   + (f"；按单个年份重抽会窄到 {pct(y1['lo'], 2)} 到 {pct(y1['hi'], 2)}，偏乐观" if y1 else "")
+                   + f"）；IC {num(x.get('ic'), 3)}" + ("（主项）" if h == 252 else "（只作参考）"))
     return out
 
 

@@ -78,8 +78,13 @@ def fnum(x):
 # ---------------------------------------------------------------- bars
 def clean_bars(rows: list, adj_rows: list, split_rows: list) -> tuple[list, list, dict]:
     """V3's cleaning (ladder_sim.clean_bars): drop placeholder bars (no volume and open = high = low = close),
-    non-positive closes and duplicate dates; a one-day move over 50% that is not near a split, not matched by
-    the dividend-adjusted series or reversed within 5 bars marks the 40 bars on either side as suspicious.
+    non-positive closes and duplicate dates. A one-day move over 50% on bar i is verified when no split is
+    within 5 bars, the dividend-adjusted series makes the same move and the close 5 bars later still holds half
+    of it, a verdict first known at the close of bar i + 5. The flags are point in time, so no bar before the
+    move is ever one (V3 also flagged the 40 bars before, which reads ahead): bars i + 5 to i + 40 are
+    suspicious when the move failed the verdict, and a bar t from i to i + 4 when what is known at its close
+    already fails it (the dividend-adjusted series disagrees, a split row within 5 bars of i is on or before t,
+    or the close at t holds less than half of the move).
     Returns (bars oldest first as dicts with date/o/h/l/c/v, suspicious flags, report)."""
     by_day = {}
     for r in rows:
@@ -106,16 +111,21 @@ def clean_bars(rows: list, adj_rows: list, split_rows: list) -> tuple[list, list
         move = bars[i]["c"] / bars[i - 1]["c"]
         if abs(move - 1.0) <= 0.5:
             continue
-        near_split = any(abs(j - i) <= 5 for j in split_idx)
+        near = [j for j in split_idx if abs(j - i) <= 5]
         a0, a1 = adj.get(dates[i - 1]), adj.get(dates[i])
         adj_ok = bool(a0 and a1 and a0 > 0 and abs((a1 / a0) / move - 1.0) <= 0.05)
-        holds = math.log(bars[min(i + 5, n - 1)]["c"] / bars[i - 1]["c"]) / math.log(move) >= 0.5 if i + 5 < n else True
-        ok = (not near_split) and adj_ok and holds
-        report["jumps"].append({"date": dates[i], "move": round(move - 1.0, 4), "near_split": near_split,
+        held = lambda t: math.log(bars[t]["c"] / bars[i - 1]["c"]) / math.log(move) >= 0.5     # noqa: E731
+        known = i + 5 < n                           # else the bars end before the verdict
+        holds = held(i + 5) if known else None
+        ok = (not near) and adj_ok and holds if known else None
+        report["jumps"].append({"date": dates[i], "move": round(move - 1.0, 4), "near_split": bool(near),
                                 "adjusted_agrees": adj_ok, "holds": holds, "verified": ok})
-        if not ok:
-            for j in range(max(0, i - 40), min(n, i + 41)):
-                sus[j] = True
+        for t in range(i, min(n, i + 5)):           # the verdict pending: what bar t's close knows
+            if not adj_ok or any(j <= t for j in near) or not held(t):
+                sus[t] = True
+        if ok is False:
+            for t in range(i + 5, min(n, i + 41)):
+                sus[t] = True
     return bars, sus, report
 
 
@@ -204,9 +214,14 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
         first row filed on or after it (with a later period end). Near the factor: FMP did not restate, and
         every row filed before the split is put on the new basis; near 1: restated, nothing to do; otherwise
         unclear: listed, and the rows filed before the split are left as filed (unclear="keep", the reading
-        status.py's frozen rule uses) or lose their EPS (unclear="none", the pilot's panels: no band is
-        built on a share basis that cannot be told). Factors under 1.25 need the ratio within a quarter (not a
-        half) of the log factor of either answer.
+        status.py's frozen rule uses), lose their EPS (unclear="none", the annual rows of the panels: version
+        F builds no band on a share basis that cannot be told), or are left as filed and marked with
+        unclear_until, the day the first statement filed on or after the split became known (unclear="mark",
+        the quarterly rows of the panels: version T leaves them out of every decision after that day, when a
+        statement on the new basis is in use, and keeps them before it, when every statement in use is on the
+        one old basis, so mid, percentile and the test against the mid do not depend on it; of two unclear
+        splits after a row the older decides). Factors under 1.25 need the ratio within a quarter (not a half)
+        of the log factor of either answer.
       3 partial: a step between consecutive period ends' share counts outside 0.8-1.25 that is within 10% of a
         product of splits dated after the older row's filing means FMP restated only the newer rows; the older
         ones are put on the new basis. Other steps are listed (a merger, a spin-off) for history_problem.
@@ -268,11 +283,18 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
                 for r in rows:
                     if r["known"] < x and r["eps"] is not None:
                         r["eps"], r["eps_unclear"] = None, x.isoformat()
-        report["boundary"].append({"split": x.isoformat(), "factor": f, "pre_end": rows[kp]["end"].isoformat(),
-                                   "post_end": rows[kq]["end"].isoformat(), "ratio": round(ratio, 4),
-                                   "action": action, "rows_changed": sum(r["known"] < x for r in rows)
-                                   if action == "not_restated" or (action == "unclear" and unclear == "none")
-                                   else 0})
+            elif unclear == "mark":
+                first = min(r["known"] for r in rows if r["known"] >= x)
+                for r in rows:                      # splits run newest first: the oldest one after a row wins
+                    if r["known"] < x:
+                        r["unclear_until"] = first
+        entry = {"split": x.isoformat(), "factor": f, "pre_end": rows[kp]["end"].isoformat(),
+                 "post_end": rows[kq]["end"].isoformat(), "ratio": round(ratio, 4), "action": action,
+                 "rows_changed": sum(r["known"] < x for r in rows)
+                 if action == "not_restated" or (action == "unclear" and unclear in ("none", "mark")) else 0}
+        if action == "unclear" and unclear == "mark":
+            entry["unused_after"] = first.isoformat()
+        report["boundary"].append(entry)
     latest = {}
     for k, r in enumerate(rows):
         if r["shares"]:
@@ -424,6 +446,15 @@ class Panel:
     no_new: dict = field(default_factory=dict)    # version -> list of True on days no new plan may start
     spin_exit: set = field(default_factory=set)   # bars whose close is the last before a confirmed spin-off
     report: dict = field(default_factory=dict)
+    epochs: dict = field(default_factory=dict)    # version -> [(last day or None, EPS on every bar)]: see build
+
+    def window_eps(self, v: str, i: int) -> list:
+        """The EPS on every bar that day i's band divides the closes by: version T's of the epoch day i falls in
+        (statements an unclear split takes out of use are out of the whole window), else the days' own."""
+        for until, e in self.epochs.get(v, []):
+            if until is None or self.dates[i] <= until:
+                return e
+        return self.eps[v]
 
     def range_at(self, v: str, i: int):
         """(low, mid, high, pct) on bar i for version v, or None."""
@@ -450,28 +481,34 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
     known on or after it, for the self-test that nothing on or before it changes (T at a close uses only
     statements known before that day, so a leak of even one day shows at a cut on a filing day);
     audit_known(raw row) -> (day, placeholder) decides which statements survive the cut when given (the test's
-    own reading of the filing dates, so a leak in known_day shows). The split basis is
+    own reading of the filing dates, so a leak in known_day shows); the bars are cleaned from the rows dated on or
+    before it alone, so the suspicious flags must not read ahead either. The split basis is
     settled on the full data first: putting old statements on today's share basis is a change of units that a
-    later split forces, not information about what came after (prices are on today's basis too).
+    later split forces, not information about what came after (prices are on today's basis too). Quarterly
+    statements filed before a split whose basis cannot be told leave version T on the first day a statement
+    filed after the split is in use: from there on T has its own epoch, with the TTM of every day, the window
+    of the band included, formed without them (normalize_basis, unclear="mark").
     spinoffs: confirmed spin-off ex-dates; no new T plan for 365 days after one (the trailing EPS still holds
     the unit the price no longer does), no new F / FY plan until the end of that fiscal year, and a holding is
     sold at the last close before the ex-date (the bars drop by the spun-off value, which they do not credit)."""
     raw = snap / "raw"
     split_rows = read(raw / "splits" / f"{symbol}.json")
     splits = split_factors(split_rows)
-    bars, sus, clean = clean_bars(read(raw / "full" / f"{symbol}.json"), read(raw / "adj" / f"{symbol}.json"),
-                                  split_rows)
+    full_rows, adj_rows = read(raw / "full" / f"{symbol}.json"), read(raw / "adj" / f"{symbol}.json")
+    if truncate:
+        upto = lambda rs: [r for r in rs if str(r.get("date"))[:10] <= truncate]       # noqa: E731
+        bars, sus, clean = clean_bars(upto(full_rows), upto(adj_rows), upto(split_rows))
+    else:
+        bars, sus, clean = clean_bars(full_rows, adj_rows, split_rows)
     divs = read(raw / "div" / f"{symbol}.json")
     rep = {"clean": clean, "basis_q": {}, "basis_a": {}}
-    quarters = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, rep["basis_q"], unclear="none",
+    quarters = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, rep["basis_q"], unclear="mark",
                               units="fix")
     years = statement_rows(read(raw / "inc_a" / f"{symbol}.json"), splits, rep["basis_a"], unclear="none",
                            units="fix")
     rep["annual_vs_quarters"] = annual_check(years, quarters)
     rep["spin_candidates"] = spin_candidates(bars, split_rows, read(raw / "earn" / f"{symbol}.json"))
     if truncate:
-        keep = sum(b["date"] <= truncate for b in bars)
-        bars, sus = bars[:keep], sus[:keep]
         divs = [r for r in divs if str(r.get("date"))[:10] <= truncate]
         cut = day(truncate)
         def kept(r):
@@ -494,14 +531,24 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
     p = Panel(symbol, dates, [b["o"] for b in bars], [b["h"] for b in bars], [b["l"] for b in bars],
               [b["c"] for b in bars], div, atr14(bars), [in_spans(d, spans) for d in dates], sus,
               bool(dates) and (day(end) - day(dates[-1])).days > DELIST_GAP_DAYS, report=rep)
-    t_days, t_vals = ttm_steps(quarters)
     ntm_f, fy_eps, horizon = fiscal_eps(years)
     # the skill's history check reads 'shares' and 'date' of the fiscal years; on day d only the years filed by d - 1
     q_shares = sorted((q["known"], q["end"], q["shares"]) for q in quarters if q["known"] and q["shares"])
-    eps, why_eps = {}, {}
+    eps, why_eps, t_epochs, t_of = {}, {}, [], []
     if "T" in versions:
-        t = [ttm_at(t_days, t_vals, day(d)) for d in dates]
-        eps["T"], why_eps["T"] = [x[0] for x in t], [x[1] for x in t]
+        # epoch k runs to ends[k] (the last one to the end): the statements in use are those whose unclear_until
+        # is not before that day
+        ends = sorted({q["unclear_until"] for q in quarters if q.get("unclear_until")})
+        for k in range(len(ends) + 1):
+            until = ends[k] if k < len(ends) else None
+            t_days, t_vals = ttm_steps([q for q in quarters if not q.get("unclear_until") or
+                                        (until is not None and q["unclear_until"] >= until)])
+            t = [ttm_at(t_days, t_vals, day(d)) for d in dates]
+            t_epochs.append((None if until is None else until.isoformat(), [x[0] for x in t], [x[1] for x in t]))
+        t_of = [next(k for k, e in enumerate(t_epochs) if e[0] is None or d <= e[0]) for d in dates]
+        eps["T"] = [t_epochs[k][1][i] for i, k in enumerate(t_of)]
+        why_eps["T"] = [t_epochs[k][2][i] for i, k in enumerate(t_of)]
+        p.epochs["T"] = [(u, e) for u, e, _ in t_epochs]
     if "F" in versions or "FY" in versions:
         eps["F"] = [ntm_f(d) for d in dates]
         why_eps["F"] = [None if e is not None else "beyond_horizon" if horizon is None or d > horizon
@@ -511,7 +558,12 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
     for v in versions:
         p.eps[v] = eps[v]
     for bv in sorted({BAND_OF[v] for v in versions}):
-        p.band[bv], p.why[bv] = bands(dates, p.c, eps[bv], why_eps[bv], years, q_shares, first_day)
+        if bv == "T" and len(t_epochs) > 1:
+            each = [bands(dates, p.c, e, w, years, q_shares, first_day) for _, e, w in t_epochs]
+            p.band[bv] = [each[k][0][i] for i, k in enumerate(t_of)]
+            p.why[bv] = [each[k][1][i] for i, k in enumerate(t_of)]
+        else:
+            p.band[bv], p.why[bv] = bands(dates, p.c, eps[bv], why_eps[bv], years, q_shares, first_day)
     if "FY" in versions:
         p.why["FY"] = [w if w else (None if e and e > 0 else "eps_not_positive") for w, e in zip(p.why["F"], eps["FY"])]
     fy_ends = [y["end"].isoformat() for y in latest_by_end(years)]

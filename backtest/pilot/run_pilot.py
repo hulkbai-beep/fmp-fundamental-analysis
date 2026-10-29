@@ -18,6 +18,7 @@ import argparse
 import bisect
 import csv
 import datetime as dt
+import hashlib
 import json
 import math
 import sys
@@ -46,6 +47,21 @@ VARIANTS = {                                    # SPEC v1 section 7: version T, 
 }
 SLEEVE_ONLY = ("cooldown", "cooldown_after")    # rules a plan simulated alone never meets: the main table serves
 AT_CLOSE = ("delisted", "spin")                 # sales at the close of their bar (SPEC R10)
+CODE = [HERE / f for f in ("market.py", "panel.py", "placebo.py", "run_pilot.py", "sim.py", "stats.py",
+                           "status.py")] + [HERE.parent.parent / "scripts" / "analyze.py"]   # what results come from
+
+
+def md5_of(path: Path) -> str:
+    return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def inputs(snap: Path, sample: Path, spinoffs: Path) -> dict:
+    """What a run or a set of checks was made from: the snapshot (its manifest), the drawn sample, the confirmed
+    spin-offs and the code results come from. report.py takes checks only for results with the same inputs."""
+    events = json.loads(spinoffs.read_text(encoding="utf-8"))["events"]
+    return {"manifest": md5_of(snap / "manifest.json"), "sample": md5_of(sample),
+            "spinoffs": {k: sorted(x["date"] for x in v if x.get("confirmed")) for k, v in sorted(events.items())},
+            "code": {f.name: md5_of(f) for f in CODE}}
 # ---------------------------------------------------------------- the companies
 def choose(snap: Path, sample: dict) -> tuple[list, dict]:
     """The companies after the pre-registered replacement walk (status.py), [(key, series, sector, spans)], and
@@ -236,11 +252,12 @@ def every_start_check(strat: dict, pool: dict) -> dict:
     return {"plans": len(strat["start"]), "missing": missing[:10], "n_missing": len(missing), "max_diff": worst}
 
 
-def signal_rows(p, v: str, pool: dict, adj_c: list, spy: M.Spy, sess: list, zi: int, sample: set) -> list:
+def signal_rows(p, v: str, pool: dict, adj_c: list, spy: M.Spy, sess: list, zi: int, sample: set,
+                key: str = "") -> list:
     """The rules-free signal test's days (SPEC 5.3): every SIGNAL_EVERY-th SPY session from FIRST_DAY that is
     one of the company's pool days with a full window, with the stock's return (dividends included) minus
     SPY's to the 63rd / 126th / 252nd SPY session after it; when the company's bars stop earlier, to its last
-    bar and SPY on that bar's date."""
+    bar and SPY on that bar's date. Rows (year, below the mid, signal, {h: return}, company)."""
     out = []
     for i, full in zip(pool["start"], pool["full252"]):
         d = p.dates[i]
@@ -253,7 +270,7 @@ def signal_rows(p, v: str, pool: dict, adj_c: list, spy: M.Spy, sess: list, zi: 
             j = bisect.bisect_right(p.dates, spy.days[k]) - 1 if k <= zi else None
             ok = j is not None and j > i and adj_c[j]
             fwd[h] = adj_c[j] / adj_c[i] - spy.close_on(p.dates[j]) / spy.close_on(d) if ok else None
-        out.append((int(d[:4]), p.c[i] < mid, -math.log(p.c[i] / mid), fwd))
+        out.append((int(d[:4]), p.c[i] < mid, -math.log(p.c[i] / mid), fwd, key))
     return out
 
 
@@ -321,7 +338,7 @@ def company_runs(args) -> dict:
         res["every_start"][v] = every_start_check(res["strategy"][v], res["pool"][v])
         res["gates"][v] = gate_days(p, r, out["first"], out["last"])
         if v == MAIN:
-            res["signal"][v] = signal_rows(p, v, res["pool"][v], adj_c, spy, sess, zi, sample)
+            res["signal"][v] = signal_rows(p, v, res["pool"][v], adj_c, spy, sess, zi, sample, key)
     if "T" in versions and "F" in versions:
         res["t_vs_f"] = t_vs_f(p, out["first"], out["last"], sample)
     for name, kw in variants.items():
@@ -475,6 +492,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     snap, out = Path(a.snap), Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    (out / "repro.json").unlink(missing_ok=True)    # a comparison of earlier results in this folder
     bad = M.check_manifest(snap)
     if bad:
         print(f"snapshot refused: {len(bad)} files differ from the manifest, e.g. {bad[:3]}")
@@ -518,6 +536,7 @@ def main(argv=None) -> int:
     gates = {v: {k: sum(r["gates"][v][k] for r in results) for k in results[0]["gates"][v]} for v in versions}
     res = {"created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "snapshot": {"created": man.get("created"), "last_day": cal[-1], "files": len(man["files"])},
+           "inputs": inputs(snap, Path(a.sample), Path(a.spinoffs)),
            "companies": [{"symbol": c[0], "series": c[1], "sector": c[2]} for c in comps], "replacements": swaps,
            "walk": {k: walk.get(k) for k in ("z", "same_as_pc", "review", "assessed")},
            "first_day": FIRST_DAY, "rules": asdict(S.Rules()), "variants": variants,

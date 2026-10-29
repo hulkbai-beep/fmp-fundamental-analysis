@@ -3,6 +3,7 @@ to the skill's own computation, and nothing on or before a day changing when lat
 including planted leaks that the deletion test must catch."""
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import json
 import random
@@ -251,6 +252,77 @@ class PanelTest(unittest.TestCase):
             for k in ("p25", "median", "p75", "pct"):
                 self.assertAlmostEqual(after.band["T"][i][k], base.band["T"][i][k], places=9)
             self.assertAlmostEqual(after.range_at("T", i)[1], base.range_at("T", i)[1] / 2, places=9)
+
+    def test_suspicious_flags_are_point_in_time(self):
+        """One-day moves over 50% flag no bar before them, and each bar while the verdict is pending only on what
+        its close knows: a bad print in /full alone from its own bar; a fall both series show that reverses 2
+        bars later from the reversal on; a real fall that holds never. A build cut anywhere flags what the full
+        build flags up to the cut."""
+        synth.company(self.snap, "JMP", seed=31, split=None)
+        raw = self.snap / "raw"
+        full, adj = (json.loads((raw / part / "JMP.json").read_text()) for part in ("full", "adj"))
+        days = sorted(r["date"] for r in full)
+        rev, bad, real = days[2000], days[3000], days[4000]
+        for rows, keys in ((full, ("open", "high", "low", "close")), (adj, ("adjOpen", "adjHigh", "adjLow",
+                                                                            "adjClose"))):
+            for r in rows:
+                f = (0.45 if rev <= r["date"] < days[2002] else 1.0) * (0.45 if r["date"] >= real else 1.0)
+                if rows is full and r["date"] == bad:
+                    f *= 0.4                                # one bad print, /full only
+                for k in keys:
+                    r[k] *= f
+        for part, rows in (("full", full), ("adj", adj)):
+            (raw / part / "JMP.json").write_text(json.dumps(rows))
+        p = P.build("JMP", self.snap, SPANS)
+        jumps = {j["date"]: j["verified"] for j in p.report["clean"]["jumps"]}
+        self.assertEqual((jumps[rev], jumps[days[2002]], jumps[bad], jumps[real]), (False, True, False, True))
+        r, i, k = p.dates.index(rev), p.dates.index(bad), p.dates.index(real)
+        self.assertFalse(any(p.suspicious[r - 40:r + 2]))
+        self.assertTrue(all(p.suspicious[r + 2:r + 41]))
+        self.assertFalse(any(p.suspicious[i - 40:i]))
+        self.assertTrue(all(p.suspicious[i:i + 41]))
+        self.assertFalse(any(p.suspicious[k - 40:k + 60]))
+        for cut in (p.dates[r + 1], p.dates[r + 3], p.dates[i - 1], p.dates[i + 2], p.dates[i + 30],
+                    p.dates[k + 2]):
+            t = P.build("JMP", self.snap, SPANS, truncate=cut, snapshot_end=cut)
+            self.assertEqual(t.suspicious, p.suspicious[:len(t.dates)], cut)
+
+    def test_an_unclear_split_takes_old_statements_out_of_use_once_a_new_one_is(self):
+        """A 10% stock dividend FMP did not restate, with a 3% buyback after it: the share counts cannot tell the
+        basis. Version T keeps the older statements as filed until the first statement filed after the split is
+        in use (as keeping them: every statement in use then is on the one old basis) and from then on uses none
+        of them anywhere in its window (as clearing them); deleting later data changes nothing before a cut."""
+        when = dt.date(2016, 6, 6)
+        synth.company(self.snap, "UNC", seed=33, split=(when, 1.1))
+        path = self.snap / "raw" / "inc_q" / "UNC.json"
+        rows = json.loads(path.read_text())
+        for r in rows:
+            if r["filingDate"] >= when.isoformat():
+                r["weightedAverageShsOutDil"] *= 0.97
+        path.write_text(json.dumps(rows))
+        p = P.build("UNC", self.snap, SPANS, versions=("T",))
+        (b,) = p.report["basis_q"]["boundary"]
+        first = min(r["filingDate"] for r in rows if r["filingDate"] >= when.isoformat())
+        self.assertEqual((b["action"], b["unused_after"]), ("unclear", first))
+        orig = P.statement_rows
+
+        def reading(mode):
+            return lambda raw, sp, rep, unclear="keep", units="keep": orig(raw, sp, rep,
+                                                                           mode if unclear == "mark" else unclear, units)
+        with mock.patch.object(P, "statement_rows", reading("keep")):
+            keep = P.build("UNC", self.snap, SPANS, versions=("T",))
+        with mock.patch.object(P, "statement_rows", reading("none")):
+            none = P.build("UNC", self.snap, SPANS, versions=("T",))
+        k = bisect.bisect_right(p.dates, first)
+        self.assertEqual((p.eps["T"][:k], p.band["T"][:k]), (keep.eps["T"][:k], keep.band["T"][:k]))
+        self.assertEqual((p.eps["T"][k:], p.band["T"][k:]), (none.eps["T"][k:], none.band["T"][k:]))
+        self.assertGreater(sum(x is not None for x in p.band["T"][:k]), 1000)    # clearing them loses these
+        self.assertEqual(sum(x is not None for x in none.band["T"][:k]), 0)
+        self.assertNotEqual(p.window_eps("T", k - 1), p.window_eps("T", k))
+        for cut in (first, p.dates[k + 5], "2017-08-01", "2018-03-01"):
+            t = P.build("UNC", self.snap, SPANS, versions=("T",), truncate=cut, snapshot_end=cut)
+            n = len(t.dates)
+            self.assertEqual((t.eps["T"], t.band["T"]), (p.eps["T"][:n], p.band["T"][:n]), cut)
 
     def test_loss_years_have_no_band(self):
         synth.company(self.snap, "LOS", seed=5, loss_years=(2012, 2013))
