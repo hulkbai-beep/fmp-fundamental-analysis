@@ -2,9 +2,16 @@
 The random-timing placebo: the same companies, the same plan levels, gates, build, stop and take-profit rules,
 but plans start on random days instead of on a close below the band mid. The candidate days of a company are
 the days a plan could start whatever the price (a member day with a band and an ATR on which the stop and
-reward/risk gates pass); on every candidate day the sleeve is flat, the placebo starts a plan with probability
-h. h is calibrated per company and version so that the placebo starts as many plans on average as the method
-did. Replica k of a company draws from its own seeded stream, so any replica can be rerun alone.
+reward/risk gates pass).
+
+Plan level (the primary test): one plan is simulated alone from every candidate day (the every-start table,
+pool()); a replica draws, for every company, as many start days as the method had plans with a full window,
+with replacement from that company's candidates with a full window (stats.plan_test).
+
+Sleeve level (descriptive percentiles of the portfolio): on every candidate day on which the sleeve is flat,
+the placebo starts a plan with probability h, calibrated per company and version so that it starts as many
+plans on average as the method did. Replica k of a company draws from its own seeded stream, so any replica
+can be rerun alone.
 """
 from __future__ import annotations
 
@@ -81,3 +88,40 @@ def eligible_days(p, out: dict, r: S.Rules) -> int:
         busy.update(range(pl.start, end + r.cooldown + 1))
     return sum(1 for i in range(out["first"], out["last"])
                if i not in busy and p.atr[i] and p.range_at(r.version, i) is not None and p.can_start(r.version, i))
+
+
+COLUMNS = ("start", "day", "year", "full252", "full126", "dh252", "dh126", "raw252", "tb252", "cost252", "dep252",
+           "mae252", "status", "fills", "temp0", "below_mid")
+
+
+def columns(p, plans: list, last: int) -> dict:
+    """Plans (closed, open or void) as columns, by start: their hedged metric per unit of the planned position
+    and whether its window is full (252 / 126 sessions before the last bar, or the company was delisted)."""
+    out = {k: [] for k in COLUMNS}
+    for pl in sorted(plans, key=lambda x: x.start):
+        m = pl.metrics()
+        row = {"start": pl.start, "day": p.dates[pl.start], "year": int(p.dates[pl.start][:4]),
+               "full252": p.delisted or pl.start + S.H_LONG <= last,
+               "full126": p.delisted or pl.start + S.H_SHORT <= last,
+               "status": pl.status, "fills": len(pl.filled), "temp0": pl.temp0,
+               "below_mid": pl.price < pl.mid0 if pl.mid0 else None}
+        row.update(m)
+        for k in COLUMNS:
+            out[k].append(row[k])
+    return out
+
+
+def method_plans(out: dict) -> list:
+    """Every plan the method started: closed, still open at the end, and void (never bought)."""
+    return out["plans"] + ([out["open"]] if out["open"] else []) + out["voids"]
+
+
+def pool(p, r: S.Rules, rates, hedge, first: int, last: int) -> dict:
+    """The every-start table: one plan from every candidate day, simulated alone, as columns."""
+    plans = []
+    for i in candidates(p, r, first, last):
+        o = S.run(p, r, rates, first_day=p.dates[i], starts={i}, record_days=False, hedge=hedge, single=True)
+        got = method_plans(o)
+        if got:
+            plans.append(got[0])
+    return columns(p, plans, last)

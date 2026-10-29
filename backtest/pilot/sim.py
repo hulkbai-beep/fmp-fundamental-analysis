@@ -14,7 +14,15 @@ At each close, in the order of rules-1.1 section 11 (the first that applies wins
      + 0.5 ATR (the chase limit, max_price)
   4. no plan: a close below the band mid starts one when the stop and reward/risk gates pass (sections 6, 7, 9)
 Temperatures come from the band percentile: fair <= 0.75 < rich < 0.95 <= hot; no band = unknown, which
-pauses buying, never fires a valuation tier and uses the trailing multiple of 'unknown' (3.0).
+pauses buying, never fires a valuation tier and uses the trailing multiple of 'unknown' (3.0). A holding is
+sold at the last close before a confirmed spin-off (panel.spin_exit) and at a delisted company's last close.
+
+Each plan also accumulates, over the sessions 1..252 after its signal close (Plan.m, in sleeve units; divided
+by the plan's size in Plan.metrics()), the pilot's primary metric: the P&L of the stock position hedged every
+day with the same dollars of SPY (overnight on the shares held at the previous close, intraday on the shares
+held after the open's trades), net of trading costs; and with it the unhedged P&L, the T-bill carry of the
+position, the costs, the capital deployed and the worst running P&L. A plan that never buys (it lapses at the
+chase limit, expires unfilled or is still waiting at the end) is kept in 'voids' with all of them zero.
 """
 from __future__ import annotations
 
@@ -23,6 +31,8 @@ import datetime as dt
 from dataclasses import dataclass, field
 
 TEMP = ("fair", "rich", "hot")
+H_LONG, H_SHORT = 252, 126                      # sessions after the signal close in the hedged metric
+METRICS = ("dh252", "dh126", "raw252", "tb252", "cost252", "dep252", "mae252")
 
 
 @dataclass(frozen=True)
@@ -91,9 +101,16 @@ class Plan:
     end: int | None = None
     divs: float = 0.0
     status: str = "open"
+    m: dict = field(default_factory=lambda: dict.fromkeys(METRICS, 0.0))
 
     def invested(self) -> float:
         return sum(f[3] for f in self.filled)
+
+    def metrics(self) -> dict:
+        """Plan.m per unit of the planned position; dep252 in capital-years."""
+        out = {k: v / self.size for k, v in self.m.items()}
+        out["dep252"] /= 252.0
+        return out
 
     def proceeds(self) -> float:
         return sum(s[3] for s in self.sold) + self.divs
@@ -157,17 +174,20 @@ def gates(P: float, stop: float, t1: float, r: Rules) -> tuple:
 
 
 def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None = None, starts=None,
-        record_days: bool = True) -> dict:
+        record_days: bool = True, hedge=None, single: bool = False) -> dict:
     """One sleeve (capital 1.0) through the panel p (panel.Panel). starts: None = the method (a close below the
     band mid); otherwise a set of bar indices on which a plan may start whatever the price (the random-timing
-    placebo), every other rule unchanged. rates(date_iso) -> the 3-month T-bill yield known on that day."""
+    placebo), every other rule unchanged. rates(date_iso) -> the 3-month T-bill yield known on that day.
+    hedge: (SPY's adjusted opens, closes) on p.dates, for the hedged metric (without it the hedge leg is 0).
+    single: stop as soon as the first plan has ended (one plan from first_day: the every-start table)."""
     n = len(p.dates)
     i0 = bisect.bisect_left(p.dates, first_day)
     i1 = n - 1 if last_day is None else bisect.bisect_right(p.dates, last_day) - 1
+    so, sc = hedge if hedge is not None else (None, None)
     cash, shares, avg = 1.0, 0.0, 0.0
     stop, stop_src, hc, trail = None, None, None, None
     plan = None
-    plans = []
+    plans, voids = [], []
     waits = {"stop_too_far": 0, "reward_risk": 0}
     expired, lapsed = 0, 0
     orders = []        # queued at a close for the next open: ("buy", cash, cap, tranche) | ("sell", shares, why)
@@ -184,11 +204,34 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
             cool_until = i + r.cooldown
         plan, stop, stop_src, hc, trail, avg, shares = None, None, None, None, None, 0.0, 0.0
 
+    def void(i, status):
+        nonlocal plan
+        plan.end, plan.status, plan.cancelled = i, status, True
+        voids.append(plan)
+        plan = None
+
+    def pnl(pl, k, stock, hedged, carry=0.0, cost=0.0):
+        m = pl.m
+        m["raw252"] += stock - cost
+        m["dh252"] += stock - hedged - cost
+        m["tb252"] += carry
+        m["cost252"] += cost
+        if k <= H_SHORT:
+            m["dh126"] += stock - hedged - cost
+
     for i in range(i0, i1 + 1):
         # ---------------- the open of bar i
+        cur = plan                                  # the plan held into this bar, for the hedged metric
+        k_h = i - cur.start if cur is not None else 0
+        acc = cur is not None and k_h <= H_LONG
         if i > i0:
             days = (dt.date.fromisoformat(p.dates[i]) - dt.date.fromisoformat(p.dates[i - 1])).days
-            cash *= 1.0 + rates(p.dates[i - 1]) * days / 365.0
+            rate = rates(p.dates[i - 1]) * days / 365.0
+            cash *= 1.0 + rate
+            if acc and shares > 0:                  # overnight: the shares held at the previous close
+                cp, o = p.c[i - 1], p.o[i]
+                spy = so[i] / sc[i - 1] - 1.0 if so is not None and so[i] and sc[i - 1] else 0.0
+                pnl(cur, k_h, shares * (o - cp + p.div[i]), shares * cp * spy, shares * cp * rate)
         if shares > 0 and p.div[i]:
             cash += shares * p.div[i]               # holders at the previous close get the dividend
             plan.divs += shares * p.div[i]
@@ -200,6 +243,8 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                 cash += got
                 shares -= q
                 plan.sold.append((i, px, q, got, o[2]))
+                if acc:
+                    pnl(cur, k_h, 0.0, 0.0, cost=q * px * r.cost)
                 if o[2].startswith("tp_"):
                     for t in (int(x) - 1 for x in o[2][3:].split("+")):
                         plan.tp_filled[t] = True
@@ -214,7 +259,7 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                     plan.blocked += 1
                     if not plan.filled:            # buy_1 blocked: the plan lapses
                         lapsed += 1
-                        plan = None
+                        void(i, "lapsed")
                         break
                     plan.next_k = k
                     continue
@@ -224,11 +269,18 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                 shares += q
                 cash -= amt
                 plan.filled.append((i, px, q, amt, k))
+                if acc:
+                    pnl(cur, k_h, 0.0, 0.0, cost=amt - q * px)
         orders = []
         if plan is not None and plan.filled and shares <= 1e-12 * max(1.0, plan.size):
             close_plan(i, plan.sold[-1][4] if plan.sold else "closed")
         # ---------------- the close of bar i
         c, A = p.c[i], p.atr[i]
+        if acc and shares > 0:                      # intraday: the shares held after the open's trades
+            o = p.o[i]
+            spy = sc[i] / so[i] - 1.0 if so is not None and so[i] and sc[i] else 0.0
+            pnl(cur, k_h, shares * (c - o), shares * o * spy)
+            cur.m["dep252"] += shares * c
         rng = p.range_at(r.version, i)
         temp = temp_of(rng, r)
         last_bar = i == i1
@@ -245,11 +297,14 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                 if bind and trail is not None and (eff is None or trail > eff):
                     eff, eff_src = trail, "trailing"
                 done = plan.tp_fired
-                if p.delisted and last_bar:
-                    got = shares * c * (1 - r.cost)    # delisted: liquidated at the last close
+                forced = "delisted" if p.delisted and last_bar else "spin" if i in p.spin_exit else None
+                if forced:                          # sold at this close: delisted, or a spin-off goes ex next
+                    got = shares * c * (1 - r.cost)
                     cash += got
-                    plan.sold.append((i, c, shares, got, "delisted"))
-                    close_plan(i, "delisted")
+                    plan.sold.append((i, c, shares, got, forced))
+                    if acc:
+                        pnl(cur, k_h, 0.0, 0.0, cost=shares * c * r.cost)
+                    close_plan(i, forced)
                 elif eff is not None and c < eff:
                     sells.append(("sell", shares, eff_src))
                     plan.cancelled = True
@@ -279,7 +334,7 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                     plan.cancelled = True
                     if not plan.filled:
                         expired += 1
-                        plan = None
+                        void(i, "expired")
                 elif k < len(r.weights) and today >= plan.sched[k]:
                     if r.skip_paused and k + 1 < len(r.weights) and today >= plan.sched[k + 1] and plan.filled:
                         while k + 1 < len(r.weights) and today >= plan.sched[k + 1]:
@@ -313,14 +368,22 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                         cap = c + r.max_price_atr * A if r.max_price == "trigger" else None
                         orders.append(("buy", r.weights[0] * plan.size, cap, 0))
                         plan.next_k = 1
+        if acc:
+            cur.m["mae252"] = min(cur.m["mae252"], cur.m["raw252"])
         if record_days:
             value[i] = cash + shares * c
             held[i] = shares * c
-    end_value = cash + shares * p.c[i1] if i1 >= i0 else 1.0
+        if single and (plans or voids or plan is None):
+            break
+    last = min(i1, i) if i1 >= i0 else i1
+    end_value = cash + shares * p.c[last] if i1 >= i0 else 1.0
     open_plan = plan if plan is not None and plan.filled else None
-    return {"symbol": p.symbol, "rules": r, "plans": plans, "open": open_plan, "waits": waits, "expired": expired,
-            "lapsed": lapsed, "value": value, "held": held, "first": i0, "last": i1, "end_value": end_value,
-            "open_value": shares * p.c[i1] if open_plan else 0.0}
+    if plan is not None and not plan.filled:        # still waiting for its first fill at the end
+        plan.end, plan.status = last, "unfilled"
+        voids.append(plan)
+    return {"symbol": p.symbol, "rules": r, "plans": plans, "open": open_plan, "voids": voids, "waits": waits,
+            "expired": expired, "lapsed": lapsed, "value": value, "held": held, "first": i0, "last": i1,
+            "end_value": end_value, "open_value": shares * p.c[last] if open_plan else 0.0}
 
 
 def _prod(xs) -> float:

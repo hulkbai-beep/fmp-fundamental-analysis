@@ -154,6 +154,88 @@ class SimTest(unittest.TestCase):
 
 
 @unittest.skipUnless((IFP / "ifp" / "entries.py").exists(), "the decision engine's repo is not at hand")
+class HedgedMetricTest(unittest.TestCase):
+    """The primary metric's accounting, the every-start table and the forced exits."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.snap = Path(cls.tmp.name)
+        synth.company(cls.snap, "SYN", seed=11, pe_amp=0.45)
+        cls.p = P.build("SYN", cls.snap, SPANS, versions=("T",))
+        cls.r = S.Rules()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def window_ends(self, pl):
+        return pl.end is not None and pl.end - pl.start <= S.H_LONG
+
+    def test_unhedged_equals_the_cash_flows(self):
+        out = S.run(self.p, self.r, flat_rate)                      # no hedge: the hedge leg is 0
+        n = 0
+        for pl in out["plans"]:
+            m = pl.metrics()
+            self.assertAlmostEqual(m["dh252"], m["raw252"], places=12)
+            if self.window_ends(pl):
+                n += 1
+                self.assertAlmostEqual(m["raw252"], (pl.proceeds() - pl.invested()) / pl.size, places=10)
+                self.assertLessEqual(m["mae252"], 0.0)
+                self.assertGreater(m["cost252"], 0.0)
+        self.assertGreater(n, 10)
+
+    def test_hedged_against_itself_leaves_dividends_less_costs(self):
+        p = self.p
+        out = S.run(p, self.r, flat_rate, hedge=(p.o, p.c))
+        n = 0
+        for pl in out["plans"]:
+            if self.window_ends(pl):
+                n += 1
+                m = pl.metrics()
+                self.assertAlmostEqual(m["dh252"], pl.divs / pl.size - m["cost252"], places=10)
+        self.assertGreater(n, 10)
+
+    def test_every_start_reproduces_the_method(self):
+        import placebo as PL
+        p = self.p
+        hedge = ([x * 1.001 for x in p.o], [x * 0.999 for x in p.c])   # any series: the same on both sides
+        out = S.run(p, self.r, flat_rate, hedge=hedge)
+        mine = PL.columns(p, PL.method_plans(out), out["last"])
+        pool = PL.pool(p, self.r, flat_rate, hedge, out["first"], out["last"])
+        at = {s: k for k, s in enumerate(pool["start"])}
+        self.assertGreater(len(pool["start"]), 3 * len(mine["start"]))
+        for k, s in enumerate(mine["start"]):
+            j = at[s]
+            self.assertEqual(mine["status"][k], pool["status"][j])
+            for m in ("dh252", "dh126", "raw252", "dep252", "mae252"):
+                self.assertAlmostEqual(mine[m][k], pool[m][j], places=12)
+        self.assertTrue(all(b for b, f in zip(mine["below_mid"], mine["fills"])))
+        self.assertGreater(sum(1 for b in pool["below_mid"] if not b), 0)   # the pool holds any temperature
+
+    def test_void_plans_are_kept_with_zero_metrics(self):
+        p = self.p
+        out = S.run(p, replace(self.r, max_price_atr=-100.0), flat_rate)  # every buy_1 above its cap: lapses
+        self.assertEqual(out["plans"], [])
+        self.assertGreater(len(out["voids"]), 5)
+        self.assertTrue(all(v.status == "lapsed" and not v.filled for v in out["voids"]))
+        self.assertTrue(all(x == 0.0 for v in out["voids"] for x in v.metrics().values()))
+
+    def test_spin_off_sells_at_the_last_close_before(self):
+        out = S.run(self.p, self.r, flat_rate)
+        pl = max(out["plans"], key=lambda x: x.end - x.filled[0][0])
+        mid = (pl.filled[0][0] + pl.end) // 2
+        ex = self.p.dates[mid + 1]
+        p2 = P.build("SYN", self.snap, SPANS, versions=("T",), spinoffs=[ex])
+        self.assertEqual(p2.spin_exit, {mid})
+        out2 = S.run(p2, self.r, flat_rate)
+        hit = [x for x in out2["plans"] if x.status == "spin"]
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0].end, mid)
+        self.assertEqual(hit[0].sold[-1][:2], (mid, p2.c[mid]))       # at that close
+        self.assertFalse(any(x.start <= mid < x.end for x in out2["plans"] if x is not hit[0]))
+
+
 class EngineFidelityTest(unittest.TestCase):
     """The pilot's stop, targets and reward/risk gate against the engine's own functions on random inputs."""
 

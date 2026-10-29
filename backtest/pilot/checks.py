@@ -33,6 +33,8 @@ import run_pilot as R  # noqa: E402
 import sim as S  # noqa: E402
 
 A = P.A
+sys.path.insert(0, str(HERE.parent.parent / "scripts"))
+import score as SC  # noqa: E402
 SEED = 20261029
 LAG = {"Q1": 45, "Q2": 45, "Q3": 45, "Q4": 90, "FY": 90}
 
@@ -84,20 +86,39 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random) -> dict:
     return {"checked": done, "failed": len(bad), "failures": bad[:20]}
 
 
+def _closes(rows: list, field: str) -> list:
+    out = sorted((str(r["date"])[:10], P.fnum(r.get(field))) for r in rows if r.get("date"))
+    return [(d, c) for d, c in out if c]
+
+
+def _same_reason(pilot_why: str | None, pr: dict) -> bool:
+    """With no band on either side, the pilot's reason and the skill's must be the same."""
+    if pilot_why in ("share_basis", "price_jump"):
+        return pr.get("band_problem") == pilot_why
+    if pilot_why == "short_history":
+        return pr.get("band_problem") is None and pr.get("pe_band") is None
+    now = next((pt for pt in pr.get("forward") or [] if pt.get("at") == "now"), None)
+    return not now or not now.get("pe")                      # EPS not positive: no range shown either
+
+
 def check_pipeline(snap: Path, comps: list) -> dict:
-    """The skill's price_range at the last day against the pilot's band code on the same inputs."""
+    """At the last day: the skill's price_range against the pilot's band code on the same inputs (exact), what
+    the user reads from it (score._value_range, the primary range), the reasons when neither has a band, the
+    skill's own /light closes (an audit against /full and the band on them, to 0.5%), and the names whose annual
+    statements the pilot's split normalisation changes inside the band's window (the skill reads them raw)."""
     raw = snap / "raw"
-    rows, skipped = [], []
+    rows, skipped, normalised = [], [], []
     for _, sym, sector, spans in comps:
-        bars = sorted((str(r["date"])[:10], P.fnum(r.get("close"))) for r in P.read(raw / "full" / f"{sym}.json"))
-        bars = [(d, c) for d, c in bars if c]
+        bars = _closes(P.read(raw / "full" / f"{sym}.json"), "close")
         est = P.read(raw / "est" / f"{sym}.json")
         prof = (P.read(raw / "profile" / f"{sym}.json") or [{}])[0]
         if not bars or not est:
             skipped.append({"symbol": sym, "why": "no estimates" if bars else "no bars"})
             continue
         z, close = bars[-1]
-        inc_a = sorted(P.read(raw / "inc_a" / f"{sym}.json"), key=lambda r: str(r.get("date")))[-5:]
+        zd = dt.date.fromisoformat(z)
+        inc_a_all = P.read(raw / "inc_a" / f"{sym}.json")
+        inc_a = sorted(inc_a_all, key=lambda r: str(r.get("date")))[-5:]
         years = A.build_years(inc_a, [], [])
         price = close
         mcap = P.fnum(prof.get("marketCap") or prof.get("mktCap"))
@@ -106,7 +127,7 @@ def check_pipeline(snap: Path, comps: list) -> dict:
         if len([e for e in analyst.get("estimates", []) if not e["ended"]]) < 2:
             skipped.append({"symbol": sym, "why": "fewer than two estimate years"})
             continue
-        pr = A.price_range(years, {}, bars, analyst, {}, price, dt.date.fromisoformat(z), cur_shares)
+        pr = A.price_range(years, {}, bars, analyst, {}, price, zd, cur_shares)
         # the pilot's code on the same inputs: EPS = the skill's NTM blend of reported years and estimates
         ntm = A._ntm([(y["date"], y["eps"]) for y in years if y.get("eps") is not None] +
                      [(e["date"], e["eps_avg"]) for e in analyst["estimates"] if e.get("eps_avg") is not None])
@@ -115,26 +136,59 @@ def check_pipeline(snap: Path, comps: list) -> dict:
         eps = [ntm(d) for d in dates]
         yrows = [{"end": dt.date.fromisoformat(y["date"]), "known": dt.date.fromisoformat(y["date"]),
                   "shares": y.get("shares")} for y in years]
-        q_shares = [(dt.date.fromisoformat(z) - dt.timedelta(days=1), None, cur_shares)] if cur_shares else []
+        q_shares = [(zd - dt.timedelta(days=1), None, cur_shares)] if cur_shares else []
         band, why = P.bands(dates, closes, eps, [None] * len(dates), yrows, q_shares, z)
         got, want = band[-1], pr["pe_band"]
-        row = {"symbol": sym, "day": z, "skill_note": pr.get("band_note"), "pilot_why": why[-1],
-               "eps_basis_gap": (analyst.get("eps_basis") or {}).get("gap")}
+        e_now = eps[-1]
+        vr = SC._value_range({"price_range": pr, "dcf": {}, "current": {"price": price}, "analyst": analyst})
+        gap = (analyst.get("eps_basis") or {}).get("gap")
+        row = {"symbol": sym, "day": z, "skill_note": pr.get("band_note"), "skill_problem": pr.get("band_problem"),
+               "pilot_why": why[-1], "eps_basis_gap": gap, "primary_basis": vr["basis"] if vr else None}
+        if not vr:
+            row["primary_note"] = ("eps basis gap over 10%: the live primary range would be the DCF"
+                                   if gap is not None and abs(gap) > SC.BASIS_GAP else "no forward P/E range now")
         if want is None or got is None:
-            row["ok"] = (want is None) == (got is None)
+            row["ok"] = (want is None) == (got is None) and (got is not None or _same_reason(why[-1], pr))
         else:
             now = pr["forward"][0]["pe"] if pr["forward"] else None
-            e_now = eps[-1]
             diffs = [abs(got[k] - want[k]) / abs(want[k]) for k in ("p25", "median", "p75")]
             diffs.append(abs(got["pct"] - want["now_pct"]))
             if now:
                 diffs += [abs(e_now * got[q] - now[k]) / abs(now[k]) for k, q in
                           (("low", "p25"), ("base", "median"), ("high", "p75"))]
+            if vr:
+                diffs += [abs(e_now * got[q] - vr[k]) / abs(vr[k]) for k, q in
+                          (("low", "p25"), ("mid", "median"), ("high", "p75"))]
             row["max_rel_diff"] = max(diffs)
             row["ok"] = max(diffs) <= 1e-9
             row["mid"] = e_now * got["median"]
+        light = _closes(P.read(raw / "light" / f"{sym}.json"), "price")
+        if light:
+            full_on = dict(bars)
+            common = [(d, c) for d, c in light if d in full_on]
+            rel = [abs(c / full_on[d] - 1) for d, c in common]
+            row["light"] = {"days": len(light), "common": len(common), "max_rel_diff": max(rel) if rel else None,
+                            "over_1e-6": sum(x > 1e-6 for x in rel), "last": light[-1][0]}
+            if got is not None and light[-1][0] == z:
+                prl = A.price_range(years, {}, light, analyst, {}, light[-1][1], zd, cur_shares)
+                bl = prl["pe_band"]
+                row["light"]["band_rel_diff"] = None if bl is None else max(
+                    abs(got[k] - bl[k]) / abs(bl[k]) for k in ("p25", "median", "p75"))
+                row["light"]["ok"] = bl is not None and row["light"]["band_rel_diff"] <= 0.005
+        rep = {}
+        lo = (zd - dt.timedelta(days=P.LOOKBACK_DAYS + 400)).isoformat()
+        for r in P.statement_rows(inc_a_all, P.split_factors(P.read(raw / "splits" / f"{sym}.json")), rep):
+            if r["end"].isoformat() >= lo:
+                eps0 = P.fnum(r["raw"].get("epsDiluted", r["raw"].get("epsdiluted", r["raw"].get("eps"))))
+                sh0 = P.fnum(r["raw"].get("weightedAverageShsOutDil")) or P.fnum(r["raw"].get("weightedAverageShsOut"))
+                if (eps0, sh0) != (r["eps"], r["shares"]):
+                    normalised.append({"symbol": sym, "end": r["end"].isoformat(), "eps": [eps0, r["eps"]],
+                                       "shares": [sh0, r["shares"]]})
         rows.append(row)
-    return {"compared": len(rows), "failed": sum(not r["ok"] for r in rows), "rows": rows, "skipped": skipped}
+    light_bad = [r["symbol"] for r in rows if r.get("light", {}).get("ok") is False]
+    return {"compared": len(rows), "failed": sum(not r["ok"] for r in rows), "rows": rows, "skipped": skipped,
+            "not_fwd_pe": [r["symbol"] for r in rows if r["primary_basis"] != "fwd_pe"],
+            "light_off": light_bad, "normalised_in_window": normalised}
 
 
 def check_truncation(snap: Path, comps: list, n: int, rnd: random.Random) -> dict:

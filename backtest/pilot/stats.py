@@ -187,3 +187,171 @@ def rank_against(value: float, draws: list) -> dict:
     return {"value": value, "n": len(d), "placebo_mean": statistics.mean(d),
             "placebo_sd": statistics.stdev(d) if len(d) > 1 else None,
             "p_one_sided": (ge + 1) / (len(d) + 1), "percentile": sum(x < value for x in d) / len(d)}
+
+
+# ---------------------------------------------------------------- the primary test (plan level)
+PLAN_REPS = 1000
+PLACEBO_SEED = 20261029
+
+
+def _stream(tag: str) -> random.Random:
+    return random.Random(int(hashlib.sha256(f"{PLACEBO_SEED}|{tag}".encode()).hexdigest()[:16], 16))
+
+
+def diff_by_blocks_w(xa: list, la: list, xb: list, lb: list, wb: list, tag: str, level: float = LEVEL) -> dict:
+    """mean(A) - weighted mean(B), both formed in every resample from the same resampled blocks (V3's
+    unpaired difference; the weights of B are fixed)."""
+    uniq, table = block_table(list(la) + list(lb), tag)
+    idx = {u: j for j, u in enumerate(uniq)}
+    G = len(uniq)
+    sa, na, sb, wsum = [0.0] * G, [0] * G, [0.0] * G, [0.0] * G
+    for v, lab in zip(xa, la):
+        sa[idx[lab]] += v
+        na[idx[lab]] += 1
+    for v, lab, w in zip(xb, lb, wb):
+        sb[idx[lab]] += w * v
+        wsum[idx[lab]] += w
+    rs = []
+    for row in table:
+        ca, cw = sum(na[j] for j in row), sum(wsum[j] for j in row)
+        rs.append(sum(sa[j] for j in row) / ca - sum(sb[j] for j in row) / cw if ca and cw else None)
+    theta = sum(xa) / len(xa) - sum(w * v for v, w in zip(xb, wb)) / sum(wb)
+    out = summary(theta, rs, G, level)
+    out["n_a"], out["n_b"] = len(xa), len(xb)
+    return out
+
+
+def _theta(cos: list, x: dict, y: dict) -> float | None:
+    """mean of the strategy's plans pooled minus sum n_i mean(pool_i) / sum n_i."""
+    n = sum(len(x[c]) for c in cos)
+    if not n:
+        return None
+    return sum(sum(x[c]) for c in cos) / n - sum(len(x[c]) * sum(y[c]) / len(y[c]) for c in cos if x[c]) / n
+
+
+def plan_test(strat: dict, pool: dict, metric: str = "dh252", full: str = "full252", reps: int = PLAN_REPS,
+              tag: str = "T", level: float = LEVEL) -> dict:
+    """The primary test. strat, pool: {company: placebo.columns}. theta = the strategy's plans with a full
+    window pooled (a plan that never bought counts 0) minus the placebo's expectation (each company's pool
+    mean weighted by its number of strategy plans). Placebo replicas draw n_i starts per company with
+    replacement from its pool: one-sided p = (1 + #{theta_b >= theta}) / (1 + reps). Interval: calendar-year
+    blocks of the start (strategy plans and the pool resampled together, the pool weighted n_i / |pool_i|).
+    Also the company-cluster bootstrap SE, leave-one-year-out, without the 3 largest contributors."""
+    def pick(cols):
+        keep = [k for k, f in enumerate(cols[full]) if f]
+        return [cols[metric][k] for k in keep], [cols["year"][k] for k in keep]
+    x, xy, y, yy = {}, {}, {}, {}
+    for c in sorted(strat):
+        x[c], xy[c] = pick(strat[c])
+        y[c], yy[c] = pick(pool[c]) if c in pool else ([], [])
+    cos = [c for c in x if x[c]]
+    if any(not y[c] for c in cos):
+        raise ValueError(f"a company has strategy plans but an empty pool: {[c for c in cos if not y[c]]}")
+    theta = _theta(cos, x, y)
+    out = {"metric": metric, "companies": len(cos), "plans": sum(len(x[c]) for c in cos),
+           "pool": sum(len(y[c]) for c in cos), "theta": theta,
+           "void_plans": sum(1 for c in strat for f, k in zip(strat[c][full], strat[c].get("fills") or [])
+                             if f and not k)}
+    if theta is None:
+        return out
+    n_tot = sum(len(x[c]) for c in cos)
+    expect = sum(len(x[c]) * sum(y[c]) / len(y[c]) for c in cos) / n_tot
+    out["strategy_mean"], out["placebo_expectation"] = theta + expect, expect
+    rnd = _stream(f"plan|{tag}|{metric}")
+    draws = []
+    for _ in range(reps):
+        tot = 0.0
+        for c in cos:
+            yc = y[c]
+            m = len(yc)
+            tot += sum(yc[int(rnd.random() * m)] for _ in range(len(x[c])))
+        draws.append(tot / n_tot - expect)
+    ge = sum(d >= theta for d in draws)
+    srt = sorted(draws)
+    out["placebo"] = {"replicas": reps, "p_one_sided": (1 + ge) / (1 + reps), "percentile": 1 - (1 + ge) / (1 + reps),
+                      "mean": statistics.mean(draws), "sd": statistics.stdev(draws) if reps > 1 else None,
+                      "q05": srt[int(0.05 * (reps - 1))], "q50": srt[int(0.5 * (reps - 1))],
+                      "q95": srt[int(0.95 * (reps - 1))]}
+    xa = [v for c in cos for v in x[c]]
+    la = [v for c in cos for v in xy[c]]
+    xb = [v for c in cos for v in y[c]]
+    lb = [v for c in cos for v in yy[c]]
+    wb = [len(x[c]) / len(y[c]) for c in cos for _ in y[c]]
+    out["year_blocks"] = diff_by_blocks_w(xa, la, xb, lb, wb, f"plan|{tag}|{metric}", level)
+    out["cluster"] = cluster_se(cos, x, y, f"cluster|{tag}|{metric}")
+    years = sorted(set(la))
+    loyo = {}
+    for yr in years:
+        xs = {c: [v for v, t in zip(x[c], xy[c]) if t != yr] for c in cos}
+        ys = {c: [v for v, t in zip(y[c], yy[c]) if t != yr] for c in cos}
+        loyo[yr] = _theta([c for c in cos if xs[c]], xs, ys)
+    vals = [v for v in loyo.values() if v is not None]
+    out["leave_one_year_out"] = {"by_year": loyo, "min": min(vals) if vals else None,
+                                 "max": max(vals) if vals else None}
+    contrib = {c: sum(v - sum(y[c]) / len(y[c]) for v in x[c]) / n_tot for c in cos}
+    top = sorted(cos, key=lambda c: contrib[c], reverse=True)[:3]
+    rest = [c for c in cos if c not in top]
+    out["without_top3"] = {"companies": top, "theta": _theta(rest, x, y)}
+    out["by_company"] = {c: {"plans": len(x[c]), "pool": len(y[c]), "mean": sum(x[c]) / len(x[c]),
+                             "pool_mean": sum(y[c]) / len(y[c]), "contribution": contrib[c]} for c in cos}
+    return out
+
+
+def cluster_se(cos: list, x: dict, y: dict, tag: str, n_boot: int = B) -> dict:
+    """theta's standard error from resampling whole companies with replacement (sqrt(K / (K - 1)) applied)."""
+    K = len(cos)
+    if K < 2:
+        return {"se": None, "K": K}
+    rnd = _stream(tag)
+    sx = [sum(x[c]) for c in cos]
+    nx = [len(x[c]) for c in cos]
+    ex = [len(x[c]) * sum(y[c]) / len(y[c]) for c in cos]
+    rs = []
+    for _ in range(n_boot):
+        ks = [rnd.randrange(K) for _ in range(K)]
+        n = sum(nx[k] for k in ks)
+        rs.append((sum(sx[k] for k in ks) - sum(ex[k] for k in ks)) / n)
+    return {"se": math.sqrt(K / (K - 1)) * statistics.stdev(rs), "K": K}
+
+
+# ---------------------------------------------------------------- the rules-free signal test
+def ranks(v: list) -> list:
+    order = sorted(range(len(v)), key=lambda k: v[k])
+    out = [0.0] * len(v)
+    j = 0
+    while j < len(order):
+        k = j
+        while k + 1 < len(order) and v[order[k + 1]] == v[order[j]]:
+            k += 1
+        for m in range(j, k + 1):
+            out[order[m]] = (j + k) / 2.0
+        j = k + 1
+    return out
+
+
+def spearman(a: list, b: list) -> float | None:
+    if len(a) < 3:
+        return None
+    ra, rb = ranks(a), ranks(b)
+    ma, mb = statistics.mean(ra), statistics.mean(rb)
+    sab = sum((u - ma) * (w - mb) for u, w in zip(ra, rb))
+    saa, sbb = sum((u - ma) ** 2 for u in ra), sum((w - mb) ** 2 for w in rb)
+    return sab / math.sqrt(saa * sbb) if saa > 0 and sbb > 0 else None
+
+
+def signal_test(rows: list, tag: str = "T") -> dict:
+    """rows: (year, below_mid, signal, {h: forward hedged return}) on the sampled gate-passing member days.
+    Per horizon: mean after below-mid days minus after the other days (calendar-year blocks of the sample
+    day), the share of days below mid, and the pooled Spearman IC of the signal with the forward return."""
+    out = {"days": len(rows), "below_share": sum(1 for r in rows if r[1]) / len(rows) if rows else None}
+    for h in sorted({h for r in rows for h in r[3]}):
+        have = [r for r in rows if r[3].get(h) is not None]
+        a = [(r[3][h], r[0]) for r in have if r[1]]
+        b = [(r[3][h], r[0]) for r in have if not r[1]]
+        res = {"days": len(have), "below": len(a), "other": len(b)}
+        if a and b:
+            res["gap"] = diff_by_blocks([v for v, _ in a], [t for _, t in a], [v for v, _ in b], [t for _, t in b],
+                                        f"signal|{tag}|{h}")
+        res["ic"] = spearman([r[2] for r in have], [r[3][h] for r in have])
+        out[f"h{h}"] = res
+    return out

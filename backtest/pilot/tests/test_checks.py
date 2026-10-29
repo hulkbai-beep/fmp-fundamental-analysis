@@ -35,6 +35,12 @@ class ChecksTest(unittest.TestCase):
             (cls.snap / "raw" / "profile" / f"{sym}.json").write_text(json.dumps(
                 [{"symbol": sym, "price": 50.0, "marketCap": 50.0 * 100e6}]))
             recs[sym] = {"series": sym, "sector": "Tech", "spans": [["2006-01-03", "2030-01-01"]]}
+            if sym == "AAA":                                   # the skill's own /light closes
+                full = json.loads((cls.snap / "raw" / "full" / f"{sym}.json").read_text())
+                light = [{"symbol": sym, "date": r["date"], "price": r["close"]} for r in full
+                         if r["date"] >= "2021-06-01"]
+                (cls.snap / "raw" / "light").mkdir(exist_ok=True)
+                (cls.snap / "raw" / "light" / f"{sym}.json").write_text(json.dumps(light))
         TR.manifest(cls.snap)
         cls.sample = root / "sample.json"
         cls.sample.write_text(json.dumps({"sample": ["AAA", "CCC"], "order": {"Tech": ["AAA", "CCC"]},
@@ -57,6 +63,11 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(pr["compared"], 2)
         self.assertEqual(pr["failed"], 0)
         self.assertTrue(all(r["max_rel_diff"] <= 1e-9 for r in pr["rows"]))
+        self.assertEqual(pr["not_fwd_pe"], [])                         # the primary range is the forward P/E band
+        aaa = next(r for r in pr["rows"] if r["symbol"] == "AAA")
+        self.assertTrue(aaa["light"]["ok"])
+        self.assertEqual(aaa["light"]["over_1e-6"], 0)
+        self.assertNotIn("light", next(r for r in pr["rows"] if r["symbol"] == "CCC"))
 
 
 if __name__ == "__main__":

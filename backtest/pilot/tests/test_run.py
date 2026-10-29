@@ -90,6 +90,31 @@ class RunTest(unittest.TestCase):
         self.assertEqual(len(rows), len(out["plans"]) + (1 if out["open"] else 0))
         self.assertFalse(any("2015-03-02" <= x["start"] <= "2016-03-01" for x in rows))   # spin-off blackout
 
+    def test_primary_test(self):
+        t = self.res["primary"]["T"]["dh252"]
+        self.assertGreater(t["plans"], 20)
+        self.assertGreater(t["pool"], 5 * t["plans"])
+        self.assertEqual(t["placebo"]["replicas"], 200)
+        self.assertTrue(0 < t["placebo"]["p_one_sided"] <= 1)
+        self.assertAlmostEqual(t["year_blocks"]["theta"], t["theta"], places=12)
+        for sym, x in self.res["primary"]["T"]["every_start"].items():
+            self.assertEqual(x["n_missing"], 0, sym)
+            self.assertLess(x["max_diff"], 1e-9, sym)
+        sig = self.res["signal"]["T"]
+        self.assertGreater(sig["days"], 100)
+        self.assertIn("gap", sig["h252"])
+
+    def test_report(self):
+        import io
+        import contextlib
+        import report as RP
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(RP.main(["--res", str(self.out)]), 0)
+        text = buf.getvalue()
+        self.assertTrue(any(x in text for x in (RP.PROMISING, RP.NOT_PROMISING, RP.INCONCLUSIVE)))
+        self.assertIn("主检验", text)
+
     def test_placebo_and_benchmarks(self):
         c = self.res["compare"]["T"]
         self.assertEqual(c["placebo"]["replicas"], 20)

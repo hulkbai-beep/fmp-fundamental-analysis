@@ -393,6 +393,7 @@ class Panel:
     band: dict = field(default_factory=dict)      # band version -> list of None | {p25, median, p75, pct, n}
     why: dict = field(default_factory=dict)       # version -> list of the reason a range is missing
     no_new: dict = field(default_factory=dict)    # version -> list of True on days no new plan may start
+    spin_exit: set = field(default_factory=set)   # bars whose close is the last before a confirmed spin-off
     report: dict = field(default_factory=dict)
 
     def range_at(self, v: str, i: int):
@@ -420,7 +421,8 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
     settled on the full data first: putting old statements on today's share basis is a change of units that a
     later split forces, not information about what came after (prices are on today's basis too).
     spinoffs: confirmed spin-off ex-dates; no new T plan for 365 days after one (the trailing EPS still holds
-    the unit the price no longer does), no new F / FY plan until the end of that fiscal year."""
+    the unit the price no longer does), no new F / FY plan until the end of that fiscal year, and a holding is
+    sold at the last close before the ex-date (the bars drop by the spun-off value, which they do not credit)."""
     raw = snap / "raw"
     split_rows = read(raw / "splits" / f"{symbol}.json")
     splits = split_factors(split_rows)
@@ -490,6 +492,10 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
             for i in range(bisect.bisect_left(dates, x), bisect.bisect_right(dates, stop)):
                 block[i] = True
         p.no_new[v] = block
+    for x in spinoffs:                            # a holding is sold at the last close before the ex-date
+        i = bisect.bisect_left(dates, str(x)[:10])
+        if 0 < i < len(dates):
+            p.spin_exit.add(i - 1)
     rep["f_horizon"] = horizon
     return p
 
