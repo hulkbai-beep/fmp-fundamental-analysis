@@ -16,11 +16,11 @@ Checks before any result is read, on the frozen snapshot (all in the cloud; SPEC
              levels, the tranche dates, the tiers, the trailing multiples) replay every plan close by close
              from its close, and its levels, buys, sales and end must be theirs (none late, early, unsignalled,
              missing or of another size), as must the closes that start plans, the placebo's pool of start
-             days and a sample of its every-start plans; every buy at the open after a fair close on or after
-             its tranche date and by the expiry, under the chase limit, tranche k after k - 1, never at an open
-             that fills a sale of the plan; every sale at the open after its signal close, except the delisting
-             and spin-off sales at the close of their bar, for its shares at that price less the cost; shares
-             bought = shares sold + shares held for every plan
+             days and every plan of its every-start table (one from each pool day, of size 1); every buy at the
+             open after a fair close on or after its tranche date and by the expiry, under the chase limit,
+             tranche k after k - 1, never at an open that fills a sale of the plan; every sale at the open
+             after its signal close, except the delisting and spin-off sales at the close of their bar, for its
+             shares at that price less the cost; shares bought = shares sold + shares held for every plan
   basis      the statement basis decisions, EPS x shares / net income outliers and annual-vs-quarters gaps of
              every company, for review by eye
   spins      the evidence to confirm each spin-off (the listed events and panel.spin_candidates): the /full
@@ -29,11 +29,12 @@ Checks before any result is read, on the frozen snapshot (all in the cloud; SPEC
 
 checks.json records what the checks were made from (run_pilot.inputs: the snapshot's manifest, the sample, the
 confirmed spin-offs, the code; and the md5 of the checks' own code, checks.py and score.py, with the sample
-sizes), and report.py accepts them only for results made from the same inputs, with the checks' code as it is
-now and at least 200 band triples and truncation cuts. A run first removes the checks.json and review.md in
---out.
+sizes), taken when the checks start: a run whose inputs or code change before it ends is refused and writes
+neither checks.json nor review.md. report.py accepts them only for results made from the same inputs, with the
+checks' code as it is now, at least 200 band triples and truncation cuts and every every-start plan replayed.
+A run first removes the checks.json and review.md in --out.
 
-    python backtest/pilot/checks.py --snap DIR --out DIR [--pairs 200] [--every-start 2000]
+    python backtest/pilot/checks.py --snap DIR --out DIR [--pairs 200]
     python backtest/pilot/checks.py --same OUT_1 OUT_2        # check 8: two runs give the same results
                                                               # (writes OUT_1/repro.json for report.py)
 """
@@ -43,6 +44,7 @@ import argparse
 import bisect
 import datetime as dt
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -98,16 +100,19 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
     for _, sym, sector, spans in picked:
         p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z)
         sp = P.split_factors(P.read(snap / "raw" / "splits" / f"{sym}.json"))
-        years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {}, unclear="none", units="fix")
+        years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {}, unclear="none", units="fix",
+                                 eps_shares="later")
         quarters = P.statement_rows(P.read(snap / "raw" / "inc_q" / f"{sym}.json"), sp, {}, unclear="none",
-                                    units="fix")
+                                    units="fix", eps_shares="later")
         days = [i for i, d in enumerate(p.dates) if d >= R.FIRST_DAY and p.member[i]]
         for i in rnd.sample(days, min(len(days), per)):
             for v in ("T", "F"):
                 d = P.day(p.dates[i])
                 start = (d - dt.timedelta(days=P.LOOKBACK_DAYS)).isoformat()
                 window = [(p.dates[j], p.c[j]) for j in range(i + 1) if p.dates[j] >= start]
-                yrs = [{"date": y["end"].isoformat(), "shares": y["shares"]} for y in P.latest_by_end(years, d)]
+                until = next(u for u, _ in p.epochs["T"] if u is None or p.dates[i] <= u)
+                ys = P.t_years(years, p.report, until) if v == "T" else years
+                yrs = [{"date": y["end"].isoformat(), "shares": y["shares"]} for y in P.latest_by_end(ys, d)]
                 qs = [q for q in quarters if q["known"] < d and q["shares"]]
                 cur = max(qs, key=lambda q: (q["known"], q["end"]))["shares"] if qs else None
                 code = A.history_problem(yrs, window, start, cur)[0]
@@ -238,7 +243,7 @@ def check_pipeline(snap: Path, comps: list) -> dict:
         rep = {}
         lo = (zd - dt.timedelta(days=P.LOOKBACK_DAYS + 400)).isoformat()
         for r in P.statement_rows(inc_a_all, P.split_factors(P.read(raw / "splits" / f"{sym}.json")), rep,
-                                  unclear="none", units="fix"):
+                                  unclear="none", units="fix", eps_shares="later"):
             if r["end"].isoformat() >= lo:
                 eps0 = P.fnum(r["raw"].get("epsDiluted", r["raw"].get("epsdiluted", r["raw"].get("eps"))))
                 sh0 = P.fnum(r["raw"].get("weightedAverageShsOutDil")) or P.fnum(r["raw"].get("weightedAverageShsOut"))
@@ -453,21 +458,22 @@ def replay_diff(p, pl, rp: dict) -> dict | None:
     return None
 
 
-def check_fills(snap: Path, comps: list, z: str, spin: dict, n: int = 0, rnd: random.Random | None = None) -> dict:
-    """The trade audit (SPEC check 6) on the method's runs of both versions, panels as run_pilot builds them:
-    every plan close against the signal rule, every plan replayed from its close by the rules as written above
-    (levels, buys, sales, end), and the fills themselves: the prices, the trigger closes, the chase limit, the
-    cash of each sale, no buy and sale at one open, shares bought = shares sold + shares held. The placebo's
-    side too: its pool of start days (placebo.candidates) against the rules, and n of its every-start plans,
-    simulated as placebo.pool does, replayed the same way."""
-    rates, _ = M.load(snap)
+def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
+    """The trade audit (SPEC check 6) on the method's runs of both versions, panels and runs as run_pilot makes
+    them: every plan close against the signal rule, every plan replayed from its close by the rules as written
+    above (levels, buys, sales, end), and the fills themselves: the prices, the trigger closes, the chase limit,
+    the cash of each sale, no buy and sale at one open, shares bought = shares sold + shares held. The placebo's
+    side too: its pool of start days (placebo.candidates) against the rules, and every plan of its every-start
+    table (placebo.every_start, what placebo.pool tabulates), which must start on its pool day with size 1,
+    replayed the same way."""
+    rates, spy = M.load(snap)
     bad, fills, sells, plans, pool_days, pool_plans = [], 0, 0, 0, 0, 0
-    per = max(1, n // (2 * len(comps))) if n and comps else 0
     for key, sym, sector, spans in comps:
         p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z, spinoffs=spin.get(key, []))
+        hedge = R.hedge_of(p, spy)
         for v in R.VERSIONS:
             r = S.Rules(version=v)
-            out = S.run(p, r, rates, first_day=R.FIRST_DAY)
+            out = S.run(p, r, rates, first_day=R.FIRST_DAY, hedge=hedge)
             held_end = out["open_value"] / p.c[out["last"]] if out["open"] else 0.0
             every = PL.method_plans(out)
             got, want = sorted(pl.start for pl in every), expected_starts(p, out, v)
@@ -483,13 +489,19 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict, n: int = 0, rnd: ra
                 bad.append({"symbol": sym, "version": v, "replay": "pool",
                             "plan": [p.dates[i] for i in sorted(set(pool) - set(mine))][:5],
                             "rules": [p.dates[i] for i in sorted(set(mine) - set(pool))][:5]})
-            for i in sorted(rnd.sample(pool, min(len(pool), per))) if per else []:
-                pl = PL.method_plans(S.run(p, r, rates, first_day=p.dates[i], starts={i}, record_days=False,
-                                           single=True))[0]
+            table = PL.every_start(p, r, rates, hedge, out["first"], out["last"])
+            off = next((k for k, (i, pl) in enumerate(zip(pool, table)) if pl.start != i or pl.size != 1.0),
+                       None if len(table) == len(pool) else min(len(table), len(pool)))
+            if off is not None:
+                bad.append({"symbol": sym, "version": v, "replay": "table", "every_start": True,
+                            "plan": [p.dates[table[off].start], table[off].size] if off < len(table) else None,
+                            "rules": [p.dates[pool[off]], 1.0] if off < len(pool) else None})
+            for pl in table:
                 pool_plans += 1
                 diff = replay_diff(p, pl, replay_plan(p, pl, v))
                 if diff:
-                    bad.append(dict({"symbol": sym, "version": v, "start": p.dates[i], "every_start": True}, **diff))
+                    bad.append(dict({"symbol": sym, "version": v, "start": p.dates[pl.start], "every_start": True},
+                                    **diff))
             for pl in every:
                 plans += 1
                 tag = {"symbol": sym, "version": v, "start": p.dates[pl.start]}
@@ -500,8 +512,8 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict, n: int = 0, rnd: ra
                     sig = f[0] - 1
                     fills += 1
                     ok = f[4] == k and f[1] == p.o[f[0]] and pl.sched[k] <= p.dates[sig] <= pl.expires and \
-                        temperature(p.range_at(v, sig)) == "fair" and p.atr[sig] is not None and \
-                        f[1] <= p.c[sig] + CHASE * p.atr[sig] + 1e-9 and \
+                        temperature(p.range_at(v, sig)) == "fair" and \
+                        (not p.atr[sig] or f[1] <= p.c[sig] + CHASE * p.atr[sig] + 1e-9) and \
                         (sig == pl.start if k == 0 else sig >= pl.filled[k - 1][0])
                     if not ok:
                         bad.append(dict(tag, fill=p.dates[f[0]], tranche=k))
@@ -647,14 +659,20 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
                 if d["action"] == "no row after":
                     parts.append(head + "之后还没有新报表，不用改")
                 elif d["action"] == "unclear":
-                    parts.append(head + f"口径不明（前后股数比 {d['ratio']:g}）：之前公布的 {d['rows_changed']} 行"
+                    why = (f"前后股数比 {d['ratio']:g}" if "verdict_known" not in d else
+                           f"能判定口径的报表 {d['verdict_known']} 才公布，晚于拆股后的第一份报表"
+                           if d["verdict_known"] else "拆股后的报表里还没有能判定口径的")
+                    parts.append(head + f"口径不明（{why}）：之前公布的 {d['rows_changed']} 行"
                                  + (f"在 {d['unused_after']} 之后不再用于 T 版" if d.get("unused_after")
                                     else " EPS 清空（只影响 F 版）"))
                 else:
                     parts.append(head + ("旧报表没重述，按倍数改" if d["action"] == "not_restated" else "旧报表已重述")
                                  + f"（改 {d['rows_changed']} 行）")
             parts += [f"{name} 部分重述 {len(x['partial'])} 处"] if x.get("partial") else []
-            parts += [f"{name} EPS 和股数口径不同、按拆股倍数改了 {len(x['eps_shares'])} 行"] if x.get("eps_shares") else []
+            parts += [f"{name} EPS 和股数口径不同、按之后拆股的倍数改了 {len(x['eps_shares'])} 行（"
+                      + "，".join(f"{u['end']} ÷{u['fixed_by']:g}（{'、'.join(u['splits'])} 拆股）"
+                                 for u in x["eps_shares"][:8])
+                      + ("…" if len(x["eps_shares"]) > 8 else "") + "）"] if x.get("eps_shares") else []
             parts += [f"{name} EPS 单位错、改成净利润÷股数 {len(x['eps_units'])} 行（"
                       + "，".join(f"{u['end']} {u['eps']:g}→{u['now']:g}" for u in x["eps_units"]) + "）"] \
                 if x.get("eps_units") else []
@@ -689,9 +707,11 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
 
 
 def same_results(a: Path, b: Path) -> list:
-    """Check 8: the files two runs wrote that differ (results.json apart from its creation time)."""
+    """Check 8: the outputs of run_pilot (R.OUTPUTS and the pools_*.json of either run) that differ between two
+    runs or that either lacks (results.json apart from its creation time). Other files in the folders, such as
+    checks.json, review.md, repro.json or a saved report, are not the runs' outputs and are left out."""
     diff = []
-    for name in sorted(({p.name for p in a.iterdir()} | {p.name for p in b.iterdir()}) - {"repro.json"}):
+    for name in list(R.OUTPUTS) + sorted({q.name for d in (a, b) for q in d.glob("pools_*.json")}):
         pa, pb = a / name, b / name
         if not (pa.is_file() and pb.is_file()):
             diff.append(name)
@@ -713,7 +733,6 @@ def main(argv=None) -> int:
     ap.add_argument("--snap")
     ap.add_argument("--out")
     ap.add_argument("--pairs", type=int, default=200)
-    ap.add_argument("--every-start", type=int, default=2000, help="every-start plans the trade audit replays")
     ap.add_argument("--sample", default=str(HERE / "sample.json"))
     ap.add_argument("--spinoffs", default=str(HERE / "spinoffs.json"))
     ap.add_argument("--only", nargs="*", default=["calendar", "band", "pipeline", "truncation", "fills", "basis",
@@ -721,7 +740,11 @@ def main(argv=None) -> int:
     ap.add_argument("--same", nargs=2, metavar="OUT", help="compare two run_pilot outputs (check 8) and stop")
     a = ap.parse_args(argv)
     if a.same:
-        diff = same_results(Path(a.same[0]), Path(a.same[1]))
+        x, y = (Path(d) for d in a.same)
+        if not (x.is_dir() and y.is_dir()) or os.path.samefile(x, y):
+            print("refused: check 8 compares the folders of two separate runs")
+            return 2
+        diff = same_results(x, y)
         digests = [RP.results_digest(json.loads((Path(d) / "results.json").read_text(encoding="utf-8")))
                    if (Path(d) / "results.json").is_file() else None for d in a.same]
         (Path(a.same[0]) / "repro.json").write_text(json.dumps({"same": not diff, "diff": diff, "results": digests}),
@@ -734,7 +757,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     for name in ("checks.json", "review.md"):      # a run that fails leaves no earlier checks behind
         (out / name).unlink(missing_ok=True)
-    code = RP.checks_code()
+    code, before = RP.checks_code(), R.inputs(snap, Path(a.sample), Path(a.spinoffs))     # before anything is read
     if M.check_manifest(snap):
         print("snapshot refused: files differ from the manifest")
         return 2
@@ -761,7 +784,7 @@ def main(argv=None) -> int:
     if "truncation" in a.only:
         res["truncation"] = check_truncation(snap, comps, a.pairs, rnd, z)
     if "fills" in a.only:
-        res["fills"] = check_fills(snap, comps, z, spin, a.every_start, rnd)
+        res["fills"] = check_fills(snap, comps, z, spin)
     if "basis" in a.only or "review" in a.only:
         res["basis"] = check_basis(snap, comps, z)
     if "spins" in a.only or "review" in a.only:
@@ -770,8 +793,11 @@ def main(argv=None) -> int:
         text = review_table(walk, panel_facts(snap, comps, z, spin), res["basis"], res["spins"], res)
         (out / "review.md").write_text(text, encoding="utf-8")
         res["review"] = {"written": True}
-    res["inputs"] = R.inputs(snap, Path(a.sample), Path(a.spinoffs))
-    res["checks_code"], res["pairs"], res["every_start"] = code, a.pairs, a.every_start
+    if R.inputs(snap, Path(a.sample), Path(a.spinoffs)) != before or RP.checks_code() != code:
+        (out / "review.md").unlink(missing_ok=True)
+        print("refused: the snapshot's manifest, the sample, the spin-offs or the code changed during the checks")
+        return 2
+    res["inputs"], res["checks_code"], res["pairs"] = before, code, a.pairs
     (out / "checks.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     for k, v in res.items():
         if isinstance(v, dict) and "failed" in v:

@@ -365,7 +365,8 @@ def signal_test(rows: list, tag: str = "T") -> dict:
     after review): a day's return runs up to a year ahead and a company stays below its mid for months, so
     neighbouring calendar years and one company's days are not independent, and the interval of SPEC 5.3's
     1-year blocks (kept as 'by_year') covered about 86% for a stated 90% in no-edge simulations; 'gap' is
-    the wider of 2-calendar-year blocks and company clusters, each with its own t quantile."""
+    the wider interval (by its width, hi - lo) of 2-calendar-year blocks and company clusters, each with its
+    own t quantile."""
     out = {"days": len(rows), "below_share": sum(1 for r in rows if r[1]) / len(rows) if rows else None}
     schemes = (("by_year", lambda r: r[0], f"signal|{tag}"), ("two_years", lambda r: 2008 + 2 * ((r[0] - 2008) // 2),
                                                                 f"signal2y|{tag}"),
@@ -378,7 +379,8 @@ def signal_test(rows: list, tag: str = "T") -> dict:
         if a and b:
             got = {name: diff_by_blocks([r[3][h] for r in a], [lab(r) for r in a], [r[3][h] for r in b],
                                         [lab(r) for r in b], f"{t}|{h}") for name, lab, t in schemes}
-            wide = max(("two_years", "company"), key=lambda k: got[k]["se"] if math.isfinite(got[k]["se"]) else -1.0)
+            wide = max(("two_years", "company"), key=lambda k: got[k]["hi"] - got[k]["lo"]
+                       if math.isfinite(got[k]["se"]) else -1.0)
             res["gap"] = dict(got[wide], scheme=wide)
             res["gap_schemes"] = {k: {"se": x["se"], "G": x["G"], "lo": x["lo"], "hi": x["hi"]} for k, x in got.items()}
         res["ic"] = spearman([r[2] for r in have], [r[3][h] for r in have])

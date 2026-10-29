@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -72,7 +73,9 @@ class RunTest(unittest.TestCase):
         spin = root / "spin.json"
         spin.write_text(json.dumps({"events": {"CCC": [{"date": "2015-03-02", "confirmed": True}]}}))
         cls.out.mkdir(parents=True)
+        cls.spare = root / "spare"                             # for the runs that are refused
         (cls.out / "repro.json").write_text(json.dumps({"same": True, "diff": []}))   # from an earlier run
+        (cls.out / "pools_Q.json").write_text("{}")                                     # an earlier run's output
         cls.rc = R.main(["--snap", str(cls.snap), "--out", str(cls.out), "--plan-replicas", "200", "--workers", "4",
                          "--sample", str(cls.sample), "--spinoffs", str(spin)])
         cls.res = json.loads((cls.out / "results.json").read_text())
@@ -93,6 +96,7 @@ class RunTest(unittest.TestCase):
         status = json.loads((self.out / "status.json").read_text())
         self.assertEqual(status["z"], self.res["walk"]["z"])
         self.assertFalse((self.out / "repro.json").exists())          # an earlier comparison is not about these
+        self.assertFalse((self.out / "pools_Q.json").exists())
         self.assertEqual(self.res["inputs"]["spinoffs"], {"CCC": ["2015-03-02"]})
         self.assertEqual(sorted(self.res["inputs"]["code"]), sorted(f.name for f in R.CODE))
 
@@ -187,25 +191,40 @@ class RunTest(unittest.TestCase):
 
     def test_checks_gate_the_result(self):
         import report as RP
+        full = json.loads(json.dumps(self.res))                 # as the run fixed beforehand: SPEC 5.2's replicas
+        for v in full["primary"]:
+            full["primary"][v]["dh252"]["placebo"]["replicas"] = RP.ST.PLAN_REPS
         ch = dict({k: {"failed": 0, "checked": 200} for k, _ in RP.CHECKS}, inputs=self.res["inputs"],
                   review={"written": True}, checks_code=RP.checks_code())
-        repro = {"same": True, "diff": [], "results": [RP.results_digest(self.res)] * 2}
-        self.assertEqual(RP.checks_pass(self.res, ch, repro), (True, []))
-        ok, notes = RP.checks_pass(self.res, dict(ch, fills={"failed": 2}), repro)
+        ch["fills"] = {"failed": 0, "plans": 60, "pool_days": 900, "every_start_plans": 900}
+
+        def same(res):
+            return {"same": True, "diff": [], "results": [RP.results_digest(res)] * 2}
+        repro = same(full)
+        self.assertEqual(RP.checks_pass(full, ch, repro), (True, []))
+        ok, notes = RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], failed=2)), repro)
         self.assertFalse(ok)
-        self.assertFalse(RP.checks_pass(self.res, ch, None)[0])
-        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "band"}, repro)[0])
+        self.assertFalse(RP.checks_pass(full, ch, None)[0])
+        self.assertFalse(RP.checks_pass(full, {k: v for k, v in ch.items() if k != "band"}, repro)[0])
         before = dict(self.res["inputs"], spinoffs={})          # checks made before the spin-off was confirmed
-        self.assertFalse(RP.checks_pass(self.res, dict(ch, inputs=before), repro)[0])
-        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "inputs"}, repro)[0])
-        self.assertFalse(RP.checks_pass(self.res, dict(ch, review={}), repro)[0])      # no data review table
-        self.assertFalse(RP.checks_pass(self.res, dict(ch, band={"failed": 0, "checked": 199}), repro)[0])
-        self.assertFalse(RP.checks_pass(self.res, dict(ch, truncation={"failed": 0, "checked": 18}), repro)[0])
-        self.assertFalse(RP.checks_pass(self.res, dict(ch, checks_code={"checks.py": "0" * 32}), repro)[0])
-        self.assertFalse(RP.checks_pass(self.res, {k: v for k, v in ch.items() if k != "checks_code"}, repro)[0])
-        self.assertFalse(RP.checks_pass(self.res, ch, dict(repro, results=["0" * 32] * 2))[0])   # other results
-        self.assertFalse(RP.checks_pass(dict(self.res, theta=1), ch, repro)[0])
-        self.assertTrue(RP.checks_pass(dict(self.res, created="later"), ch, repro)[0])
+        self.assertFalse(RP.checks_pass(full, dict(ch, inputs=before), repro)[0])
+        self.assertFalse(RP.checks_pass(full, {k: v for k, v in ch.items() if k != "inputs"}, repro)[0])
+        self.assertFalse(RP.checks_pass(full, dict(ch, review={}), repro)[0])      # no data review table
+        self.assertFalse(RP.checks_pass(full, dict(ch, band={"failed": 0, "checked": 199}), repro)[0])
+        self.assertFalse(RP.checks_pass(full, dict(ch, truncation={"failed": 0, "checked": 18}), repro)[0])
+        self.assertFalse(RP.checks_pass(full, dict(ch, checks_code={"checks.py": "0" * 32}), repro)[0])
+        self.assertFalse(RP.checks_pass(full, {k: v for k, v in ch.items() if k != "checks_code"}, repro)[0])
+        self.assertFalse(RP.checks_pass(full, ch, dict(repro, results=["0" * 32] * 2))[0])   # other results
+        self.assertFalse(RP.checks_pass(dict(full, theta=1), ch, repro)[0])
+        self.assertTrue(RP.checks_pass(dict(full, created="later"), ch, repro)[0])
+        for es, pool in ((899, 900), (0, 0)):                   # every plan of the every-start tables replayed
+            self.assertFalse(RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], every_start_plans=es,
+                                                                      pool_days=pool)), repro)[0])
+        quick = dict(full, primary={"T": full["primary"]["T"]}, variants={}, variant_tests={})
+        for res in (self.res, quick, dict(full, variant_tests={})):    # 200 replicas; --quick; no variants
+            ok, notes = RP.checks_pass(res, ch, same(res))
+            self.assertFalse(ok)
+            self.assertIn("完整运行", notes[0])
 
     def test_benchmarks(self):
         c = self.res["compare"]["T"]
@@ -226,7 +245,7 @@ class RunTest(unittest.TestCase):
             st["replacements"][0]["in"] = None
             pc.write_text(json.dumps(st))
             self.assertFalse(R.choose(self.snap, sample)[1]["same_as_pc"])
-            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.spare), "--quick",
                                      "--sample", str(self.sample)]), 2)
         finally:
             pc.unlink()
@@ -240,7 +259,7 @@ class RunTest(unittest.TestCase):
             log.write_text(json.dumps({"failures": [{"part": "splits", "symbol": "AAA", "error": "HTTP 500"}],
                                        "optional_missing": []}))
             self.assertEqual(M.check_complete(self.snap, ["AAA"]), ["failed on the PC: splits/AAA"])
-            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.spare), "--quick",
                                      "--sample", str(self.sample)]), 2)
         finally:
             log.write_text(keep)
@@ -250,7 +269,7 @@ class RunTest(unittest.TestCase):
             f.unlink()
             manifest(self.snap)
             self.assertEqual(M.check_complete(self.snap, ["CCC"]), ["missing: raw/div/CCC.json"])
-            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.spare), "--quick",
                                      "--sample", str(self.sample)]), 2)
         finally:
             f.write_bytes(data)
@@ -260,12 +279,41 @@ class RunTest(unittest.TestCase):
     def test_manifest_refuses_a_changed_file(self):
         f = self.snap / "raw" / "inc_q" / "AAA.json"
         keep = f.read_text()
+        self.spare.mkdir(exist_ok=True)
+        (self.spare / "results.json").write_text("{}")                   # an earlier run's: removed all the same
         try:
             f.write_text(keep[:-1] + " ]")
-            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.out), "--quick",
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(self.spare), "--quick",
                                      "--sample", str(self.sample)]), 2)
         finally:
             f.write_text(keep)
+        self.assertFalse((self.spare / "results.json").exists())
+
+    def test_inputs_changed_during_the_run_refuse_it(self):
+        """A spin-off confirmed while run_pilot runs: its results would describe neither state, so it writes
+        none."""
+        out, spin = Path(self.tmp.name) / "race", Path(self.tmp.name) / "spin_race.json"
+        spin.write_text(json.dumps({"events": {"CCC": [{"date": "2015-03-02", "confirmed": False}]}}))
+        orig = R.primary
+
+        def confirm(*a, **k):
+            spin.write_text(json.dumps({"events": {"CCC": [{"date": "2015-03-02", "confirmed": True}]}}))
+            return orig(*a, **k)
+        with mock.patch.object(R, "primary", confirm):
+            self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(out), "--quick", "--sample",
+                                     str(self.sample), "--spinoffs", str(spin)]), 2)
+        self.assertEqual(list(out.iterdir()), [])
+
+
+class SignalLinesTest(unittest.TestCase):
+    def test_the_one_year_interval_is_called_narrower_only_when_it_is(self):
+        import report as RP
+        g = {"theta": 0.01, "lo": -0.02, "hi": 0.04, "G": 9, "scheme": "two_years"}
+        for y1, word in (({"lo": -0.01, "hi": 0.03}, "会窄到"), ({"lo": -0.03, "hi": 0.05}, "是")):
+            sig = {"days": 100, "below_share": 0.4, "h252": {"gap": g, "gap_schemes": {"by_year": y1}, "ic": 0.1}}
+            line = RP.signal_lines(sig)[1]
+            self.assertIn(f"按 9 个两年块重抽；按单个年份重抽（SPEC 5.3 原来的做法）{word} ", line)
+            self.assertEqual("偏乐观" in line, word == "会窄到")
 
 
 def csv_rows(path: Path) -> list:

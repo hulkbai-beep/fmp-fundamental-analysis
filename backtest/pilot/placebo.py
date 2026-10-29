@@ -65,13 +65,18 @@ def method_plans(out: dict) -> list:
     return out["plans"] + ([out["open"]] if out["open"] else []) + out["voids"]
 
 
-def pool(p, r: S.Rules, rates, hedge, first: int, last: int, zi: int) -> dict:
-    """The every-start table: one plan from every pool day, simulated alone, as columns. hedge: sim.run's
-    (SPY opens, SPY closes, SPY session numbers) on p.dates."""
+def every_start(p, r: S.Rules, rates, hedge, first: int, last: int) -> list:
+    """One plan from every pool day, simulated alone (the plans of the every-start table; checks.py replays
+    each). hedge: sim.run's (SPY opens, SPY closes, SPY session numbers) on p.dates."""
     plans = []
     for i in candidates(p, r, first, last):
         o = S.run(p, r, rates, first_day=p.dates[i], starts={i}, record_days=False, hedge=hedge, single=True)
         got = method_plans(o)
         if got:
             plans.append(got[0])
-    return columns(p, plans, hedge[2], zi)
+    return plans
+
+
+def pool(p, r: S.Rules, rates, hedge, first: int, last: int, zi: int) -> dict:
+    """The every-start table: every_start's plans as columns."""
+    return columns(p, every_start(p, r, rates, hedge, first, last), hedge[2], zi)

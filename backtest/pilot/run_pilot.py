@@ -6,11 +6,13 @@ buy-and-hold of the same companies and SPY. The primary test: the method's plans
 random eligible days of the same companies, each plan's P&L hedged daily with SPY over the 252 SPY sessions
 after its signal (stats.plan_test, from the every-start table of placebo.pool); the rules-free signal test
 beside it; each variant's theta against its own table (descriptive). Writes results.json, plans.csv,
-portfolio.json, pools_T.json, pools_F.json and status.json to --out (report.py turns them into the report).
+portfolio.json, pools_T.json, pools_F.json and status.json to --out (report.py turns them into the report),
+after removing the ones an earlier run left there and its repro.json.
 
     python backtest/pilot/run_pilot.py --snap DIR --out DIR [--plan-replicas 1000] [--workers 4] [--quick]
 
-All computing happens here; the snapshot is refused when a file differs from its manifest.
+All computing happens here; the snapshot is refused when a file differs from its manifest, and the run when its
+inputs (the snapshot's manifest, the sample, the confirmed spin-offs, the code) change before it ends.
 """
 from __future__ import annotations
 
@@ -47,6 +49,7 @@ VARIANTS = {                                    # SPEC v1 section 7: version T, 
 }
 SLEEVE_ONLY = ("cooldown", "cooldown_after")    # rules a plan simulated alone never meets: the main table serves
 AT_CLOSE = ("delisted", "spin")                 # sales at the close of their bar (SPEC R10)
+OUTPUTS = ("results.json", "plans.csv", "portfolio.json", "status.json")     # with pools_<version>.json
 CODE = [HERE / f for f in ("market.py", "panel.py", "placebo.py", "run_pilot.py", "sim.py", "stats.py",
                            "status.py")] + [HERE.parent.parent / "scripts" / "analyze.py"]   # what results come from
 
@@ -57,7 +60,8 @@ def md5_of(path: Path) -> str:
 
 def inputs(snap: Path, sample: Path, spinoffs: Path) -> dict:
     """What a run or a set of checks was made from: the snapshot (its manifest), the drawn sample, the confirmed
-    spin-offs and the code results come from. report.py takes checks only for results with the same inputs."""
+    spin-offs and the code results come from, taken when it starts and again before it writes (a change in
+    between refuses it). report.py takes checks only for results with the same inputs."""
     events = json.loads(spinoffs.read_text(encoding="utf-8"))["events"]
     return {"manifest": md5_of(snap / "manifest.json"), "sample": md5_of(sample),
             "spinoffs": {k: sorted(x["date"] for x in v if x.get("confirmed")) for k, v in sorted(events.items())},
@@ -492,7 +496,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     snap, out = Path(a.snap), Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "repro.json").unlink(missing_ok=True)    # a comparison of earlier results in this folder
+    for f in [out / name for name in OUTPUTS + ("repro.json",)] + list(out.glob("pools_*.json")):
+        f.unlink(missing_ok=True)                   # an earlier run's outputs, and a comparison of them
+    before = inputs(snap, Path(a.sample), Path(a.spinoffs))       # before anything is read
     bad = M.check_manifest(snap)
     if bad:
         print(f"snapshot refused: {len(bad)} files differ from the manifest, e.g. {bad[:3]}")
@@ -536,7 +542,7 @@ def main(argv=None) -> int:
     gates = {v: {k: sum(r["gates"][v][k] for r in results) for k in results[0]["gates"][v]} for v in versions}
     res = {"created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "snapshot": {"created": man.get("created"), "last_day": cal[-1], "files": len(man["files"])},
-           "inputs": inputs(snap, Path(a.sample), Path(a.spinoffs)),
+           "inputs": before,
            "companies": [{"symbol": c[0], "series": c[1], "sector": c[2]} for c in comps], "replacements": swaps,
            "walk": {k: walk.get(k) for k in ("z", "same_as_pc", "review", "assessed")},
            "first_day": FIRST_DAY, "rules": asdict(S.Rules()), "variants": variants,
@@ -551,6 +557,9 @@ def main(argv=None) -> int:
            "summary": summary,
            "compare": compare(results, plans, cal, versions, [spy_plain[k] for k in marks]),
            "reports": {r["symbol"]: r["report"] for r in results}}
+    if inputs(snap, Path(a.sample), Path(a.spinoffs)) != before:
+        print("refused: the snapshot's manifest, the sample, the spin-offs or the code changed during the run")
+        return 2
     (out / "results.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     with (out / "plans.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(plans[0]) if plans else ["symbol"])

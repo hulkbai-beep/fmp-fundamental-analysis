@@ -53,7 +53,7 @@ class ChecksTest(unittest.TestCase):
         cls.spin = root / "spin.json"
         cls.spin.write_text(json.dumps({"events": {"AAA": [{"date": "2016-03-05", "confirmed": True}],
                                                    "CCC": [{"date": "2012-10-02", "confirmed": False}]}}))
-        cls.rc = C.main(["--snap", str(cls.snap), "--out", str(cls.out), "--pairs", "20", "--every-start", "60",
+        cls.rc = C.main(["--snap", str(cls.snap), "--out", str(cls.out), "--pairs", "20",
                          "--sample", str(cls.sample), "--spinoffs", str(cls.spin)])
         cls.res = json.loads((cls.out / "checks.json").read_text())
 
@@ -66,8 +66,8 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(self.res["review"], {"written": True})
         self.assertEqual(self.res["inputs"]["spinoffs"], {"AAA": ["2016-03-05"], "CCC": []})
         self.assertEqual(self.res["checks_code"], C.RP.checks_code())
-        self.assertEqual((self.res["pairs"], self.res["every_start"]), (20, 60))
-        self.assertEqual(self.res["fills"]["every_start_plans"], 60)
+        self.assertEqual(self.res["pairs"], 20)
+        self.assertEqual(self.res["fills"]["every_start_plans"], self.res["fills"]["pool_days"])   # every one
         self.assertGreater(self.res["fills"]["pool_days"], 1000)
         self.assertGreater(self.res["band"]["checked"], 10)
         self.assertGreater(self.res["truncation"]["checked"], 10)
@@ -154,9 +154,10 @@ class ChecksTest(unittest.TestCase):
 
         def bigger(p, r, *a, **k):
             out = run0(p, r, *a, **k)
-            pl = next(x for x in out["plans"] if any(s[4].startswith("tp_") for s in x.sold))
-            j = next(j for j, s in enumerate(pl.sold) if s[4].startswith("tp_"))
-            pl.sold[j] = pl.sold[j][:2] + (pl.sold[j][2] * 1.01,) + pl.sold[j][3:]
+            pl = next((x for x in out["plans"] if any(s[4].startswith("tp_") for s in x.sold)), None)
+            if pl:
+                j = next(j for j, s in enumerate(pl.sold) if s[4].startswith("tp_"))
+                pl.sold[j] = pl.sold[j][:2] + (pl.sold[j][2] * 1.01,) + pl.sold[j][3:]
             return out
         for name, fault, kinds in (("temp_of", temp, {"buy", "sale", "end"}), ("gates", gates, {"start"}),
                                    ("add_weekdays", days, {"levels"}), ("run", bigger, {"sale"})):
@@ -166,6 +167,96 @@ class ChecksTest(unittest.TestCase):
             self.assertTrue({f.get("replay") for f in got["failures"]} & kinds, (name, got["failures"][:2]))
         sized = next(f for f in got["failures"] if f.get("replay") == "sale")
         self.assertAlmostEqual(sized["plan"][2], 1.01 * sized["rules"][2])       # the record shows the sizes
+
+    def test_the_every_start_table_is_replayed_in_full(self):
+        """Check 6 replays every plan of the placebo's every-start table, as run_pilot makes it: a table whose
+        plans start on the next pool day, or whose plans are not of size 1, fails it, and so does a sim that
+        sells a session late only in plans simulated alone (the method's plans then all pass)."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        comps = comps[:1]
+        table, run0 = C.PL.every_start, C.S.run
+
+        def next_day(*a, **k):
+            plans = table(*a, **k)
+            return plans[1:] + plans[:1]
+
+        def sized(*a, **k):
+            plans = table(*a, **k)
+            for pl in plans[:3]:
+                pl.size = 0.99
+            return plans
+
+        def late(p, r, *a, **k):
+            out = run0(p, r, *a, **k)
+            for pl in out["plans"] if k.get("single") else []:
+                for j, s in enumerate(pl.sold):
+                    b = s[0] + 1
+                    if s[4] == "stop" and b < len(p.dates) and b not in {f[0] for f in pl.filled}:
+                        pl.sold[j] = (b, p.o[b], s[2], s[2] * p.o[b] * (1 - r.cost), s[4])
+                        break
+            return out
+        for obj, name, fault, kinds in ((C.PL, "every_start", next_day, {"table"}),
+                                        (C.PL, "every_start", sized, {"table", "buy"}), (C.S, "run", late, {"sale"})):
+            with mock.patch.object(obj, name, fault):
+                got = C.check_fills(self.snap, comps, walk["z"], {})
+            self.assertGreater(got["failed"], 0, name)
+            self.assertEqual({f.get("replay") for f in got["failures"]}, kinds, (name, got["failures"][:2]))
+            self.assertTrue(all(f.get("every_start") for f in got["failures"]), name)
+        self.assertEqual(got["every_start_plans"], got["pool_days"])
+
+    def test_a_trigger_close_without_an_atr_has_no_chase_limit(self):
+        """SPEC R5's chase limit needs the trigger close's ATR. Without one (or with 0; neither happens on a
+        panel.build panel after its 14th bar, so they are planted here) sim buys the tranche uncapped, the
+        replay does too, and so does the per-fill audit."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        key, sym, sector, spans = comps[0]
+        p = P.build(sym, self.snap, spans, versions=R.VERSIONS, snapshot_end=walk["z"])
+        out = C.S.run(p, C.S.Rules(version="T"), C.M.load(self.snap)[0], first_day=R.FIRST_DAY)
+        pl = next(x for x in out["plans"] if len(x.filled) >= 3)
+        holes, orig = {pl.filled[1][0] - 1: None, pl.filled[2][0] - 1: 0.0}, P.build
+
+        def build(*a, **k):
+            q = orig(*a, **k)
+            for j, v in holes.items():
+                q.atr[j] = v
+            return q
+        with mock.patch.object(P, "build", build):
+            got = C.check_fills(self.snap, comps[:1], walk["z"], {})
+        self.assertEqual(got["failed"], 0, got["failures"][:2])
+
+    def test_an_epoch_that_ends_a_day_early_fails_the_truncation_check(self):
+        """Version T's choice of epoch is made in panel.build, apart from normalize_basis. A build whose T drops
+        the old statements on the very day the first statement after an unclear split is filed (d < end in
+        place of d <= end) acts on that statement before the day it may: a cut on that filing day shows it,
+        since the cut removes that statement and with it the end of the epoch."""
+        tmp = tempfile.TemporaryDirectory()
+        snap, when = Path(tmp.name), dt.date(2016, 6, 6)
+        synth.company(snap, "UNC", seed=33, split=(when, 1.1))
+        path = snap / "raw" / "inc_q" / "UNC.json"
+        rows = json.loads(path.read_text())
+        for r in rows:
+            if r["filingDate"] >= when.isoformat():
+                r["weightedAverageShsOutDil"] *= 0.97
+        path.write_text(json.dumps(rows))
+        first = min(r["filingDate"] for r in rows if r["filingDate"] >= when.isoformat())
+        comps = [("UNC", "UNC", "Tech", [["2005-01-03", "2030-01-01"]])]
+
+        class OnlyFirst:                            # the cuts: that filing day alone
+            def sample(self, pop, k):
+                return [x for x in pop if x == first]
+        orig = P.build
+
+        def early(*a, **k):
+            p = orig(*a, **k)
+            ep = p.epochs["T"]
+            p.eps["T"] = [ep[next(j for j, (u, _) in enumerate(ep) if u is None or d < u)][1][i]
+                          for i, d in enumerate(p.dates)]
+            return p
+        self.assertEqual(C.check_truncation(snap, comps, 2, OnlyFirst(), "2026-10-23")["failed"], 0)
+        with mock.patch.object(P, "build", early):
+            got = C.check_truncation(snap, comps, 2, OnlyFirst(), "2026-10-23")
+        self.assertEqual((got["checked"], got["filing_day_cuts"], got["failed"]), (1, 1, 1))
+        tmp.cleanup()
 
     def test_flags_that_read_ahead_fail_the_truncation_check(self):
         """A suspicious flag that depends on later bars (V3 flagged the 40 bars before a jump; here any bar before
@@ -188,7 +279,12 @@ class ChecksTest(unittest.TestCase):
             {"split": "2026-06-15", "factor": 2.0, "action": "no row after"},
             {"split": "2016-06-06", "factor": 1.1, "action": "unclear", "ratio": 1.067, "rows_changed": 40,
              "unused_after": "2016-08-04"},
+            {"split": "2014-03-03", "factor": 1.05, "action": "unclear", "ratio": None, "rows_changed": 31,
+             "unused_after": "2014-05-05", "verdict_known": None},
+            {"split": "2013-03-04", "factor": 1.05, "action": "unclear", "ratio": 1.01, "rows_changed": 29,
+             "unused_after": "2013-04-10", "verdict_known": "2013-05-06"},
             {"split": "2012-05-01", "factor": 2.0, "action": "not_restated", "ratio": 2.01, "rows_changed": 24}],
+            "eps_shares": [{"end": "2010-03-31", "ratio": 1.98, "fixed_by": 2.0, "splits": ["2012-05-01"]}],
             "share_steps": [{"older_end": "2019-03-31", "newer_end": "2019-06-30", "ratio": 1.4}],
             "review": [{"end": "2018-03-31", "eps_x_shares_over_ni": 3.0}]},
             "basis_a": {"boundary": [{"split": "2016-06-06", "factor": 1.1, "action": "unclear", "ratio": 1.2,
@@ -202,6 +298,8 @@ class ChecksTest(unittest.TestCase):
                          "no_band": {}}}
         text = C.review_table(walk, facts, basis, [], {})
         for x in ("2026-06-15×2 之后还没有新报表", "在 2016-08-04 之后不再用于 T 版", "EPS 清空（只影响 F 版）",
+                  "拆股后的报表里还没有能判定口径的", "能判定口径的报表 2013-05-06 才公布",
+                  "2010-03-31 ÷2（2012-05-01 拆股）",
                   "旧报表没重述，按倍数改（改 24 行）", "股数跳变", "2019-03-31→2019-06-30 ×1.4", "不在 0.6–1.6",
                   "| 99.1% | 87.4% |"):
             self.assertIn(x, text)
@@ -219,6 +317,30 @@ class ChecksTest(unittest.TestCase):
         self.assertFalse((out / "checks.json").exists())
         self.assertFalse((out / "review.md").exists())
 
+    def test_inputs_changed_during_the_checks_refuse_them(self):
+        """A spin-off confirmed, or the checks' code edited, while the checks run: what they checked is neither
+        state, so the run writes neither checks.json nor review.md."""
+        out, spin = Path(self.tmp.name) / "out_race", Path(self.tmp.name) / "spin_race.json"
+        spin.write_text(self.spin.read_text())
+        orig = C.check_calendar
+
+        def confirm(*a, **k):
+            data = json.loads(spin.read_text())
+            data["events"]["CCC"][0]["confirmed"] = True
+            spin.write_text(json.dumps(data))
+            return orig(*a, **k)
+        args = ["--snap", str(self.snap), "--out", str(out), "--sample", str(self.sample), "--spinoffs", str(spin)]
+        with mock.patch.object(C, "check_calendar", confirm):
+            self.assertEqual(C.main(args + ["--only", "calendar", "review"]), 2)
+        self.assertFalse((out / "checks.json").exists())
+        self.assertFalse((out / "review.md").exists())
+        codes = iter([{"checks.py": "a" * 32}, {"checks.py": "b" * 32}])
+        with mock.patch.object(C.RP, "checks_code", lambda: next(codes)):
+            self.assertEqual(C.main(args + ["--only", "calendar"]), 2)
+        self.assertFalse((out / "checks.json").exists())
+        self.assertEqual(C.main(args + ["--only", "calendar"]), 0)          # unchanged: written
+        self.assertTrue((out / "checks.json").exists())
+
     def test_spin_off_evidence(self):
         rows = {(r["symbol"], r["source"]): r for r in self.res["spins"]}
         a = rows[("AAA", "listed")]
@@ -234,18 +356,30 @@ class ChecksTest(unittest.TestCase):
             self.assertIn(x, text)
 
     def test_same_results(self):
+        """Check 8 compares what run_pilot writes and nothing else (checks or a report kept beside the results do
+        not count), names an output either run lacks, and refuses to compare a run with itself."""
         a, b = self.out / "run_a", self.out / "run_b"
         for d, created in ((a, "x"), (b, "y")):
             d.mkdir(exist_ok=True)
             (d / "results.json").write_text(json.dumps({"created": created, "theta": 0.1}))
-            (d / "plans.csv").write_text("symbol\nAAA\n")
+            for name in ("plans.csv", "portfolio.json", "status.json", "pools_T.json", "pools_F.json"):
+                (d / name).write_text("the same\n")
+        (a / "checks.json").write_text("{}")
+        (a / "review.md").write_text("a table")
+        (b / "report.md").write_text("a report")
         self.assertEqual(C.same_results(a, b), [])
         self.assertEqual(C.main(["--same", str(a), str(b)]), 0)
         digest = C.RP.results_digest({"theta": 0.1})
         self.assertEqual(json.loads((a / "repro.json").read_text()),
                          {"same": True, "diff": [], "results": [digest, digest]})
+        for other in (a, a / ".." / "run_a", self.out / "no_run"):
+            self.assertEqual(C.main(["--same", str(a), str(other)]), 2)
+        (b / "pools_F.json").unlink()
+        self.assertEqual(C.same_results(a, b), ["pools_F.json"])
+        (b / "status.json").unlink()
+        self.assertEqual(C.same_results(a, b), ["status.json", "pools_F.json"])
         (b / "results.json").write_text(json.dumps({"created": "y", "theta": 0.2}))
-        self.assertEqual(C.same_results(a, b), ["results.json"])
+        self.assertEqual(C.same_results(a, b)[0], "results.json")
 
     def test_pipeline_reproduces_price_range(self):
         pr = self.res["pipeline"]

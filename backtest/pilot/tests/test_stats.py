@@ -7,6 +7,7 @@ import statistics
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -136,8 +137,25 @@ class SignalTest(unittest.TestCase):
         out = ST.signal_test(rows, "w")["h252"]
         sch, g = out["gap_schemes"], out["gap"]
         self.assertEqual(g["scheme"], "company")
-        self.assertEqual(g["se"], max(sch["two_years"]["se"], sch["company"]["se"]))
+        self.assertEqual(g["hi"] - g["lo"], max(x["hi"] - x["lo"] for k, x in sch.items() if k != "by_year"))
         self.assertGreater(g["hi"] - g["lo"], 1.5 * (sch["by_year"]["hi"] - sch["by_year"]["lo"]))
+
+    def test_the_wider_interval_is_chosen_by_width_not_by_se(self):
+        """Company clusters with the larger SE can still give the narrower interval (about 48 clusters' t
+        quantile against 9 two-year blocks'): the gap's interval is the wider one."""
+        made = {"two_years": (0.0180, 9), "company": (0.0190, 48)}
+
+        def blocks(xa, la, xb, lb, tag, level=ST.LEVEL):
+            name = "two_years" if tag.startswith("signal2y") else "company" if tag.startswith("signalco") else None
+            se, G = made.get(name, (0.01, 18))
+            q = ST.t_ppf(0.5 + level / 2.0, G - 1)
+            return {"theta": 0.01, "se": se, "G": G, "lo": 0.01 - q * se, "hi": 0.01 + q * se}
+        rows = [(2008 + k % 18, k % 3 == 0, 0.0, {252: 0.01 * (k % 3 == 0)}, f"C{k % 48}") for k in range(900)]
+        with mock.patch.object(ST, "diff_by_blocks", blocks):
+            g = ST.signal_test(rows, "x")["h252"]["gap"]
+        self.assertEqual(g["scheme"], "two_years")
+        width = {k: 2 * ST.t_ppf(0.95, G - 1) * se for k, (se, G) in made.items()}
+        self.assertGreater(width["two_years"], width["company"])
 
 
 class YearlyExcessTest(unittest.TestCase):

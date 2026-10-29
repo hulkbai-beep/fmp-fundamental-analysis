@@ -19,6 +19,11 @@ import statistics
 import sys
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import run_pilot as R  # noqa: E402
+import stats as ST  # noqa: E402
+
 NAMES = {
     "method_T": "你的买法（T 版：当时已公布的 TTM EPS）",
     "method_F": "参考版 F（事后真实年度 EPS，前瞻 12 个月）",
@@ -39,7 +44,6 @@ EXITS = {"stop": "止损", "breakeven": "保本止损", "trailing": "移动止�
 NO_RESULT, PROMISING, NOT_PROMISING, INCONCLUSIVE = "没有结果（检查没通过）", "有希望", "不看好", "说不准"
 CHECKS = (("calendar", "交易日历"), ("band", "区间"), ("pipeline", "和技能对数"), ("truncation", "未来数据"),
           ("fills", "成交"))
-HERE = Path(__file__).resolve().parent
 CHECKS_CODE = (HERE / "checks.py", HERE.parent.parent / "scripts" / "score.py")    # the code the checks come from
 MIN_SAMPLED = 200                               # band triples and truncation cuts, at least (SPEC 8.3 and 8.5)
 
@@ -74,12 +78,22 @@ def checks_code() -> dict:
 
 
 def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, list]:
-    """Section 8 of SPEC v1, as far as the files show it: every every-start table reproduces its plans, the
+    """Section 8 of SPEC v1, as far as the files show it: the results are of the full run fixed beforehand (both
+    versions, SPEC 5.2's replicas, the four variants), every every-start table reproduces its plans, the
     replacement walk matches the PC's, checks.py's checks all pass and were made from the inputs of these
     results (snapshot, sample, confirmed spin-offs, code) by the checks' code as it is now, on at least 200 band
-    triples and truncation cuts, with the data review table written, and two runs gave these same results. The unit tests, the snapshot's integrity and the signature on the data review are
-    steps of the run, not of these files."""
+    triples and truncation cuts and on every plan of the every-start tables, with the data review table
+    written, and two runs gave these same results. The unit tests, the snapshot's integrity and the signature
+    on the data review are steps of the run, not of these files."""
     notes = []
+    prim = res.get("primary", {})
+    reps = {v: ((x.get("dh252") or {}).get("placebo") or {}).get("replicas") for v, x in prim.items()}
+    if sorted(prim) != sorted(R.VERSIONS) or any(n != ST.PLAN_REPS for n in reps.values()) or \
+            sorted(res.get("variants") or {}) != sorted(R.VARIANTS) or \
+            sorted(res.get("variant_tests") or {}) != sorted(R.VARIANTS):
+        notes.append(f"不是事先定好的完整运行（T、F 两版，随机择时各 {ST.PLAN_REPS} 次，四个对照版本）：这次的版本 "
+                     + ("、".join(f"{v} 随机择时 {n} 次" for v, n in sorted(reps.items())) or "没有")
+                     + f"，对照版本 {len(res.get('variant_tests') or {})} 个")
     tables = {f"{v} 版": x.get("every_start", {}) for v, x in res.get("primary", {}).items()}
     tables.update({NAMES.get(k, k): x.get("every_start", {}) for k, x in res.get("variant_tests", {}).items()})
     for name, es in tables.items():
@@ -98,6 +112,9 @@ def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, l
         for k, name in (("band", "区间"), ("truncation", "未来数据")):
             if k in ch and (ch[k].get("checked") or 0) < MIN_SAMPLED:
                 notes.append(f"{name}检查只查了 {ch[k].get('checked') or 0} 项，至少要 {MIN_SAMPLED} 项")
+        if "fills" in ch and not 0 < (ch["fills"].get("pool_days") or 0) == ch["fills"].get("every_start_plans"):
+            notes.append(f"成交检查只重放了随机起步表的 {ch['fills'].get('every_start_plans') or 0} 笔计划，"
+                         f"起步池有 {ch['fills'].get('pool_days') or 0} 天，要每天都重放")
         for k, name in CHECKS:
             if k not in ch:
                 notes.append(f"没有跑{name}检查")
@@ -183,9 +200,13 @@ def signal_lines(sig: dict) -> list:
             continue
         unit = {"two_years": "个两年块", "company": "家公司"}.get(g.get("scheme"), "个年份块")
         y1 = (x.get("gap_schemes") or {}).get("by_year")
+        by_year = ""
+        if y1:                          # SPEC 5.3's own blocks: narrower in most no-edge worlds, not in all
+            narrower = y1["hi"] - y1["lo"] < g["hi"] - g["lo"]
+            by_year = (f"；按单个年份重抽（SPEC 5.3 原来的做法）{'会窄到' if narrower else '是'} "
+                       f"{pct(y1['lo'], 2)} 到 {pct(y1['hi'], 2)}{'，偏乐观' if narrower else ''}")
         out.append(f"- 之后 {h} 个交易日扣掉 SPY 的收益，低于中位减其他日子：{pct(g['theta'], 2)}（90% 区间 "
-                   f"{pct(g['lo'], 2)} 到 {pct(g['hi'], 2)}，按 {g['G']} {unit}重抽"
-                   + (f"；按单个年份重抽会窄到 {pct(y1['lo'], 2)} 到 {pct(y1['hi'], 2)}，偏乐观" if y1 else "")
+                   f"{pct(g['lo'], 2)} 到 {pct(g['hi'], 2)}，按 {g['G']} {unit}重抽{by_year}"
                    + f"）；IC {num(x.get('ic'), 3)}" + ("（主项）" if h == 252 else "（只作参考）"))
     return out
 
