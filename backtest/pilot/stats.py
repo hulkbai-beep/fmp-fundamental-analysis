@@ -198,6 +198,12 @@ def _stream(tag: str) -> random.Random:
     return random.Random(int(hashlib.sha256(f"{PLACEBO_SEED}|{tag}".encode()).hexdigest()[:16], 16))
 
 
+def plan_stream(company, version: str, k: int) -> random.Random:
+    """The placebo's draws for one (company, version, replica): the same days for every metric that reads the
+    same pool, and any replica can be redrawn alone."""
+    return _stream(f"plan|{version}|{company}|{k}")
+
+
 def diff_by_blocks_w(xa: list, la: list, xb: list, lb: list, wb: list, tag: str, level: float = LEVEL) -> dict:
     """mean(A) - weighted mean(B), both formed in every resample from the same resampled blocks (V3's
     unpaired difference; the weights of B are fixed)."""
@@ -222,7 +228,9 @@ def diff_by_blocks_w(xa: list, la: list, xb: list, lb: list, wb: list, tag: str,
 
 
 def _theta(cos: list, x: dict, y: dict) -> float | None:
-    """mean of the strategy's plans pooled minus sum n_i mean(pool_i) / sum n_i."""
+    """mean of the strategy's plans pooled minus sum n_i mean(pool_i) / sum n_i (a company whose pool is empty
+    once a year is left out is left out too: each strategy start is a pool day, so it then has no plans)."""
+    cos = [c for c in cos if y[c]]
     n = sum(len(x[c]) for c in cos)
     if not n:
         return None
@@ -234,9 +242,10 @@ def plan_test(strat: dict, pool: dict, metric: str = "dh252", full: str = "full2
     """The primary test. strat, pool: {company: placebo.columns}. theta = the strategy's plans with a full
     window pooled (a plan that never bought counts 0) minus the placebo's expectation (each company's pool
     mean weighted by its number of strategy plans). Placebo replicas draw n_i starts per company with
-    replacement from its pool: one-sided p = (1 + #{theta_b >= theta}) / (1 + reps). Interval: calendar-year
-    blocks of the start (strategy plans and the pool resampled together, the pool weighted n_i / |pool_i|).
-    Also the company-cluster bootstrap SE, leave-one-year-out, without the 3 largest contributors."""
+    replacement from its pool (plan_stream(company, tag, replica)): one-sided p = (1 + #{theta_b >= theta}) /
+    (1 + reps). Interval: calendar-year blocks of the start (strategy plans and the pool resampled together,
+    the pool weighted n_i / |pool_i|). Also the company-cluster bootstrap SE, leave-one-year-out, without the 3
+    largest contributors and the range of leave-one-company-out."""
     def pick(cols):
         keep = [k for k, f in enumerate(cols[full]) if f]
         return [cols[metric][k] for k in keep], [cols["year"][k] for k in keep]
@@ -257,21 +266,23 @@ def plan_test(strat: dict, pool: dict, metric: str = "dh252", full: str = "full2
     n_tot = sum(len(x[c]) for c in cos)
     expect = sum(len(x[c]) * sum(y[c]) / len(y[c]) for c in cos) / n_tot
     out["strategy_mean"], out["placebo_expectation"] = theta + expect, expect
-    rnd = _stream(f"plan|{tag}|{metric}")
-    draws = []
-    for _ in range(reps):
-        tot = 0.0
-        for c in cos:
-            yc = y[c]
-            m = len(yc)
-            tot += sum(yc[int(rnd.random() * m)] for _ in range(len(x[c])))
-        draws.append(tot / n_tot - expect)
-    ge = sum(d >= theta for d in draws)
-    srt = sorted(draws)
-    out["placebo"] = {"replicas": reps, "p_one_sided": (1 + ge) / (1 + reps), "percentile": 1 - (1 + ge) / (1 + reps),
-                      "mean": statistics.mean(draws), "sd": statistics.stdev(draws) if reps > 1 else None,
-                      "q05": srt[int(0.05 * (reps - 1))], "q50": srt[int(0.5 * (reps - 1))],
-                      "q95": srt[int(0.95 * (reps - 1))]}
+    out["placebo"] = None                                   # reps = 0: theta only (the variants)
+    if reps > 0:
+        draws = []
+        for b in range(reps):
+            tot = 0.0
+            for c in cos:
+                rnd, yc = plan_stream(c, tag, b), y[c]
+                m = len(yc)
+                tot += sum(yc[int(rnd.random() * m)] for _ in range(len(x[c])))
+            draws.append(tot / n_tot - expect)
+        ge = sum(d >= theta for d in draws)
+        srt = sorted(draws)
+        out["placebo"] = {"replicas": reps, "p_one_sided": (1 + ge) / (1 + reps),
+                          "percentile": 1 - (1 + ge) / (1 + reps), "mean": statistics.mean(draws),
+                          "sd": statistics.stdev(draws) if reps > 1 else None,
+                          "q05": srt[int(0.05 * (reps - 1))], "q50": srt[int(0.5 * (reps - 1))],
+                          "q95": srt[int(0.95 * (reps - 1))]}
     xa = [v for c in cos for v in x[c]]
     la = [v for c in cos for v in xy[c]]
     xb = [v for c in cos for v in y[c]]
@@ -292,6 +303,12 @@ def plan_test(strat: dict, pool: dict, metric: str = "dh252", full: str = "full2
     top = sorted(cos, key=lambda c: contrib[c], reverse=True)[:3]
     rest = [c for c in cos if c not in top]
     out["without_top3"] = {"companies": top, "theta": _theta(rest, x, y)}
+    loco = {c: _theta([k for k in cos if k != c], x, y) for c in cos}
+    have = {c: v for c, v in loco.items() if v is not None}
+    out["leave_one_company_out"] = {"min": min(have.values()) if have else None,
+                                    "max": max(have.values()) if have else None,
+                                    "min_without": min(have, key=have.get) if have else None,
+                                    "max_without": max(have, key=have.get) if have else None}
     out["by_company"] = {c: {"plans": len(x[c]), "pool": len(y[c]), "mean": sum(x[c]) / len(x[c]),
                              "pool_mean": sum(y[c]) / len(y[c]), "contribution": contrib[c]} for c in cos}
     return out

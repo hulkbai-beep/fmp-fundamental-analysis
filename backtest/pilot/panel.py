@@ -187,7 +187,7 @@ def _runs(factors: list) -> list:
     return [math.prod(factors[a:b]) for a in range(len(factors)) for b in range(a + 1, len(factors) + 1)]
 
 
-def normalize_basis(rows: list, splits: list, report: dict) -> list:
+def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep") -> list:
     """Rows (each filing, with end / known / eps / shares / ni) on today's split basis, in four steps; every
     decision goes into report (a dict of lists) for review.
       1 eps_shares: EPS x diluted shares / net income near a split product F (or 1/F) means the EPS and share
@@ -196,8 +196,10 @@ def normalize_basis(rows: list, splits: list, report: dict) -> list:
       2 boundary, per split, newest first: the share count of the last row filed before the split against the
         first row filed on or after it (with a later period end). Near the factor: FMP did not restate, and
         every row filed before the split is put on the new basis; near 1: restated, nothing to do; otherwise
-        unclear (listed, left as is). Factors under 1.25 need the ratio within a quarter (not a half) of the
-        log factor of either answer.
+        unclear: listed, and the rows filed before the split are left as filed (unclear="keep", the reading
+        status.py's frozen rule uses) or lose their EPS (unclear="none", the pilot's panels: no band is
+        built on a share basis that cannot be told). Factors under 1.25 need the ratio within a quarter (not a
+        half) of the log factor of either answer.
       3 partial: a step between consecutive period ends' share counts outside 0.8-1.25 that is within 10% of a
         product of splits dated after the older row's filing means FMP restated only the newer rows; the older
         ones are put on the new basis. Other steps are listed (a merger, a spin-off) for history_problem.
@@ -242,10 +244,15 @@ def normalize_basis(rows: list, splits: list, report: dict) -> list:
             action = "restated"
         else:
             action = "unclear"
+            if unclear == "none":
+                for r in rows:
+                    if r["known"] < x and r["eps"] is not None:
+                        r["eps"], r["eps_unclear"] = None, x.isoformat()
         report["boundary"].append({"split": x.isoformat(), "factor": f, "pre_end": rows[kp]["end"].isoformat(),
                                    "post_end": rows[kq]["end"].isoformat(), "ratio": round(ratio, 4),
                                    "action": action, "rows_changed": sum(r["known"] < x for r in rows)
-                                   if action == "not_restated" else 0})
+                                   if action == "not_restated" or (action == "unclear" and unclear == "none")
+                                   else 0})
     latest = {}
     for k, r in enumerate(rows):
         if r["shares"]:
@@ -275,9 +282,9 @@ def normalize_basis(rows: list, splits: list, report: dict) -> list:
     return rows
 
 
-def statement_rows(raw: list, splits: list, report: dict) -> list:
+def statement_rows(raw: list, splits: list, report: dict, unclear: str = "keep") -> list:
     """Income rows -> [{end, known, placeholder, period, eps, shares, ni}], every filing kept, oldest known
-    first, on today's split basis."""
+    first, on today's split basis (unclear: see normalize_basis)."""
     out, seen = [], set()
     for r in raw:
         if not r.get("date"):
@@ -292,7 +299,8 @@ def statement_rows(raw: list, splits: list, report: dict) -> list:
             seen.add(key)
             out.append(row)
     report["placeholders"] = sum(r["placeholder"] for r in out)
-    return normalize_basis(out, splits, report)
+    report["rows"] = len(out)
+    return normalize_basis(out, splits, report, unclear)
 
 
 def latest_by_end(rows: list, before: dt.date | None = None) -> list:
@@ -404,7 +412,10 @@ class Panel:
         return e * b["p25"], e * b["median"], e * b["p75"], b["pct"]
 
     def can_start(self, v: str, i: int) -> bool:
-        return self.member[i] and not (self.no_new.get(v) and self.no_new[v][i])
+        """A member day that is not a suspicious bar (clean_bars), not the last close before a confirmed spin-off
+        (its first buy would fill after the distribution) and not in the blackout after one."""
+        return self.member[i] and not self.suspicious[i] and i not in self.spin_exit and \
+            not (self.no_new.get(v) and self.no_new[v][i])
 
 
 def in_spans(d: str, spans: list) -> bool:
@@ -430,8 +441,8 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
                                   split_rows)
     divs = read(raw / "div" / f"{symbol}.json")
     rep = {"clean": clean, "basis_q": {}, "basis_a": {}}
-    quarters = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, rep["basis_q"])
-    years = statement_rows(read(raw / "inc_a" / f"{symbol}.json"), splits, rep["basis_a"])
+    quarters = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, rep["basis_q"], unclear="none")
+    years = statement_rows(read(raw / "inc_a" / f"{symbol}.json"), splits, rep["basis_a"], unclear="none")
     rep["annual_vs_quarters"] = annual_check(years, quarters)
     rep["spin_candidates"] = spin_candidates(bars, split_rows, read(raw / "earn" / f"{symbol}.json"))
     if truncate:

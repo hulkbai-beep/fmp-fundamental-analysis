@@ -45,7 +45,11 @@ class ChecksTest(unittest.TestCase):
         cls.sample = root / "sample.json"
         cls.sample.write_text(json.dumps({"sample": ["AAA", "CCC"], "order": {"Tech": ["AAA", "CCC"]},
                                           "spares": {"Tech": []}, "records": recs}))
-        cls.rc = C.main(["--snap", str(cls.snap), "--out", str(cls.out), "--pairs", "20", "--sample", str(cls.sample)])
+        cls.spin = root / "spin.json"
+        cls.spin.write_text(json.dumps({"events": {"AAA": [{"date": "2016-03-05", "confirmed": True}],
+                                                   "CCC": [{"date": "2012-10-02", "confirmed": False}]}}))
+        cls.rc = C.main(["--snap", str(cls.snap), "--out", str(cls.out), "--pairs", "20", "--sample", str(cls.sample),
+                         "--spinoffs", str(cls.spin)])
         cls.res = json.loads((cls.out / "checks.json").read_text())
 
     @classmethod
@@ -57,6 +61,35 @@ class ChecksTest(unittest.TestCase):
         self.assertGreater(self.res["band"]["checked"], 10)
         self.assertGreater(self.res["truncation"]["checked"], 10)
         self.assertGreater(self.res["fills"]["fills"], 20)
+        self.assertGreater(self.res["fills"]["plans"], self.res["fills"]["fills"] / 5)
+        self.assertEqual(self.res["calendar"]["failed"], 0)
+        self.assertEqual(self.res["calendar"]["bars_off_sessions"], {})
+
+    def test_spin_off_evidence(self):
+        rows = {(r["symbol"], r["source"]): r for r in self.res["spins"]}
+        a = rows[("AAA", "listed")]
+        self.assertEqual(a["bar"], "2016-03-07")                        # the next session after a Saturday
+        self.assertEqual(len(a["closes"]), 5)
+        self.assertIn("largest_drop", a)
+        self.assertIsNotNone(a["implied_distribution"])
+        self.assertIn(("CCC", "listed"), rows)                          # listed, confirmed or not
+
+    def test_review_table(self):
+        text = (self.out / "review.md").read_text(encoding="utf-8")
+        for x in ("可用规则", "每家公司", "没有区间的交易日", "分拆核对", "各项检查", "AAA", "CCC"):
+            self.assertIn(x, text)
+
+    def test_same_results(self):
+        a, b = self.out / "run_a", self.out / "run_b"
+        for d, created in ((a, "x"), (b, "y")):
+            d.mkdir(exist_ok=True)
+            (d / "results.json").write_text(json.dumps({"created": created, "theta": 0.1}))
+            (d / "plans.csv").write_text("symbol\nAAA\n")
+        self.assertEqual(C.same_results(a, b), [])
+        self.assertEqual(C.main(["--same", str(a), str(b)]), 0)
+        self.assertEqual(json.loads((a / "repro.json").read_text()), {"same": True, "diff": []})
+        (b / "results.json").write_text(json.dumps({"created": "y", "theta": 0.2}))
+        self.assertEqual(C.same_results(a, b), ["results.json"])
 
     def test_pipeline_reproduces_price_range(self):
         pr = self.res["pipeline"]

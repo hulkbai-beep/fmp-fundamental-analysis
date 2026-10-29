@@ -153,7 +153,33 @@ class SimTest(unittest.TestCase):
         self.assertEqual(again["end_value"], self.out["end_value"])
 
 
-@unittest.skipUnless((IFP / "ifp" / "entries.py").exists(), "the decision engine's repo is not at hand")
+def bars(p) -> list:
+    """sim.run's hedge argument with the company's own bars as the session calendar."""
+    return list(range(len(p.dates)))
+
+
+def hedge_pnl(p, pl, so, sc, sess, h=S.H_LONG) -> float:
+    """The SPY leg of a plan's hedged metric, replayed from its trades alone (SPEC 5.1): overnight on the shares
+    held at the previous close, intraday on the shares held after the open's trades; a sale at the close keeps
+    the shares through the day."""
+    buys, opens, closes = {}, {}, {}
+    for f in pl.filled:
+        buys[f[0]] = buys.get(f[0], 0.0) + f[2]
+    for x in pl.sold:
+        book = closes if x[4] in ("delisted", "spin") else opens
+        book[x[0]] = book.get(x[0], 0.0) + x[2]
+    sh, out = 0.0, 0.0
+    end = pl.end if pl.end is not None else len(p.dates) - 1
+    for i in range(pl.start + 1, end + 1):
+        if sess[i] - sess[pl.start] > h:
+            break
+        out += sh * p.c[i - 1] * (so[i] / sc[i - 1] - 1.0)
+        sh += buys.get(i, 0.0) - opens.get(i, 0.0)
+        out += sh * p.o[i] * (sc[i] / so[i] - 1.0)
+        sh -= closes.get(i, 0.0)
+    return out
+
+
 class HedgedMetricTest(unittest.TestCase):
     """The primary metric's accounting, the every-start table and the forced exits."""
 
@@ -164,6 +190,14 @@ class HedgedMetricTest(unittest.TestCase):
         synth.company(cls.snap, "SYN", seed=11, pe_amp=0.45)
         cls.p = P.build("SYN", cls.snap, SPANS, versions=("T",))
         cls.r = S.Rules()
+        n = len(cls.p.dates)
+        rnd = random.Random(3)
+        so, sc, px = [], [], 100.0
+        for _ in range(n):                                          # any SPY-like series
+            so.append(px * (1 + 0.002 * rnd.gauss(0, 1)))
+            px *= 1 + 0.01 * rnd.gauss(0, 1)
+            sc.append(px)
+        cls.spy = (so, sc, bars(cls.p))
 
     @classmethod
     def tearDownClass(cls):
@@ -187,7 +221,7 @@ class HedgedMetricTest(unittest.TestCase):
 
     def test_hedged_against_itself_leaves_dividends_less_costs(self):
         p = self.p
-        out = S.run(p, self.r, flat_rate, hedge=(p.o, p.c))
+        out = S.run(p, self.r, flat_rate, hedge=(p.o, p.c, bars(p)))
         n = 0
         for pl in out["plans"]:
             if self.window_ends(pl):
@@ -196,13 +230,46 @@ class HedgedMetricTest(unittest.TestCase):
                 self.assertAlmostEqual(m["dh252"], pl.divs / pl.size - m["cost252"], places=10)
         self.assertGreater(n, 10)
 
+    def test_a_stock_equal_to_spy_gives_minus_costs(self):
+        """SPEC check 1: with no dividends and SPY = the stock, DH_252 is minus the costs of every plan."""
+        p = replace(self.p, div=[0.0] * len(self.p.dates))
+        out = S.run(p, self.r, flat_rate, hedge=(p.o, p.c, bars(p)))
+        for pl in out["plans"] + ([out["open"]] if out["open"] else []):
+            m = pl.metrics()
+            self.assertAlmostEqual(m["dh252"], -m["cost252"], places=12)
+        self.assertGreater(len(out["plans"]), 10)
+
+    def test_raw_less_hedged_is_the_hedge_leg(self):
+        """SPEC check 1: raw_252 - DH_252 equals the SPY leg replayed from the plan's trades alone."""
+        p, (so, sc, sess) = self.p, self.spy
+        out = S.run(p, self.r, flat_rate, hedge=self.spy)
+        plans = out["plans"] + ([out["open"]] if out["open"] else [])
+        for pl in plans:
+            m = pl.metrics()
+            self.assertAlmostEqual(m["raw252"] - m["dh252"], hedge_pnl(p, pl, so, sc, sess) / pl.size, places=10)
+        self.assertGreater(len(plans), 10)
+
+    def test_the_window_counts_spy_sessions(self):
+        """Bars two SPY sessions apart: the 252-session window holds the 126 bars the 126-session one holds when
+        bars and sessions are one."""
+        p, n = self.p, len(self.p.dates)
+        flat = ([1.0] * n, [1.0] * n)
+        one = S.run(p, self.r, flat_rate, hedge=flat + (bars(p),))
+        two = S.run(p, self.r, flat_rate, hedge=flat + ([2 * i for i in range(n)],))
+        longer = 0
+        for a, b in zip(one["plans"], two["plans"]):
+            self.assertEqual(a.start, b.start)
+            self.assertAlmostEqual(b.metrics()["dh252"], a.metrics()["dh126"], places=12)
+            longer += a.end - a.start > 126
+        self.assertGreater(longer, 0)
+
     def test_every_start_reproduces_the_method(self):
         import placebo as PL
         p = self.p
-        hedge = ([x * 1.001 for x in p.o], [x * 0.999 for x in p.c])   # any series: the same on both sides
-        out = S.run(p, self.r, flat_rate, hedge=hedge)
-        mine = PL.columns(p, PL.method_plans(out), out["last"])
-        pool = PL.pool(p, self.r, flat_rate, hedge, out["first"], out["last"])
+        out = S.run(p, self.r, flat_rate, hedge=self.spy)
+        zi = self.spy[2][-1]
+        mine = PL.columns(p, PL.method_plans(out), self.spy[2], zi)
+        pool = PL.pool(p, self.r, flat_rate, self.spy, out["first"], out["last"], zi)
         at = {s: k for k, s in enumerate(pool["start"])}
         self.assertGreater(len(pool["start"]), 3 * len(mine["start"]))
         for k, s in enumerate(mine["start"]):
@@ -228,14 +295,82 @@ class HedgedMetricTest(unittest.TestCase):
         ex = self.p.dates[mid + 1]
         p2 = P.build("SYN", self.snap, SPANS, versions=("T",), spinoffs=[ex])
         self.assertEqual(p2.spin_exit, {mid})
-        out2 = S.run(p2, self.r, flat_rate)
+        self.assertFalse(p2.can_start("T", mid))                     # no plan starts on that close either
+        out2 = S.run(p2, self.r, flat_rate, hedge=self.spy)
         hit = [x for x in out2["plans"] if x.status == "spin"]
         self.assertEqual(len(hit), 1)
         self.assertEqual(hit[0].end, mid)
         self.assertEqual(hit[0].sold[-1][:2], (mid, p2.c[mid]))       # at that close
         self.assertFalse(any(x.start <= mid < x.end for x in out2["plans"] if x is not hit[0]))
+        so, sc, sess = self.spy                                      # held through that day, sold at its close
+        m = hit[0].metrics()
+        self.assertAlmostEqual(m["raw252"] - m["dh252"], hedge_pnl(p2, hit[0], so, sc, sess) / hit[0].size, places=10)
+
+    def test_a_waiting_plan_is_cancelled_before_a_spin_off(self):
+        import placebo as PL
+        p = self.p
+        pool = PL.pool(p, self.r, flat_rate, self.spy, 0, len(p.dates) - 1, self.spy[2][-1])
+        k = next(k for k, (t, f) in enumerate(zip(pool["temp0"], pool["fills"]))
+                 if t == "rich" and f and pool["status"][k] != "lapsed" and
+                 S.run(p, self.r, flat_rate, first_day=pool["day"][k], starts={pool["start"][k]}, single=True,
+                       record_days=False)["plans"][0].filled[0][0] > pool["start"][k] + 3)
+        i = pool["start"][k]
+        p2 = P.build("SYN", self.snap, SPANS, versions=("T",), spinoffs=[p.dates[i + 3]])
+        o = S.run(p2, self.r, flat_rate, first_day=p.dates[i], starts={i}, single=True, record_days=False)
+        self.assertEqual([(v.status, v.end, v.filled) for v in o["voids"]], [("spin", i + 2, [])])
+
+    def test_a_plan_cancelled_below_its_stop_never_bought(self):
+        import placebo as PL
+        p = self.p
+        pool = PL.pool(p, self.r, flat_rate, self.spy, 0, len(p.dates) - 1, self.spy[2][-1])
+        cut = [k for k, st in enumerate(pool["status"]) if st == "cancelled_below_stop"]
+        self.assertGreater(len(cut), 10)
+        for k in cut[:40]:
+            i = pool["start"][k]
+            o = S.run(p, self.r, flat_rate, first_day=p.dates[i], starts={i}, single=True, record_days=False,
+                      hedge=self.spy)
+            v = o["voids"][0]
+            self.assertNotEqual(v.temp0, "fair")                     # a fair start buys at the next open
+            self.assertEqual(v.filled, [])
+            self.assertLess(p.c[v.end], v.stop0)
+            self.assertTrue(all(p.c[j] >= v.stop0 for j in range(i, v.end)))
+            self.assertTrue(all(x == 0.0 for x in v.metrics().values()))
+        self.assertIn("expired", pool["status"])
+
+    def test_suspicious_bars_start_nothing(self):
+        """SPEC R2(d) / K21: a suspicious bar below the mid starts no plan and is not a pool day."""
+        import placebo as PL
+        p = self.p
+        starts = {pl.start for pl in PL.method_plans(S.run(p, self.r, flat_rate))}
+        sus = list(p.suspicious)
+        for i in starts:
+            sus[i] = True
+        p2 = replace(p, suspicious=sus)
+        again = {pl.start for pl in PL.method_plans(S.run(p2, self.r, flat_rate))}
+        self.assertFalse(again & starts)
+        self.assertGreater(len(again), 0)
+        cands = set(PL.candidates(p2, self.r, 0, len(p.dates) - 1))
+        self.assertFalse(cands & starts)
+
+    def test_a_delisted_company_is_sold_at_its_last_close(self):
+        out = S.run(self.p, self.r, flat_rate)
+        pl = max(out["plans"], key=lambda x: x.end - x.filled[0][0])
+        cut = self.p.dates[(pl.filled[0][0] + pl.end) // 2]
+        end = (dt.date.fromisoformat(cut) + dt.timedelta(days=60)).isoformat()
+        p2 = P.build("SYN", self.snap, SPANS, versions=("T",), truncate=cut, snapshot_end=end)
+        self.assertTrue(p2.delisted)
+        o = S.run(p2, self.r, flat_rate, hedge=(p2.o, p2.c, bars(p2)))
+        last = len(p2.dates) - 1
+        self.assertIsNone(o["open"])
+        x = o["plans"][-1]
+        self.assertEqual((x.status, x.end, x.sold[-1][:2]), ("delisted", last, (last, p2.c[last])))
+        self.assertAlmostEqual(o["end_value"], o["value"][last], places=12)
+        p3 = P.build("SYN", self.snap, SPANS, versions=("T",), truncate=cut, snapshot_end=cut)
+        self.assertFalse(p3.delisted)
+        self.assertIsNotNone(S.run(p3, self.r, flat_rate)["open"])  # the same plan, still open at the end
 
 
+@unittest.skipUnless((IFP / "ifp" / "entries.py").exists(), "the decision engine's repo is not at hand")
 class EngineFidelityTest(unittest.TestCase):
     """The pilot's stop, targets and reward/risk gate against the engine's own functions on random inputs."""
 

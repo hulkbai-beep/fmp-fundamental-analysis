@@ -17,12 +17,17 @@ Temperatures come from the band percentile: fair <= 0.75 < rich < 0.95 <= hot; n
 pauses buying, never fires a valuation tier and uses the trailing multiple of 'unknown' (3.0). A holding is
 sold at the last close before a confirmed spin-off (panel.spin_exit) and at a delisted company's last close.
 
-Each plan also accumulates, over the sessions 1..252 after its signal close (Plan.m, in sleeve units; divided
-by the plan's size in Plan.metrics()), the pilot's primary metric: the P&L of the stock position hedged every
-day with the same dollars of SPY (overnight on the shares held at the previous close, intraday on the shares
-held after the open's trades), net of trading costs; and with it the unhedged P&L, the T-bill carry of the
-position, the costs, the capital deployed and the worst running P&L. A plan that never buys (it lapses at the
-chase limit, expires unfilled or is still waiting at the end) is kept in 'voids' with all of them zero.
+Before its first fill a plan whose close falls below its stop is cancelled (cancelled_below_stop; only a plan
+started while rich or hot, a random-timing start that waits for fair, can get there), and so is a plan still
+waiting at the last close before a confirmed spin-off (status 'spin').
+
+Each plan also accumulates, over the SPY sessions 1..252 after its signal close (Plan.m, in sleeve units;
+divided by the plan's size in Plan.metrics()), the pilot's primary metric: the P&L of the stock position
+hedged every day with the same dollars of SPY (overnight on the shares held at the previous close, intraday on
+the shares held after the open's trades), net of trading costs; and with it the unhedged P&L, the T-bill carry
+of the position, the costs, the capital deployed and the worst running P&L. A plan that never buys (it lapses
+at the chase limit, expires unfilled, is cancelled below its stop or is still waiting at the end) is kept in
+'voids' with all of them zero.
 """
 from __future__ import annotations
 
@@ -178,12 +183,13 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
     """One sleeve (capital 1.0) through the panel p (panel.Panel). starts: None = the method (a close below the
     band mid); otherwise a set of bar indices on which a plan may start whatever the price (the random-timing
     placebo), every other rule unchanged. rates(date_iso) -> the 3-month T-bill yield known on that day.
-    hedge: (SPY's adjusted opens, closes) on p.dates, for the hedged metric (without it the hedge leg is 0).
+    hedge: (SPY's adjusted opens, closes, session numbers) on p.dates, for the hedged metric: the window is
+    counted in SPY sessions (without hedge the hedge leg is 0 and the window counts the company's bars).
     single: stop as soon as the first plan has ended (one plan from first_day: the every-start table)."""
     n = len(p.dates)
     i0 = bisect.bisect_left(p.dates, first_day)
     i1 = n - 1 if last_day is None else bisect.bisect_right(p.dates, last_day) - 1
-    so, sc = hedge if hedge is not None else (None, None)
+    so, sc, sess = hedge if hedge is not None else (None, None, range(n))
     cash, shares, avg = 1.0, 0.0, 0.0
     stop, stop_src, hc, trail = None, None, None, None
     plan = None
@@ -222,7 +228,7 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
     for i in range(i0, i1 + 1):
         # ---------------- the open of bar i
         cur = plan                                  # the plan held into this bar, for the hedged metric
-        k_h = i - cur.start if cur is not None else 0
+        k_h = sess[i] - sess[cur.start] if cur is not None else 0
         acc = cur is not None and k_h <= H_LONG
         if i > i0:
             days = (dt.date.fromisoformat(p.dates[i]) - dt.date.fromisoformat(p.dates[i - 1])).days
@@ -328,6 +334,10 @@ def run(p, r: Rules, rates, first_day: str = "2008-01-02", last_day: str | None 
                         for t in fire:
                             done[t] = True
                         sells.append(("sell", q, "tp_" + "+".join(str(t + 1) for t in fire)))
+            if plan is not None and not plan.filled and i in p.spin_exit:
+                void(i, "spin")                     # its levels do not survive the distribution
+            elif plan is not None and not plan.filled and not r.no_stop and c < plan.stop0:
+                void(i, "cancelled_below_stop")     # no first buy once the stop is broken
             if plan is not None and not sells and not plan.cancelled:
                 k = plan.next_k
                 if today > plan.expires:

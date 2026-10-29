@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Run the forward-P/E band pilot on a frozen snapshot: the user's buy method on the 50 drawn companies with EPS
-version T (the main result) and F / FY (look-ahead EPS: descriptive, not evidence), the descriptive variants,
+version T (the main result) and F (look-ahead EPS: read one way only), the four variants of SPEC v1 section 7,
 buy-and-hold of the same companies and SPY. The primary test: the method's plans against plans started on
-random eligible days of the same companies, each plan's P&L hedged daily with SPY over the 252 sessions after
-its signal (stats.plan_test, from the every-start table of placebo.pool); the rules-free signal test beside it.
-Writes results.json, plans.csv and portfolio.json to --out (report.py turns them into the report).
+random eligible days of the same companies, each plan's P&L hedged daily with SPY over the 252 SPY sessions
+after its signal (stats.plan_test, from the every-start table of placebo.pool); the rules-free signal test
+beside it; each variant's theta against its own table (descriptive). Writes results.json, plans.csv,
+portfolio.json, pools_T.json, pools_F.json and status.json to --out (report.py turns them into the report).
 
-    python backtest/pilot/run_pilot.py --snap DIR --out DIR [--plan-replicas 1000] [--replicas 200]
-                                       [--workers 4] [--quick]
+    python backtest/pilot/run_pilot.py --snap DIR --out DIR [--plan-replicas 1000] [--workers 4] [--quick]
 
 All computing happens here; the snapshot is refused when a file differs from its manifest.
 """
@@ -35,23 +35,17 @@ import stats as ST  # noqa: E402
 import status as SU  # noqa: E402
 
 FIRST_DAY = "2008-01-02"
-VERSIONS = ("T", "F", "FY")
+VERSIONS = ("T", "F")
 MAIN = "T"
-PLACEBO_VERSIONS = ("T", "F")
-SIGNAL_EVERY = 21                               # the rules-free signal test samples every 21st session
-VARIANTS = {                                    # descriptive only, on version T
-    "V1_cap_at_plan_price": {"max_price": "plan"},
-    "V3_cancel_tranches_at_tp1": {"cancel_on_tp1": True},
-    "V4_trailing_from_first_fill": {"trail_from": "first_fill"},
-    "V5_trailing_after_tp3": {"trail_from": "tp_3"},
-    "V6_no_valuation_tiers": {"tp_temp": False},
-    "V8_cooldown_20": {"cooldown": 20},
-    "V11_no_reward_risk_gate": {"min_rr": None, "min_rr0": None},
-    "V12_tranches_below_mid": {"tranche_below_mid": True},
-    "stop_15pct": {"stop_pct": 0.15},
-    "no_stop": {"no_stop": True},
-    "exit_all_above_high": {"exit_all_at": "high"},
+SIGNAL_EVERY = 21                               # the rules-free signal test samples every 21st SPY session
+VARIANTS = {                                    # SPEC v1 section 7: version T, descriptive only
+    "stop_15pct": {"stop_pct": 0.15},                       # V-a
+    "exit_all_above_high": {"exit_all_at": "high"},         # V-b
+    "V8_cooldown_20": {"cooldown": 20},                     # V-c
+    "V12_tranches_below_mid": {"tranche_below_mid": True},  # V-d
 }
+SLEEVE_ONLY = ("cooldown", "cooldown_after")    # rules a plan simulated alone never meets: the main table serves
+AT_CLOSE = ("delisted", "spin")                 # sales at the close of their bar (SPEC R10)
 # ---------------------------------------------------------------- the companies
 def choose(snap: Path, sample: dict) -> tuple[list, dict]:
     """The companies after the pre-registered replacement walk (status.py), [(key, series, sector, spans)], and
@@ -82,27 +76,36 @@ def tiers(exits: list) -> set:
     return {int(t) for e in exits if e.startswith("tp_") for t in e[3:].split("+")}
 
 
-def plan_rows(p, out: dict, run: str, version: str, sector: str, key: str | None = None) -> list:
+def plan_rows(p, out: dict, run: str, version: str, sector: str, key: str, sess: list, zi: int) -> list:
+    """One row per plan the run started: closed, open at the end, or void (it never bought: lapsed at the
+    chase limit, expired, cancelled below its stop or before a spin-off, or still waiting at the end)."""
     rows = []
-    items = [(pl, False) for pl in out["plans"]] + ([(out["open"], True)] if out["open"] else [])
+    items = [(pl, False) for pl in out["plans"]] + ([(out["open"], True)] if out["open"] else []) + \
+        [(pl, False) for pl in out["voids"]]
     for pl, is_open in items:
         inv = pl.invested()
         mtm = out["open_value"] if is_open else 0.0
         end = out["last"] if is_open else pl.end
-        first = pl.filled[0][0]
+        first = pl.filled[0][0] if pl.filled else None
+        bought = sum(f[2] for f in pl.filled)
         tp = tiers([s[4] for s in pl.sold])
         rows.append({
-            "symbol": key or p.symbol, "sector": sector, "run": run, "version": version,
-            "start": p.dates[pl.start], "year": int(p.dates[pl.start][:4]), "first_fill": p.dates[first],
+            "symbol": key, "sector": sector, "run": run, "version": version,
+            "start": p.dates[pl.start], "year": int(p.dates[pl.start][:4]),
+            "first_fill": p.dates[first] if first is not None else None,
             "end": p.dates[end], "open_at_end": is_open, "status": "open" if is_open else pl.status,
             "P": pl.price, "atr_pct": pl.atr / pl.price, "stop0": pl.stop0, "t1": pl.t1, "t2": pl.t2,
-            "t1_src": pl.t1_src, "rr": pl.rr, "pct0": pl.pct0,
+            "t1_src": pl.t1_src, "rr": pl.rr, "pct0": pl.pct0, "temp0": pl.temp0,
             "below_mid": pl.price / pl.mid0 - 1 if pl.mid0 else None,
             "tranches": len(pl.filled), "filled_frac": inv / pl.size, "blocked": pl.blocked,
+            "avg_vs_P": inv / bought / pl.price - 1 if bought else None,
+            "days_to_fill": first - pl.start if first is not None else None,
             "tp1": 1 in tp, "tp2": 2 in tp, "tp3": 3 in tp,
-            "invested": inv, "proceeds": pl.proceeds(), "mtm": mtm, "ret": (pl.proceeds() + mtm - inv) / inv,
-            "sessions": end - first + 1, "full252": p.delisted or pl.start + S.H_LONG <= out["last"],
-            **{k: x for k, x in pl.metrics().items()},
+            "invested": inv, "proceeds": pl.proceeds(), "mtm": mtm,
+            "ret": (pl.proceeds() + mtm - inv) / inv if inv else None,
+            "sessions": end - first + 1 if first is not None else 0,
+            "full252": sess[pl.start] + S.H_LONG <= zi,
+            **pl.metrics(),
         })
     return rows
 
@@ -166,8 +169,8 @@ def buy_hold(p, adj_o: list, adj_c: list, rates) -> dict:
 
 def mirror_spy(p, out: dict, spy: M.Spy, rates) -> dict:
     """The same cash flows in SPY: each tranche's cash buys SPY at that day's open, each sale sells the same
-    fraction of the SPY holding (at the close for a delisting sale); the cash part is the method's own. It
-    isolates what the stock added beyond being in the market at those times."""
+    fraction of the SPY holding (at the close for a delisting or spin-off sale, after that day's open trades);
+    the cash part is the method's own. It isolates what the stock added beyond being in the market then."""
     n = len(p.dates)
     events = {}
     for pl in out["plans"] + ([out["open"]] if out["open"] else []):
@@ -184,7 +187,7 @@ def mirror_spy(p, out: dict, spy: M.Spy, rates) -> dict:
         if i > i0:
             days = (P.day(d) - P.day(p.dates[i - 1])).days
             cash *= 1.0 + rates(p.dates[i - 1]) * days / 365.0
-        for e in sorted(events.get(i, []), key=lambda e: e[0] != "sell"):
+        for e in sorted(events.get(i, []), key=lambda e: 1 if e[0] == "buy" else 2 if e[2] in AT_CLOSE else 0):
             if e[0] == "buy":
                 amt = min(e[1], cash)
                 units += amt / (spy.open_on(d) * (1 + cost))
@@ -192,7 +195,7 @@ def mirror_spy(p, out: dict, spy: M.Spy, rates) -> dict:
                 shares += e[2]
             elif shares > 0:
                 frac = min(1.0, e[1] / shares)
-                px = spy.close_on(d) if e[2] == "delisted" else spy.open_on(d)
+                px = spy.close_on(d) if e[2] in AT_CLOSE else spy.open_on(d)
                 cash += units * frac * px * (1 - cost)
                 units *= 1.0 - frac
                 shares -= e[1]
@@ -210,9 +213,10 @@ def compact(out: dict, dates: list, cal: list, accr: list, marks: list) -> dict:
             "expired": out.get("expired"), "lapsed": out.get("lapsed")}
 
 
-def hedge_of(p, spy: M.Spy) -> tuple[list, list]:
-    """SPY's adjusted open and close on the company's bar dates (the hedge leg of the primary metric)."""
-    return [spy.open_on(d) for d in p.dates], [spy.close_on(d) for d in p.dates]
+def hedge_of(p, spy: M.Spy) -> tuple[list, list, list]:
+    """SPY's adjusted open and close on the company's bar dates (the hedge leg of the primary metric) and the
+    SPY session number of each bar (the calendar its window counts)."""
+    return [spy.open_on(d) for d in p.dates], [spy.close_on(d) for d in p.dates], PL.sessions(p.dates, spy.days)
 
 
 def every_start_check(strat: dict, pool: dict) -> dict:
@@ -232,75 +236,116 @@ def every_start_check(strat: dict, pool: dict) -> dict:
     return {"plans": len(strat["start"]), "missing": missing[:10], "n_missing": len(missing), "max_diff": worst}
 
 
-def signal_rows(p, v: str, cands: list, adj_c: list, spy: M.Spy, sample: set, last: int) -> list:
-    """The rules-free signal test's days: sampled gate-passing member days with the forward return of the
-    stock (dividends included) minus SPY's over 63 / 126 / 252 sessions (to the last close when delisted)."""
+def signal_rows(p, v: str, pool: dict, adj_c: list, spy: M.Spy, sess: list, zi: int, sample: set) -> list:
+    """The rules-free signal test's days (SPEC 5.3): every SIGNAL_EVERY-th SPY session from FIRST_DAY that is
+    one of the company's pool days with a full window, with the stock's return (dividends included) minus
+    SPY's to the 63rd / 126th / 252nd SPY session after it; when the company's bars stop earlier, to its last
+    bar and SPY on that bar's date."""
     out = []
-    for i in cands:
+    for i, full in zip(pool["start"], pool["full252"]):
         d = p.dates[i]
-        if d not in sample or not adj_c[i]:
+        if not full or d not in sample or not adj_c[i]:
             continue
         low, mid, high, pct = p.range_at(v, i)
         fwd = {}
         for h in (63, 126, 252):
-            j = i + h if i + h <= last else (last if p.delisted else None)
-            if j is None or not adj_c[j]:
-                fwd[h] = None
-                continue
-            fwd[h] = adj_c[j] / adj_c[i] - spy.close_on(p.dates[j]) / spy.close_on(d)
+            k = sess[i] + h
+            j = bisect.bisect_right(p.dates, spy.days[k]) - 1 if k <= zi else None
+            ok = j is not None and j > i and adj_c[j]
+            fwd[h] = adj_c[j] / adj_c[i] - spy.close_on(p.dates[j]) / spy.close_on(d) if ok else None
         out.append((int(d[:4]), p.c[i] < mid, -math.log(p.c[i] / mid), fwd))
     return out
 
 
+def gate_days(p, r: S.Rules, first: int, last: int) -> dict:
+    """Days a plan could start on (as placebo.candidates, before the gates) with the close below the mid, by
+    what the gates said: how many the 15% stop distance and the reward/risk gate block (SPEC 5.4)."""
+    out = {"below_mid": 0, "pass": 0, "stop_too_far": 0, "reward_risk": 0}
+    for i in range(first, last):
+        rng = p.range_at(r.version, i)
+        if not (rng and p.atr[i] and p.can_start(r.version, i)) or not p.c[i] < rng[1]:
+            continue
+        c, A = p.c[i], p.atr[i]
+        t1, _, _ = S.targets(c, A, rng[1], rng[2], r)
+        out["below_mid"] += 1
+        out[S.gates(c, S.initial_stop(c, A, r, gate=True), t1, r)[1] or "pass"] += 1
+    return out
+
+
+def t_vs_f(p, first: int, last: int, sample: set) -> dict:
+    """Versions T and F on the member days where both have a range: how often they agree on 'below the mid',
+    and both percentiles on the sampled days (for their rank correlation)."""
+    days, agree, pairs = 0, 0, []
+    for i in range(first, last + 1):
+        a, b = p.range_at("T", i), p.range_at("F", i)
+        if not p.member[i] or a is None or b is None:
+            continue
+        days += 1
+        agree += (p.c[i] < a[1]) == (p.c[i] < b[1])
+        if p.dates[i] in sample:
+            pairs.append((a[3], b[3]))
+    return {"days": days, "agree": agree, "pairs": pairs}
+
+
+def own_pool(kw: dict) -> bool:
+    """Whether a variant needs its own every-start table: it changes how a plan runs, not only when one may
+    start."""
+    return any(k not in SLEEVE_ONLY for k in kw)
+
+
 def company_runs(args) -> dict:
     """Every run of one company: the method on each version (its plans with the hedged metric, the every-start
-    table of the placebo, the sleeve-level placebo replicas and the SPY mirror), the variants on T,
-    buy-and-hold, the rules-free signal days and the panel's report. Executed in a worker process."""
-    snap, key, series, sector, spans, spin_days, versions, variants, replicas, cal, accr = args
+    table of the placebo and the SPY mirror), the variants on T (each with its own table where its rules
+    change how a plan runs), buy-and-hold, the rules-free signal days, the gate counts, T against F and the
+    panel's report. Executed in a worker process."""
+    snap, key, series, sector, spans, spin_days, versions, variants, cal, accr = args
     marks = ST.month_ends(cal)
     rates, spy = M.load(snap)
-    p = P.build(series, snap, spans, versions=versions, spinoffs=spin_days)
+    z = cal[-1]
+    zi = bisect.bisect_right(spy.days, z) - 1
+    p = P.build(series, snap, spans, versions=versions, snapshot_end=z, spinoffs=spin_days)
     hedge = hedge_of(p, spy)
+    sess = hedge[2]
     adj_o, adj_c = adj_series(snap, series, p.dates)
     sample = set(cal[::SIGNAL_EVERY])
-    res = {"symbol": key, "series": series, "sector": sector, "runs": {}, "plans": [], "placebo": {},
-           "eligible": {}, "strategy": {}, "pool": {}, "every_start": {}, "signal": {}, "report": report_of(p)}
+    res = {"symbol": key, "series": series, "sector": sector, "runs": {}, "plans": [], "strategy": {}, "pool": {},
+           "every_start": {}, "signal": {}, "gates": {}, "t_vs_f": None, "report": report_of(p)}
     for v in versions:
         r = S.Rules(version=v)
         out = S.run(p, r, rates, first_day=FIRST_DAY, hedge=hedge)
         res["runs"][f"method_{v}"] = compact(out, p.dates, cal, accr, marks)
-        res["plans"] += plan_rows(p, out, f"method_{v}", v, sector, key)
+        res["plans"] += plan_rows(p, out, f"method_{v}", v, sector, key, sess, zi)
         res["runs"][f"spy_matched_{v}"] = compact(mirror_spy(p, out, spy, rates), p.dates, cal, accr, marks)
-        res["eligible"][v] = PL.eligible_days(p, out, r)
-        res["strategy"][v] = PL.columns(p, PL.method_plans(out), out["last"])
-        if v in PLACEBO_VERSIONS:
-            res["pool"][v] = PL.pool(p, r, rates, hedge, out["first"], out["last"])
-            res["every_start"][v] = every_start_check(res["strategy"][v], res["pool"][v])
-            if v == MAIN:
-                res["signal"][v] = signal_rows(p, v, res["pool"][v]["start"], adj_c, spy, sample, out["last"])
-        if v in PLACEBO_VERSIONS and replicas:
-            cands = PL.candidates(p, r, out["first"], out["last"])
-            target = PL.n_plans(out)
-            h = PL.calibrate(p, r, rates, target, cands, FIRST_DAY)
-            reps = []
-            for k in range(replicas):
-                o = PL.replica(p, r, rates, h, k, cands, first_day=FIRST_DAY)
-                c = compact(o, p.dates, cal, accr, marks)
-                reps.append({"monthly": c["monthly"], "held_share": c["held_share"], "plans": c["plans"]})
-            res["placebo"][v] = {"h": h, "candidates": len(cands), "target": target, "reps": reps}
+        res["strategy"][v] = PL.columns(p, PL.method_plans(out), sess, zi)
+        res["pool"][v] = PL.pool(p, r, rates, hedge, out["first"], out["last"], zi)
+        res["every_start"][v] = every_start_check(res["strategy"][v], res["pool"][v])
+        res["gates"][v] = gate_days(p, r, out["first"], out["last"])
+        if v == MAIN:
+            res["signal"][v] = signal_rows(p, v, res["pool"][v], adj_c, spy, sess, zi, sample)
+    if "T" in versions and "F" in versions:
+        res["t_vs_f"] = t_vs_f(p, out["first"], out["last"], sample)
     for name, kw in variants.items():
-        out = S.run(p, replace(S.Rules(version=MAIN), **kw), rates, first_day=FIRST_DAY, hedge=hedge)
+        r = replace(S.Rules(version=MAIN), **kw)
+        out = S.run(p, r, rates, first_day=FIRST_DAY, hedge=hedge)
         res["runs"][name] = compact(out, p.dates, cal, accr, marks)
-        res["plans"] += plan_rows(p, out, name, MAIN, sector, key)
+        res["plans"] += plan_rows(p, out, name, MAIN, sector, key, sess, zi)
+        res["strategy"][name] = PL.columns(p, PL.method_plans(out), sess, zi)
+        if own_pool(kw):
+            res["pool"][name] = PL.pool(p, r, rates, hedge, out["first"], out["last"], zi)
+        res["every_start"][name] = every_start_check(res["strategy"][name], res["pool"].get(name, res["pool"][MAIN]))
     res["runs"]["buy_hold_member"] = compact(buy_hold(p, adj_o, adj_c, rates), p.dates, cal, accr, marks)
     return res
 
 
 def report_of(p) -> dict:
-    """The panel's data report: statement basis decisions, spin-off candidates, why member days lack a range."""
+    """The panel's data report: statement basis decisions, spin-off candidates, suspicious bars, why member days
+    lack a range."""
     rep = {k: v for k, v in p.report.items() if k != "clean"}
     rep["jumps"] = p.report["clean"]["jumps"]
     rep["bars_removed"] = p.report["clean"]["placeholders_removed"]
+    rep["suspicious_bars"] = sum(p.suspicious)
+    rep["suspicious_member_days"] = sum(1 for i, d in enumerate(p.dates)
+                                        if d >= FIRST_DAY and p.member[i] and p.suspicious[i])
     why = {}
     for v, w in p.why.items():
         c = {}
@@ -327,48 +372,18 @@ def average(rows: list) -> list:
     return [sum(x[k] for x in rows) / len(rows) for k in range(len(rows[0]))]
 
 
-def placebo_portfolios(results: list, v: str, cal: list, accr: list) -> list:
-    """Per replica of the sleeve-level placebo: the equal-weight portfolio's monthly statistics."""
+def compare(results: list, plans: list, cal: list, versions, spy_monthly: list) -> dict:
+    """Descriptive: the method's per-plan return on the money it invested (plans that bought) with a
+    calendar-year block interval, and its portfolio's yearly excess over buy-and-hold, the SPY mirror and SPY."""
     marks = ST.month_ends(cal)
-    mcal, macc = [cal[k] for k in marks], [accr[k] for k in marks]
-    have = [r for r in results if v in r["placebo"]]
-    if not have:
-        return []
-    n = len(have[0]["placebo"][v]["reps"])
-    out = []
-    for k in range(n):
-        reps = [r["placebo"][v]["reps"][k] for r in have]
-        s = ST.series_stats(mcal, average([x["monthly"] for x in reps]), macc)
-        out.append({"cagr": s["cagr"], "max_dd": s["max_dd"], "sharpe": s["sharpe"],
-                    "plans": sum(x["plans"] for x in reps),
-                    "held_share": sum(x["held_share"] for x in reps) / len(reps)})
-    return out
-
-
-def compare(results: list, plans: list, cal: list, accr: list, versions, spy_monthly: list) -> dict:
-    """Descriptive: the method's per-plan return with a calendar-year block interval, its portfolio's rank
-    among the sleeve-level placebo replicas, and its yearly excess over buy-and-hold, the SPY mirror and SPY."""
-    marks = ST.month_ends(cal)
-    mcal, macc = [cal[k] for k in marks], [accr[k] for k in marks]
+    mcal = [cal[k] for k in marks]
     out = {}
     for v in versions:
         run = f"method_{v}"
-        mine = [x for x in plans if x["run"] == run]
+        mine = [x for x in plans if x["run"] == run and x["ret"] is not None]
         m_month = average([r["runs"][run]["monthly"] for r in results])
-        ms = ST.series_stats(mcal, m_month, macc)
         o = {"plans": len(mine), "plan_mean": ST.mean_by_blocks([x["ret"] for x in mine], [x["year"] for x in mine],
                                                                 f"{run}|plans")}
-        reps = placebo_portfolios(results, v, cal, accr)
-        if reps:
-            o["placebo"] = {
-                "replicas": len(reps),
-                "cagr": ST.rank_against(ms["cagr"], [x["cagr"] for x in reps]),
-                "sharpe": ST.rank_against(ms["sharpe"], [x["sharpe"] for x in reps]),
-                "max_dd": ST.rank_against(ms["max_dd"], [x["max_dd"] for x in reps]),
-                "plans": {"method": len(mine), "placebo_mean": sum(x["plans"] for x in reps) / len(reps)},
-                "held_share": {"method": sum(r["runs"][run]["held_share"] for r in results) / len(results),
-                               "placebo_mean": sum(x["held_share"] for x in reps) / len(reps)},
-            }
         for bench in ("buy_hold_member", f"spy_matched_{v}", "spy"):
             b = spy_monthly if bench == "spy" else average([r["runs"][bench]["monthly"] for r in results])
             o[f"vs_{bench}"] = ST.yearly_excess(mcal, m_month, b)
@@ -376,21 +391,75 @@ def compare(results: list, plans: list, cal: list, accr: list, versions, spy_mon
     return out
 
 
-def primary(results: list, reps: int) -> dict:
+def tables(results: list, key: str) -> tuple[dict, dict]:
+    """(strategy columns, pool columns) by company for a version or a variant (a variant without a table of
+    its own uses the main one)."""
+    return ({r["symbol"]: r["strategy"][key] for r in results},
+            {r["symbol"]: r["pool"].get(key, r["pool"][MAIN]) for r in results})
+
+
+def primary(results: list, reps: int, versions) -> dict:
     """The plan-level test per version (T is the main result, F is look-ahead), on the hedged metric over 252
     sessions, with the 126-session and the unhedged versions beside it (descriptive)."""
     out = {}
-    for v in PLACEBO_VERSIONS:
-        have = [r for r in results if v in r["pool"]]
-        if not have:
-            continue
-        strat = {r["symbol"]: r["strategy"][v] for r in have}
-        pool = {r["symbol"]: r["pool"][v] for r in have}
+    for v in versions:
+        strat, pool = tables(results, v)
         out[v] = {"dh252": ST.plan_test(strat, pool, "dh252", "full252", reps, v),
                   "dh126": ST.plan_test(strat, pool, "dh126", "full126", reps, v),
                   "raw252": ST.plan_test(strat, pool, "raw252", "full252", reps, v),
-                  "every_start": {r["symbol"]: r["every_start"][v] for r in have}}
+                  "every_start": {r["symbol"]: r["every_start"][v] for r in results}}
     return out
+
+
+def variant_tests(results: list, variants) -> dict:
+    """Each variant's theta on DH_252 against its own every-start table (SPEC 7: descriptive, no p-value)."""
+    out = {}
+    for name in variants:
+        strat, pool = tables(results, name)
+        out[name] = {"dh252": ST.plan_test(strat, pool, "dh252", "full252", 0, f"{MAIN}|{name}"),
+                     "own_table": all(name in r["pool"] for r in results),
+                     "every_start": {r["symbol"]: r["every_start"][name] for r in results}}
+    return out
+
+
+def describe(results: list, key: str) -> dict:
+    """SPEC 5.4, per plan with a full window: the method's mean of each metric against the pool's, weighted as
+    theta weights it (each company's pool mean times its number of plans); the method's quantiles of DH_252
+    and raw_252; the market part (raw_252 - DH_252); the exits of both."""
+    strat, pool = tables(results, key)
+    n, sums, wsum, exits, pexits, dh, raw = 0, {}, {}, {}, {}, [], []
+    for c in strat:
+        x, y = strat[c], pool[c]
+        mine = [k for k, f in enumerate(x["full252"]) if f]
+        pk = [k for k, f in enumerate(y["full252"]) if f]
+        if not mine or not pk:
+            continue
+        n += len(mine)
+        for m in S.METRICS:
+            sums[m] = sums.get(m, 0.0) + sum(x[m][k] for k in mine)
+            wsum[m] = wsum.get(m, 0.0) + len(mine) * sum(y[m][k] for k in pk) / len(pk)
+        for k in mine:
+            exits[x["status"][k]] = exits.get(x["status"][k], 0) + 1
+            dh.append(x["dh252"][k])
+            raw.append(x["raw252"][k])
+        for k in pk:
+            pexits[y["status"][k]] = pexits.get(y["status"][k], 0.0) + len(mine) / len(pk)
+    if not n:
+        return {"plans": 0}
+    q = lambda v, f: sorted(v)[min(len(v) - 1, int(f * len(v)))]        # noqa: E731
+    return {"plans": n, "mean": {m: sums[m] / n for m in S.METRICS}, "pool_mean": {m: wsum[m] / n for m in S.METRICS},
+            "market_part": {"method": (sums["raw252"] - sums["dh252"]) / n,
+                            "pool": (wsum["raw252"] - wsum["dh252"]) / n},
+            "dh252": {"median": q(dh, 0.5), "q25": q(dh, 0.25), "q75": q(dh, 0.75), "q05": q(dh, 0.05)},
+            "raw252": {"median": q(raw, 0.5), "q25": q(raw, 0.25), "q75": q(raw, 0.75), "q05": q(raw, 0.05)},
+            "exits": {k: v / n for k, v in sorted(exits.items())},
+            "pool_exits": {k: v / n for k, v in sorted(pexits.items())}}
+
+
+def pool_dump(results: list, v: str) -> dict:
+    """The every-start table of a version by company (pools_T.json, pools_F.json): enough to redo theta."""
+    keep = ("day", "year", "full252", "full126", "dh252", "dh126", "raw252", "status", "fills", "temp0", "below_mid")
+    return {r["symbol"]: {k: r["pool"][v][k] for k in keep} for r in results if v in r["pool"]}
 
 
 # ---------------------------------------------------------------- main
@@ -399,10 +468,8 @@ def main(argv=None) -> int:
     ap.add_argument("--snap", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--plan-replicas", type=int, default=ST.PLAN_REPS, help="the primary test's placebo")
-    ap.add_argument("--replicas", type=int, default=200, help="the sleeve-level placebo (descriptive)")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--quick", action="store_true", help="T only, no variants, 20 sleeve and 200 plan replicas "
-                                                         "(a smoke test)")
+    ap.add_argument("--quick", action="store_true", help="T only, no variants, 200 replicas (a smoke test)")
     ap.add_argument("--sample", default=str(HERE / "sample.json"), help="the drawn sample (tests use their own)")
     ap.add_argument("--spinoffs", default=str(HERE / "spinoffs.json"))
     a = ap.parse_args(argv)
@@ -426,9 +493,8 @@ def main(argv=None) -> int:
     accr = accrual(cal, rates)
     versions = (MAIN,) if a.quick else VERSIONS
     variants = {} if a.quick else VARIANTS
-    reps = 20 if a.quick else a.replicas
     plan_reps = 200 if a.quick else a.plan_replicas
-    jobs = [(snap, key, series, sec, spans, spinoffs.get(key, []), versions, variants, reps, cal, accr)
+    jobs = [(snap, key, series, sec, spans, spinoffs.get(key, []), versions, variants, cal, accr)
             for key, series, sec, spans in comps]
     with Pool(a.workers) as pool:
         results = pool.map(company_runs, jobs)
@@ -443,25 +509,34 @@ def main(argv=None) -> int:
         summary[run]["held_share"] = sum(hs) / len(hs) if hs else None
         summary[run]["plans"] = sum(r["runs"][run]["plans"] for r in results)
     plans = [row for r in results for row in r["plans"]]
+    tf = [r["t_vs_f"] for r in results if r["t_vs_f"]]
+    pairs = [x for t in tf for x in t["pairs"]]
+    gates = {v: {k: sum(r["gates"][v][k] for r in results) for k in results[0]["gates"][v]} for v in versions}
     res = {"created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "snapshot": {"created": man.get("created"), "last_day": cal[-1], "files": len(man["files"])},
            "companies": [{"symbol": c[0], "series": c[1], "sector": c[2]} for c in comps], "replacements": swaps,
            "walk": {k: walk.get(k) for k in ("z", "same_as_pc", "review", "assessed")},
            "first_day": FIRST_DAY, "rules": asdict(S.Rules()), "variants": variants,
-           "primary": primary(results, plan_reps),
+           "primary": primary(results, plan_reps, versions),
            "signal": {MAIN: ST.signal_test([x for r in results for x in r["signal"].get(MAIN, [])], MAIN)},
+           "variant_tests": variant_tests(results, variants),
+           "describe": {k: describe(results, k) for k in list(versions) + list(variants)},
+           "gates": gates,
+           "t_vs_f": {"days": sum(t["days"] for t in tf), "agree": sum(t["agree"] for t in tf),
+                      "sampled": len(pairs), "spearman": ST.spearman([a for a, _ in pairs], [b for _, b in pairs])}
+           if tf else None,
            "summary": summary,
-           "compare": compare(results, plans, cal, accr, versions, [spy_plain[k] for k in marks]),
-           "placebo_calibration": {r["symbol"]: {v: {k: x for k, x in pl.items() if k != "reps"}
-                                                 for v, pl in r["placebo"].items()} for r in results},
-           "reports": {r["symbol"]: r["report"] for r in results},
-           "eligible_days": {r["symbol"]: r["eligible"] for r in results}}
+           "compare": compare(results, plans, cal, versions, [spy_plain[k] for k in marks]),
+           "reports": {r["symbol"]: r["report"] for r in results}}
     (out / "results.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     with (out / "plans.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(plans[0]) if plans else ["symbol"])
         w.writeheader()
         w.writerows(plans)
     (out / "portfolio.json").write_text(json.dumps({"dates": cal, "series": port}), encoding="utf-8")
+    for v in versions:
+        (out / f"pools_{v}.json").write_text(json.dumps(pool_dump(results, v)), encoding="utf-8")
+    (out / "status.json").write_text(json.dumps(walk, indent=1, default=str), encoding="utf-8")
     print(f"{len(comps)} companies ({sum(1 for x in swaps if x['in'])} replaced), {len(plans)} plan rows; "
           f"results in {out}")
     return 0

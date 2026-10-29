@@ -59,6 +59,32 @@ class PlanTestTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ST.plan_test({"A": cols([1.0], [2010])}, {"A": cols([], [])}, reps=9)
 
+    def test_leave_one_company_out(self):
+        strat = {"A": cols([3.0, 3.0], [2010, 2011]), "B": cols([1.0], [2011]), "C": cols([0.0], [2012])}
+        pool = {"A": cols([0.0, 0.0], [2010, 2011]), "B": cols([0.0], [2011]), "C": cols([0.0], [2012])}
+        out = ST.plan_test(strat, pool, reps=0, tag="loco")
+        self.assertAlmostEqual(out["theta"], 7.0 / 4)
+        lo = out["leave_one_company_out"]
+        self.assertAlmostEqual(lo["min"], 0.5)
+        self.assertAlmostEqual(lo["max"], 7.0 / 3)
+        self.assertEqual((lo["min_without"], lo["max_without"]), ("A", "C"))
+        self.assertIsNone(out["placebo"])                          # reps = 0: theta and its intervals only
+        self.assertIn("year_blocks", out)
+
+    def test_metrics_reading_one_pool_draw_the_same_days(self):
+        rnd = random.Random(9)
+        strat, pool = {}, {}
+        for c in "ABCD":
+            v = [rnd.gauss(0, 1) for _ in range(40)]
+            y = [2008 + k % 10 for k in range(40)]
+            pool[c] = dict(cols(v, y), raw252=list(v))
+            strat[c] = dict(cols(v[:5], y[:5]), raw252=list(v[:5]))
+        a = ST.plan_test(strat, pool, "dh252", reps=300, tag="T")
+        b = ST.plan_test(strat, pool, "raw252", reps=300, tag="T")
+        self.assertEqual(a["placebo"], b["placebo"])
+        c = ST.plan_test(strat, pool, "dh252", reps=300, tag="F")
+        self.assertNotEqual(a["placebo"], c["placebo"])            # another version draws its own days
+
 
 class BlocksTest(unittest.TestCase):
     def test_weighted_equals_unweighted_with_unit_weights(self):
