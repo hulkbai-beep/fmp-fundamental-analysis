@@ -2,6 +2,7 @@
 reproduces the skill's price_range with analysts' estimates."""
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import json
 import random
@@ -204,6 +205,83 @@ class ChecksTest(unittest.TestCase):
             self.assertTrue(all(f.get("every_start") for f in got["failures"]), name)
         self.assertEqual(got["every_start_plans"], got["pool_days"])
 
+    def test_the_audited_plans_are_the_tabulated_ones(self):
+        """Check 6 records a digest of the plans it replayed, the method's and the every-start table's, and
+        run_pilot.py one of the tables it tabulates, the rows theta comes from: on the code as it is they are
+        equal; a placebo.pool that drops the plans started on hot days, which the replay (running
+        placebo.every_start itself) never sees, or a placebo.columns that calls a window full five sessions
+        early, makes them differ, and report.py then gives no label."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        key, sym, sector, spans = comps[0]
+        rates, spy = C.M.load(self.snap)
+        cal = [d for d in spy.days if R.FIRST_DAY <= d <= walk["z"]]
+        spin = {"AAA": ["2016-03-05"]}.get(key, [])
+        args = (self.snap, key, sym, sector, spans, spin, R.VERSIONS, {}, cal, R.accrual(cal, rates))
+
+        def digests(res):
+            return {v: {"method": R.table_digest(res["strategy"][v]), "pool": R.table_digest(res["pool"][v])}
+                    for v in R.VERSIONS}
+        self.assertEqual(digests(R.company_runs(args)), {v: self.res["fills"]["tables"][v][key] for v in R.VERSIONS})
+        pool0 = C.PL.pool
+
+        def cold(*a, **k):
+            cols = pool0(*a, **k)
+            keep = [j for j, t in enumerate(cols["temp0"]) if t != "hot"]
+            self.assertLess(len(keep), len(cols["temp0"]))
+            return {c: [x[j] for j in keep] for c, x in cols.items()}
+        with mock.patch.object(C.PL, "pool", cold):
+            got = digests(R.company_runs(args))
+        for v in R.VERSIONS:
+            self.assertEqual(got[v]["method"], self.res["fills"]["tables"][v][key]["method"])
+            self.assertNotEqual(got[v]["pool"], self.res["fills"]["tables"][v][key]["pool"])
+        cols0 = C.PL.columns
+
+        def early(p, plans, sess, zi):
+            return cols0(p, plans, sess, zi + 5)
+        with mock.patch.object(C.PL, "columns", early):
+            got = digests(R.company_runs(args))
+        self.assertNotEqual(got["T"]["pool"], self.res["fills"]["tables"]["T"][key]["pool"])    # F's pool ends
+        self.assertEqual(got["F"]["pool"], self.res["fills"]["tables"]["F"][key]["pool"])       # at its horizon
+
+    def test_a_run_that_starts_late_fails_the_pool_check(self):
+        """Check 6 tests the pool of start days against the rule over SPEC's range (2008-01-02 to the bar before
+        the last), not over the run's own first and last bars: a method run that starts after the first pool
+        day takes that day out of the pool and of the every-start table, and the check says so."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        run0, cand = C.S.run, C.PL.candidates
+
+        def late(p, r, rates, first_day=None, **k):
+            out = run0(p, r, rates, first_day=first_day, **k)
+            if k.get("single"):
+                return out
+            return run0(p, r, rates, first_day=p.dates[cand(p, r, out["first"], out["last"])[0] + 1], **k)
+        with mock.patch.object(C.S, "run", late):
+            got = C.check_fills(self.snap, comps[:1], walk["z"], {})
+        self.assertIn("pool", {f.get("replay") for f in got["failures"]}, got["failures"][:2])
+
+    def test_the_band_check_reads_the_quarters_each_version_reads(self):
+        """Check 3 takes the share check's latest quarter from the quarters each version reads: T's of the day's
+        epoch (an unclear split's old statements as filed), F's with every split decided on the full data. On
+        splits whose share-count verdict comes after the first statement after them (synth.late_verdict) both
+        versions pass, on days up to that statement and after it."""
+        tmp = tempfile.TemporaryDirectory()
+        snap, comps = Path(tmp.name), []
+        for shape, other in (("A", False), ("B", False), ("B", True)):
+            sym = f"LV{shape}{int(other)}"
+            synth.late_verdict(snap, sym, shape, other)
+            comps.append((sym, sym, "Tech", [["2005-01-03", "2030-01-01"]]))
+        p = P.build(comps[0][1], snap, comps[0][3], versions=("T",))
+        k = bisect.bisect_right(p.dates, "2016-11-04")
+        want = set(range(k - 100, k)) | set(range(bisect.bisect_left(p.dates, R.FIRST_DAY), k, 50))
+
+        class Days(random.Random):
+            def sample(self, pop, n):
+                pop = list(pop)
+                return pop if not pop or not isinstance(pop[0], int) else [i for i in pop if i in want]
+        got = C.check_band(snap, comps, 10 ** 6, Days(), "2026-10-23")
+        self.assertEqual((got["checked"], got["failed"]), (2 * len(comps) * len(want), 0), got["failures"][:2])
+        tmp.cleanup()
+
     def test_a_trigger_close_without_an_atr_has_no_chase_limit(self):
         """SPEC R5's chase limit needs the trigger close's ATR. Without one (or with 0; neither happens on a
         panel.build panel after its 14th bar, so they are planted here) sim buys the tranche uncapped, the
@@ -340,6 +418,16 @@ class ChecksTest(unittest.TestCase):
         self.assertFalse((out / "checks.json").exists())
         self.assertEqual(C.main(args + ["--only", "calendar"]), 0)          # unchanged: written
         self.assertTrue((out / "checks.json").exists())
+
+    def test_the_snapshot_folder_is_not_an_output_folder(self):
+        """checks.py refuses an --out that is the snapshot folder or inside it, before writing anything there."""
+        link = Path(self.tmp.name) / "snap_link"
+        link.symlink_to(self.snap)
+        for out in (self.snap, link, self.snap / "raw"):
+            self.assertEqual(C.main(["--snap", str(self.snap), "--out", str(out), "--only", "calendar",
+                                     "--sample", str(self.sample), "--spinoffs", str(self.spin)]), 2, out)
+            self.assertFalse((out / "checks.json").exists(), out)
+        link.unlink()
 
     def test_spin_off_evidence(self):
         rows = {(r["symbol"], r["source"]): r for r in self.res["spins"]}

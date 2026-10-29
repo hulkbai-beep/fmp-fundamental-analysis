@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import datetime as dt
+import hashlib
 import json
 import os
 import random
@@ -102,8 +103,9 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
         sp = P.split_factors(P.read(snap / "raw" / "splits" / f"{sym}.json"))
         years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {}, unclear="none", units="fix",
                                  eps_shares="later")
-        quarters = P.statement_rows(P.read(snap / "raw" / "inc_q" / f"{sym}.json"), sp, {}, unclear="none",
-                                    units="fix", eps_shares="later")
+        q_raw = P.read(snap / "raw" / "inc_q" / f"{sym}.json")
+        reading = {"T": P.statement_rows(q_raw, sp, {}, unclear="mark", units="fix", eps_shares="later"),
+                   "F": P.statement_rows(q_raw, sp, {}, unclear="none", units="fix", eps_shares="later")}
         days = [i for i, d in enumerate(p.dates) if d >= R.FIRST_DAY and p.member[i]]
         for i in rnd.sample(days, min(len(days), per)):
             for v in ("T", "F"):
@@ -113,7 +115,10 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
                 until = next(u for u, _ in p.epochs["T"] if u is None or p.dates[i] <= u)
                 ys = P.t_years(years, p.report, until) if v == "T" else years
                 yrs = [{"date": y["end"].isoformat(), "shares": y["shares"]} for y in P.latest_by_end(ys, d)]
-                qs = [q for q in quarters if q["known"] < d and q["shares"]]
+                # T: the quarters of the day's epoch (an unclear split's old ones leave at its end); F: all, with
+                # every boundary decided on the full data
+                qs = [q for q in reading[v] if q["known"] < d and q["shares"] and
+                      (v == "F" or not q.get("unclear_until") or (until and q["unclear_until"].isoformat() >= until))]
                 cur = max(qs, key=lambda q: (q["known"], q["end"]))["shares"] if qs else None
                 code = A.history_problem(yrs, window, start, cur)[0]
                 eps = dict(zip(p.dates, p.window_eps(v, i)))
@@ -458,16 +463,35 @@ def replay_diff(p, pl, rp: dict) -> dict | None:
     return None
 
 
+def plans_digest(p, plans: list, sess: list, zi: int) -> str:
+    """The md5 of plans as the rows of their table (run_pilot.TABLE_DIGEST), tabulated here apart from
+    placebo.columns, in start order: the start day and its year, whether the 252 and the 126 SPY sessions after
+    the start end by session zi (SPEC 5.2), the plan's metrics, its status and buys, the temperature at the start
+    and whether that close was below the mid. run_pilot.table_digest gives the same for a table that holds these
+    plans, so report.py can see that the plans audited here are the ones the results use."""
+    rows = []
+    for pl in sorted(plans, key=lambda x: x.start):
+        day = p.dates[pl.start]
+        row = dict(pl.metrics(), day=day, year=int(day[:4]), full252=sess[pl.start] + 252 <= zi,
+                   full126=sess[pl.start] + 126 <= zi, status=pl.status, fills=len(pl.filled), temp0=pl.temp0,
+                   below_mid=pl.price < pl.mid0 if pl.mid0 else None)
+        rows.append([row[k] for k in R.TABLE_DIGEST])
+    return hashlib.md5(json.dumps(rows).encode("utf-8")).hexdigest()
+
+
 def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
     """The trade audit (SPEC check 6) on the method's runs of both versions, panels and runs as run_pilot makes
     them: every plan close against the signal rule, every plan replayed from its close by the rules as written
     above (levels, buys, sales, end), and the fills themselves: the prices, the trigger closes, the chase limit,
     the cash of each sale, no buy and sale at one open, shares bought = shares sold + shares held. The placebo's
-    side too: its pool of start days (placebo.candidates) against the rules, and every plan of its every-start
-    table (placebo.every_start, what placebo.pool tabulates), which must start on its pool day with size 1,
-    replayed the same way."""
+    side too: its pool of start days (placebo.candidates, over the run's days) against the rules (over SPEC's:
+    from FIRST_DAY to the bar before the last), and every plan of its every-start table (placebo.every_start,
+    what placebo.pool tabulates), which must start on its pool day with size 1, replayed the same way. The
+    digests of the method's plans and of the table, tabulated here (plans_digest), go into the result for
+    report.py to match with the tables in results.json."""
     rates, spy = M.load(snap)
-    bad, fills, sells, plans, pool_days, pool_plans = [], 0, 0, 0, 0, 0
+    zi = bisect.bisect_right(spy.days, z) - 1           # the last SPY session: a window ending later is not full
+    bad, fills, sells, plans, pool_days, pool_plans, tables = [], 0, 0, 0, 0, 0, {}
     for key, sym, sector, spans in comps:
         p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z, spinoffs=spin.get(key, []))
         hedge = R.hedge_of(p, spy)
@@ -482,8 +506,9 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                             "plan": [p.dates[i] for i in sorted(set(got) - set(want))][:5],
                             "rules": [p.dates[i] for i in sorted(set(want) - set(got))][:5]})
             pool = PL.candidates(p, r, out["first"], out["last"])
-            mine = [i for i in range(out["first"], out["last"]) if p.range_at(v, i) is not None and p.atr[i] and
-                    p.can_start(v, i) and plan_levels(p.c[i], p.atr[i], p.range_at(v, i))["ok"]]
+            mine = [i for i in range(bisect.bisect_left(p.dates, R.FIRST_DAY), len(p.dates) - 1)
+                    if p.range_at(v, i) is not None and p.atr[i] and p.can_start(v, i) and
+                    plan_levels(p.c[i], p.atr[i], p.range_at(v, i))["ok"]]
             pool_days += len(pool)
             if pool != mine:
                 bad.append({"symbol": sym, "version": v, "replay": "pool",
@@ -496,6 +521,8 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                 bad.append({"symbol": sym, "version": v, "replay": "table", "every_start": True,
                             "plan": [p.dates[table[off].start], table[off].size] if off < len(table) else None,
                             "rules": [p.dates[pool[off]], 1.0] if off < len(pool) else None})
+            tables.setdefault(v, {})[key] = {"method": plans_digest(p, every, hedge[2], zi),
+                                             "pool": plans_digest(p, table, hedge[2], zi)}
             for pl in table:
                 pool_plans += 1
                 diff = replay_diff(p, pl, replay_plan(p, pl, v))
@@ -537,7 +564,7 @@ def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:
                 if not pl.filled and (pl.sold or pl.status not in VOID):
                     bad.append(dict(tag, void=pl.status))
     return {"plans": plans, "fills": fills, "sales": sells, "pool_days": pool_days, "every_start_plans": pool_plans,
-            "failed": len(bad), "failures": bad[:20]}
+            "failed": len(bad), "failures": bad[:20], "tables": tables}
 
 
 def check_spins(snap: Path, comps: list, events: dict, z: str) -> list:
@@ -754,6 +781,9 @@ def main(argv=None) -> int:
     if not (a.snap and a.out):
         ap.error("--snap and --out are required")
     snap, out = Path(a.snap), Path(a.out)
+    if out.resolve() == snap.resolve() or snap.resolve() in out.resolve().parents:
+        print("refused: --out is the snapshot folder or inside it")
+        return 2
     out.mkdir(parents=True, exist_ok=True)
     for name in ("checks.json", "review.md"):      # a run that fails leaves no earlier checks behind
         (out / name).unlink(missing_ok=True)

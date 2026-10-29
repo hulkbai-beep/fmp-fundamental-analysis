@@ -82,12 +82,14 @@ def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, l
     versions, SPEC 5.2's replicas, the four variants), every every-start table reproduces its plans, the
     replacement walk matches the PC's, checks.py's checks all pass and were made from the inputs of these
     results (snapshot, sample, confirmed spin-offs, code) by the checks' code as it is now, on at least 200 band
-    triples and truncation cuts and on every plan of the every-start tables, with the data review table
-    written, and two runs gave these same results. The unit tests, the snapshot's integrity and the signature
-    on the data review are steps of the run, not of these files."""
+    triples and truncation cuts and on every plan of the every-start tables, the plans the trade audit replayed
+    being those of these results' tables (their digests), with the data review table written, and two runs gave
+    these same results. The unit tests, the snapshot's integrity and the signature on the data review are steps
+    of the run, not of these files."""
     notes = []
     prim = res.get("primary", {})
-    reps = {v: ((x.get("dh252") or {}).get("placebo") or {}).get("replicas") for v, x in prim.items()}
+    reps = {v: ((x.get("dh252") or {}).get("placebo") or {}).get("replicas") for v, x in prim.items()
+            if (x.get("dh252") or {}).get("theta") is not None}     # a version without a plan to test draws none
     if sorted(prim) != sorted(R.VERSIONS) or any(n != ST.PLAN_REPS for n in reps.values()) or \
             sorted(res.get("variants") or {}) != sorted(R.VARIANTS) or \
             sorted(res.get("variant_tests") or {}) != sorted(R.VARIANTS):
@@ -115,6 +117,13 @@ def checks_pass(res: dict, ch: dict | None, repro: dict | None) -> tuple[bool, l
         if "fills" in ch and not 0 < (ch["fills"].get("pool_days") or 0) == ch["fills"].get("every_start_plans"):
             notes.append(f"成交检查只重放了随机起步表的 {ch['fills'].get('every_start_plans') or 0} 笔计划，"
                          f"起步池有 {ch['fills'].get('pool_days') or 0} 天，要每天都重放")
+        if "fills" in ch and (not res.get("tables") or ch["fills"].get("tables") != res.get("tables")):
+            got, want = ch["fills"].get("tables") or {}, res.get("tables") or {}
+            off = [f"{v} 版 {c}" for v in sorted(set(got) | set(want))
+                   for c in sorted(set(got.get(v, {})) | set(want.get(v, {})))
+                   if got.get(v, {}).get(c) != want.get(v, {}).get(c)]
+            notes.append(f"成交检查重放的计划和这次结果用的表对不上：{'、'.join(off[:5]) or '没有记录'}"
+                         + (f" 等 {len(off)} 处" if len(off) > 5 else ""))
         for k, name in CHECKS:
             if k not in ch:
                 notes.append(f"没有跑{name}检查")
@@ -202,7 +211,8 @@ def signal_lines(sig: dict) -> list:
         y1 = (x.get("gap_schemes") or {}).get("by_year")
         by_year = ""
         if y1:                          # SPEC 5.3's own blocks: narrower in most no-edge worlds, not in all
-            narrower = y1["hi"] - y1["lo"] < g["hi"] - g["lo"]
+            shown = lambda o: float(pct(o["hi"], 2)[:-1]) - float(pct(o["lo"], 2)[:-1])    # noqa: E731
+            narrower = y1["hi"] - y1["lo"] < g["hi"] - g["lo"] and shown(y1) < shown(g) - 1e-9   # and as printed
             by_year = (f"；按单个年份重抽（SPEC 5.3 原来的做法）{'会窄到' if narrower else '是'} "
                        f"{pct(y1['lo'], 2)} 到 {pct(y1['hi'], 2)}{'，偏乐观' if narrower else ''}")
         out.append(f"- 之后 {h} 个交易日扣掉 SPY 的收益，低于中位减其他日子：{pct(g['theta'], 2)}（90% 区间 "

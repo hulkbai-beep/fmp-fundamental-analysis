@@ -196,7 +196,7 @@ class RunTest(unittest.TestCase):
             full["primary"][v]["dh252"]["placebo"]["replicas"] = RP.ST.PLAN_REPS
         ch = dict({k: {"failed": 0, "checked": 200} for k, _ in RP.CHECKS}, inputs=self.res["inputs"],
                   review={"written": True}, checks_code=RP.checks_code())
-        ch["fills"] = {"failed": 0, "plans": 60, "pool_days": 900, "every_start_plans": 900}
+        ch["fills"] = {"failed": 0, "plans": 60, "pool_days": 900, "every_start_plans": 900, "tables": full["tables"]}
 
         def same(res):
             return {"same": True, "diff": [], "results": [RP.results_digest(res)] * 2}
@@ -220,6 +220,19 @@ class RunTest(unittest.TestCase):
         for es, pool in ((899, 900), (0, 0)):                   # every plan of the every-start tables replayed
             self.assertFalse(RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], every_start_plans=es,
                                                                       pool_days=pool)), repro)[0])
+        off = json.loads(json.dumps(full["tables"]))           # check 6 replayed other plans than the tables'
+        off["T"]["AAA"]["pool"] = "0" * 32
+        self.assertEqual(RP.checks_pass(full, dict(ch, fills=dict(ch["fills"], tables=off)), repro),
+                         (False, ["成交检查重放的计划和这次结果用的表对不上：T 版 AAA"]))
+        bare = {k: v for k, v in full.items() if k != "tables"}
+        for res, fills in ((full, {k: v for k, v in ch["fills"].items() if k != "tables"}), (bare, ch["fills"])):
+            ok, notes = RP.checks_pass(res, dict(ch, fills=fills), same(res))
+            self.assertEqual((ok, len(notes)), (False, 1))
+            self.assertIn("对不上", notes[0])
+        none = json.loads(json.dumps(full))                     # F without a full-window plan draws no replica
+        none["primary"]["F"]["dh252"] = {"metric": "dh252", "companies": 0, "plans": 0, "pool": 0, "theta": None,
+                                         "void_plans": 0}
+        self.assertEqual(RP.checks_pass(none, ch, same(none)), (True, []))
         quick = dict(full, primary={"T": full["primary"]["T"]}, variants={}, variant_tests={})
         for res in (self.res, quick, dict(full, variant_tests={})):    # 200 replicas; --quick; no variants
             ok, notes = RP.checks_pass(res, ch, same(res))
@@ -289,6 +302,22 @@ class RunTest(unittest.TestCase):
             f.write_text(keep)
         self.assertFalse((self.spare / "results.json").exists())
 
+    def test_the_snapshot_folder_is_not_an_output_folder(self):
+        """An --out at the snapshot folder or inside it is refused before anything there is deleted: the
+        snapshot's status.json, the PC's record, has the name of an output."""
+        pc, link = self.snap / "status.json", Path(self.tmp.name) / "snap_link"
+        link.symlink_to(self.snap)
+        try:
+            pc.write_text("the PC's record")
+            for out in (self.snap, link, self.snap / "raw"):
+                self.assertEqual(R.main(["--snap", str(self.snap), "--out", str(out), "--quick",
+                                         "--sample", str(self.sample)]), 2, out)
+            self.assertEqual(pc.read_text(), "the PC's record")
+            self.assertFalse((self.snap / "raw" / "results.json").exists())
+        finally:
+            pc.unlink()
+            link.unlink()
+
     def test_inputs_changed_during_the_run_refuse_it(self):
         """A spin-off confirmed while run_pilot runs: its results would describe neither state, so it writes
         none."""
@@ -309,8 +338,10 @@ class SignalLinesTest(unittest.TestCase):
     def test_the_one_year_interval_is_called_narrower_only_when_it_is(self):
         import report as RP
         g = {"theta": 0.01, "lo": -0.02, "hi": 0.04, "G": 9, "scheme": "two_years"}
-        for y1, word in (({"lo": -0.01, "hi": 0.03}, "会窄到"), ({"lo": -0.03, "hi": 0.05}, "是")):
-            sig = {"days": 100, "below_share": 0.4, "h252": {"gap": g, "gap_schemes": {"by_year": y1}, "ic": 0.1}}
+        for gap, y1, word in ((g, {"lo": -0.01, "hi": 0.03}, "会窄到"), (g, {"lo": -0.03, "hi": 0.05}, "是"),
+                              (g, {"lo": -0.019999, "hi": 0.039999}, "是"),       # narrower, the same as printed
+                              (dict(g, hi=0.0401004), {"lo": -0.0200501, "hi": 0.0400501}, "是")):   # wider printed
+            sig = {"days": 100, "below_share": 0.4, "h252": {"gap": gap, "gap_schemes": {"by_year": y1}, "ic": 0.1}}
             line = RP.signal_lines(sig)[1]
             self.assertIn(f"按 9 个两年块重抽；按单个年份重抽（SPEC 5.3 原来的做法）{word} ", line)
             self.assertEqual("偏乐观" in line, word == "会窄到")

@@ -115,3 +115,32 @@ def company(snap: Path, sym: str, seed: int = 1, start=dt.date(2003, 1, 2), end=
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(rows), encoding="utf-8")
     return {"days": days, "quarters": quarters}
+
+
+def late_verdict(snap: Path, sym: str, shape: str, other: bool = False) -> tuple:
+    """A 2-for-1 split on 2016-06-06 that FMP did not restate, whose share-count test has to read a statement
+    filed after the first one after the split. Shape "A": the first quarter after it (Q2 2016, filed 2016-08-04)
+    has no share count, so the test reads Q3 2016 (filed 2016-11-04); other: every quarterly count from Q3 2016
+    on is 1.6 times higher. Shape "B": Q1 2016 is filed again on 2016-07-01, a copy, or (other) on the new basis.
+    The two companies of a shape have the same rows dated and filed before the second day returned. Returns
+    (the first statement filed after the split, the last day on which the two agree)."""
+    company(snap, sym, seed=7, split=(dt.date(2016, 6, 6), 2.0))
+    path = snap / "raw" / "inc_q" / f"{sym}.json"
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    if shape == "A":
+        for r in rows:
+            if r["date"] == "2016-06-30":
+                r["weightedAverageShsOutDil"] = None
+            elif r["date"] >= "2016-09-30" and other:
+                r["weightedAverageShsOutDil"] *= 1.6
+        days = ("2016-08-04", "2016-11-04")
+    else:
+        q1 = next(r for r in rows if r["date"] == "2016-03-31")
+        again = dict(q1, filingDate="2016-07-01", acceptedDate="2016-07-01 16:05:00")
+        if other:
+            again["epsDiluted"] = round(q1["epsDiluted"] / 2.0, 6)
+            again["weightedAverageShsOutDil"] = q1["weightedAverageShsOutDil"] * 2.0
+        rows.append(again)
+        days = ("2016-07-01", "2016-07-01")
+    path.write_text(json.dumps(rows), encoding="utf-8")
+    return days

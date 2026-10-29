@@ -483,6 +483,17 @@ def pool_dump(results: list, v: str) -> dict:
     return {r["symbol"]: {k: r["pool"][v][k] for k in keep} for r in results if v in r["pool"]}
 
 
+TABLE_DIGEST = tuple(k for k in PL.COLUMNS if k != "start")     # a table's rows as their digest reads them
+
+
+def table_digest(cols: dict) -> str:
+    """The md5 of a table's rows (every column but the start's bar number) in start order: checks.plans_digest,
+    which tabulates the plans check 6 audits by itself, gives the same when the table holds those plans and
+    tabulates them right (report.py matches the two)."""
+    rows = [list(r) for r in zip(*(cols[k] for k in TABLE_DIGEST))]
+    return hashlib.md5(json.dumps(rows).encode("utf-8")).hexdigest()
+
+
 # ---------------------------------------------------------------- main
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -495,6 +506,9 @@ def main(argv=None) -> int:
     ap.add_argument("--spinoffs", default=str(HERE / "spinoffs.json"))
     a = ap.parse_args(argv)
     snap, out = Path(a.snap), Path(a.out)
+    if out.resolve() == snap.resolve() or snap.resolve() in out.resolve().parents:
+        print("refused: --out is the snapshot folder or inside it")    # before anything there is deleted
+        return 2
     out.mkdir(parents=True, exist_ok=True)
     for f in [out / name for name in OUTPUTS + ("repro.json",)] + list(out.glob("pools_*.json")):
         f.unlink(missing_ok=True)                   # an earlier run's outputs, and a comparison of them
@@ -555,6 +569,8 @@ def main(argv=None) -> int:
                       "sampled": len(pairs), "spearman": ST.spearman([a for a, _ in pairs], [b for _, b in pairs])}
            if tf else None,
            "summary": summary,
+           "tables": {v: {r["symbol"]: {"method": table_digest(r["strategy"][v]), "pool": table_digest(r["pool"][v])}
+                          for r in results} for v in versions},
            "compare": compare(results, plans, cal, versions, [spy_plain[k] for k in marks]),
            "reports": {r["symbol"]: r["report"] for r in results}}
     if inputs(snap, Path(a.sample), Path(a.spinoffs)) != before:

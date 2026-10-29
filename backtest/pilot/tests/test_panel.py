@@ -419,6 +419,72 @@ class PanelTest(unittest.TestCase):
         self.assertEqual((a.eps["T"][:k], a.band["T"][:k]), (u.eps["T"][:k], u.band["T"][:k]))
         self.assertGreater(sum(x is not None for x in a.band["T"][:k]), 1000)
 
+    def test_a_late_verdict_decides_nothing_before_it(self):
+        """Splits whose share-count test reads a statement filed after the first one after the split
+        (synth.late_verdict) are unclear, and the later statement must not put T's old statements on the new
+        basis by the partial-restatement step either: the two companies of each shape agree on T up to the last
+        day their data do, and T has a band on every day from 2008 to the first statement after the split. F,
+        which decides every split on the full data, keeps its band where the later statements allow it."""
+        for shape in ("A", "B"):
+            ps = []
+            for other in (False, True):
+                first, apart = synth.late_verdict(self.snap, f"LV{shape}{int(other)}", shape, other)
+                ps.append(P.build(f"LV{shape}{int(other)}", self.snap, SPANS))
+            for p in ps:
+                (b,) = p.report["basis_q"]["boundary"]
+                self.assertEqual((b["action"], b["unused_after"]), ("unclear", first), shape)
+                self.assertEqual(p.report["basis_q"]["partial"], [], shape)
+            a, b = ps
+            k = bisect.bisect_right(a.dates, apart)
+            self.assertEqual((a.eps["T"][:k], a.band["T"][:k]), (b.eps["T"][:k], b.band["T"][:k]), shape)
+            days = [i for i, d in enumerate(a.dates) if "2008-01-02" <= d <= first]
+            self.assertGreater(len(days), 2000)
+            for p in ps:
+                self.assertTrue(all(p.band["T"][i] is not None for i in days), shape)
+            for p in (ps if shape == "B" else ps[:1]):      # A's other company: a step of 1.6 in the full data
+                self.assertTrue(all(p.band["F"][i] is not None for i in days), shape)
+            for cut in sorted({first, apart, "2017-03-01"}):
+                t = P.build(f"LV{shape}1", self.snap, SPANS, versions=("T",), truncate=cut, snapshot_end=cut)
+                n = len(t.dates)
+                self.assertEqual((t.eps["T"], t.band["T"]), (b.eps["T"][:n], b.band["T"][:n]), (shape, cut))
+
+    def test_a_fiscal_year_filed_after_an_unclear_split_waits_for_the_quarters(self):
+        """A 2-for-1 split FMP did not restate on 2017-01-16, the fiscal year 2016 filed after it (2017-03-01: the
+        annual test says not restated) and the last quarter before it re-dated to 2017-03-20, after that year.
+        With the quarterly counts from that quarter on 1.5 times higher the quarterly test is unclear, as
+        generated it says not restated: the two companies are the same before 2017-03-20 and so is T's price
+        range up to that day, with a band on every day. T's share check leaves the fiscal year out until then:
+        its counts are on the new basis, and whether the quarters in use are too only that day tells."""
+        when, got = dt.date(2017, 1, 16), {}
+        for sym, mult in (("LYU", 1.5), ("LYN", 1.0)):
+            synth.company(self.snap, sym, seed=11, split=(when, 2.0))
+            path = self.snap / "raw" / "inc_q" / f"{sym}.json"
+            rows = json.loads(path.read_text())
+            for r in rows:
+                if r["date"] == "2016-12-31":
+                    r["filingDate"], r["acceptedDate"] = "2017-03-20", "2017-03-20 16:05:00"
+                if r["date"] >= "2016-12-31":
+                    r["weightedAverageShsOutDil"] *= mult
+            path.write_text(json.dumps(rows))
+            got[sym] = P.build(sym, self.snap, SPANS, versions=("T",))
+        u, n = got["LYU"], got["LYN"]
+        years = json.loads((self.snap / "raw" / "inc_a" / "LYU.json").read_text())
+        self.assertEqual(next(r["filingDate"] for r in years if r["date"] == "2016-12-31"), "2017-03-01")
+        self.assertEqual([(b["action"], b["unused_after"]) for b in u.report["basis_q"]["boundary"]],
+                         [("unclear", "2017-03-20")])
+        self.assertEqual([b["action"] for b in n.report["basis_q"]["boundary"]], ["not_restated"])
+        self.assertEqual([b["action"] for b in u.report["basis_a"]["boundary"]], ["not_restated"])
+        days = [i for i, d in enumerate(u.dates) if "2008-01-02" <= d <= "2017-03-20"]
+        self.assertGreater(len(days), 2000)
+        for i in days:                              # as filed against on the new basis: the same prices
+            a, b = u.range_at("T", i), n.range_at("T", i)
+            self.assertTrue(a is not None and b is not None, u.dates[i])
+            self.assertTrue(all(abs(x - y) <= 1e-9 * max(1.0, abs(y)) for x, y in zip(a, b)), u.dates[i])
+        for cut in ("2017-03-02", "2017-03-20", "2017-06-01"):
+            t = P.build("LYU", self.snap, SPANS, versions=("T",), truncate=cut, snapshot_end=cut)
+            n = len(t.dates)
+            self.assertEqual((t.eps["T"], t.band["T"]), (u.eps["T"][:n], u.band["T"][:n]), cut)
+
     def test_loss_years_have_no_band(self):
         synth.company(self.snap, "LOS", seed=5, loss_years=(2012, 2013))
         q = P.build("LOS", self.snap, SPANS)

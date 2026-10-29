@@ -237,7 +237,9 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
         either answer.
       3 partial: a step between consecutive period ends' share counts outside 0.8-1.25 that is within 10% of a
         product of splits dated after the older row's filing means FMP restated only the newer rows; the older
-        ones are put on the new basis. Other steps are listed (a merger, a spin-off) for history_problem.
+        ones are put on the new basis. Other steps are listed (a merger, a spin-off) for history_problem. With
+        unclear="mark" a split step 2 left unclear explains no step to a row filed on or after it: that row
+        would decide the basis of rows version T uses as filed until the first statement after the split.
     """
     rows = sorted((dict(r) for r in rows), key=lambda r: (r["known"], r["end"]))
     for k in ("eps_units", "eps_shares", "boundary", "partial", "share_steps", "review"):
@@ -271,7 +273,7 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
             r["eps"] = e / hit[0]
         elif not EPS_SHARES_OK[0] <= c <= EPS_SHARES_OK[1]:
             report["review"].append({"end": r["end"].isoformat(), "eps_x_shares_over_ni": round(c, 3)})
-    mult = [1.0] * len(rows)
+    mult, left = [1.0] * len(rows), set()          # left: the splits "mark" leaves unclear
     for x, f in sorted(splits, reverse=True):
         lf = abs(math.log(f))
         if lf < SPLIT_MIN:
@@ -305,6 +307,7 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
                     if r["known"] < x and r["eps"] is not None:
                         r["eps"], r["eps_unclear"] = None, x.isoformat()
             elif unclear == "mark":
+                left.add(x)
                 for r in rows:                      # splits run newest first: the oldest one after a row wins
                     if r["known"] < x:
                         r["unclear_until"] = first
@@ -328,7 +331,8 @@ def normalize_basis(rows: list, splits: list, report: dict, unclear: str = "keep
         ratio = rows[kb]["shares"] * mult[kb] / (rows[ka]["shares"] * mult[ka])
         if STEP_BAND[0] <= ratio <= STEP_BAND[1]:
             continue
-        later = [f for x, f in splits if x > rows[ka]["known"] and abs(math.log(f)) >= SPLIT_MIN]
+        later = [f for x, f in splits if x > rows[ka]["known"] and abs(math.log(f)) >= SPLIT_MIN and
+                 not (x in left and rows[kb]["known"] >= x)]
         hit = next((F for F in _runs(later) if abs(ratio / F - 1.0) <= 0.10), None)
         if hit:
             for k, r in enumerate(rows):
@@ -503,7 +507,9 @@ def t_years(years: list, rep: dict, until: str | None) -> list:
     of T's epochs (None: after the last one). While the quarters filed before an unclear quarterly split are in
     use as filed, the fiscal years filed before it are read as filed too: the factor an annual not_restated
     verdict put on their share counts is taken off. That verdict comes from statements filed after the split,
-    and so then decides nothing on the days before them."""
+    and so then decides nothing on the days before them. A fiscal year filed on or after the split is left out
+    until then: its counts are on the new basis, and whether the quarters in use are too is what the quarterly
+    test, known only at the epoch's end, would tell."""
     if until is None:
         return years
     ann = {b["split"]: b["action"] for b in rep["basis_a"].get("boundary", [])}
@@ -512,7 +518,7 @@ def t_years(years: list, rep: dict, until: str | None) -> list:
     if not undo:
         return years
     return [dict(y, shares=y["shares"] / math.prod(f for x, f in undo if y["known"] < x)) if y["shares"] else y
-            for y in years]
+            for y in years if not any(y["known"] >= x for x, _ in undo)]
 
 
 def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snapshot_end: str | None = None,
@@ -528,9 +534,11 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
     later split forces, not information about what came after (prices are on today's basis too). Quarterly
     statements filed before a split whose basis cannot be told leave version T on the first day a statement
     filed after the split is in use: from there on T has its own epoch, with the TTM of every day, the window
-    of the band included, formed without them (normalize_basis, unclear="mark"); before it T's share check
-    reads the fiscal years as filed too (t_years). A truncated build drops the marks of the statements the cut
-    removed, so its epochs are the ones the data before the cut give.
+    of the band included, and the share check's latest quarter taken without them (normalize_basis,
+    unclear="mark"); before it T's share check reads the fiscal years as filed too (t_years). A truncated build
+    drops the marks of the statements the cut removed, so its epochs are the ones the data before the cut give.
+    Version F's share check reads the quarterly counts with every boundary decided on the full data
+    (unclear="none"), as its fiscal years are.
     spinoffs: confirmed spin-off ex-dates; no new T plan for 365 days after one (the trailing EPS still holds
     the unit the price no longer does), no new F / FY plan until the end of that fiscal year, and a holding is
     sold at the last close before the ex-date (the bars drop by the spun-off value, which they do not credit)."""
@@ -549,6 +557,10 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
                               units="fix", eps_shares="later")
     years = statement_rows(read(raw / "inc_a" / f"{symbol}.json"), splits, rep["basis_a"], unclear="none",
                            units="fix", eps_shares="later")
+    # F's share check reads the quarters' counts with every boundary decided on the full data, as F's own
+    # fiscal years are (F looks ahead by design); T's reads the statements of its epoch
+    quarters_f = statement_rows(read(raw / "inc_q" / f"{symbol}.json"), splits, {}, unclear="none", units="fix",
+                                eps_shares="later")
     rep["annual_vs_quarters"] = annual_check(years, quarters)
     rep["spin_candidates"] = spin_candidates(bars, split_rows, read(raw / "earn" / f"{symbol}.json"))
     if truncate:
@@ -562,6 +574,7 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
             if q.get("unclear_until") and q["unclear_until"] >= cut:
                 del q["unclear_until"]
         years = [y for y in years if kept(y)]
+        quarters_f = [q for q in quarters_f if kept(q)]
     dates = [b["date"] for b in bars]
     div_on = {}
     for r in divs:
@@ -579,22 +592,25 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
               bool(dates) and (day(end) - day(dates[-1])).days > DELIST_GAP_DAYS, report=rep)
     ntm_f, fy_eps, horizon = fiscal_eps(years)
     # the skill's history check reads 'shares' and 'date' of the fiscal years; on day d only the years filed by d - 1
-    q_shares = sorted((q["known"], q["end"], q["shares"]) for q in quarters if q["known"] and q["shares"])
+    def counts(qs):
+        return sorted((q["known"], q["end"], q["shares"]) for q in qs if q["known"] and q["shares"])
     eps, why_eps, t_epochs, t_of = {}, {}, [], []
     if "T" in versions:
         # epoch k runs to ends[k] (the last one to the end): the statements in use are those whose unclear_until
-        # is not before that day
+        # is not before that day, for the TTM and the share check alike
         ends = sorted({q["unclear_until"] for q in quarters if q.get("unclear_until")})
         for k in range(len(ends) + 1):
             until = ends[k] if k < len(ends) else None
-            t_days, t_vals = ttm_steps([q for q in quarters if not q.get("unclear_until") or
-                                        (until is not None and q["unclear_until"] >= until)])
+            used = [q for q in quarters if not q.get("unclear_until") or
+                    (until is not None and q["unclear_until"] >= until)]
+            t_days, t_vals = ttm_steps(used)
             t = [ttm_at(t_days, t_vals, day(d)) for d in dates]
-            t_epochs.append((None if until is None else until.isoformat(), [x[0] for x in t], [x[1] for x in t]))
+            t_epochs.append((None if until is None else until.isoformat(), [x[0] for x in t], [x[1] for x in t],
+                             counts(used)))
         t_of = [next(k for k, e in enumerate(t_epochs) if e[0] is None or d <= e[0]) for d in dates]
         eps["T"] = [t_epochs[k][1][i] for i, k in enumerate(t_of)]
         why_eps["T"] = [t_epochs[k][2][i] for i, k in enumerate(t_of)]
-        p.epochs["T"] = [(u, e) for u, e, _ in t_epochs]
+        p.epochs["T"] = [(u, e) for u, e, _, _ in t_epochs]
     if "F" in versions or "FY" in versions:
         eps["F"] = [ntm_f(d) for d in dates]
         why_eps["F"] = [None if e is not None else "beyond_horizon" if horizon is None or d > horizon
@@ -607,12 +623,12 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
         if bv == "T":
             # by epoch, with the fiscal years as T reads them up to the epoch's end (the last epoch of a
             # truncated build ends at the cut)
-            each = [bands(dates, p.c, e, w, t_years(years, rep, u or truncate), q_shares, first_day)
-                    for u, e, w in t_epochs]
+            each = [bands(dates, p.c, e, w, t_years(years, rep, u or truncate), qs, first_day)
+                    for u, e, w, qs in t_epochs]
             p.band[bv] = [each[k][0][i] for i, k in enumerate(t_of)]
             p.why[bv] = [each[k][1][i] for i, k in enumerate(t_of)]
         else:
-            p.band[bv], p.why[bv] = bands(dates, p.c, eps[bv], why_eps[bv], years, q_shares, first_day)
+            p.band[bv], p.why[bv] = bands(dates, p.c, eps[bv], why_eps[bv], years, counts(quarters_f), first_day)
     if "FY" in versions:
         p.why["FY"] = [w if w else (None if e and e > 0 else "eps_not_positive") for w, e in zip(p.why["F"], eps["FY"])]
     fy_ends = [y["end"].isoformat() for y in latest_by_end(years)]
