@@ -332,7 +332,8 @@ def annual_check(years: list, quarters: list) -> list:
 def ttm_steps(quarters: list) -> tuple[list, list]:
     """Version T as a step function: (days, values), values[i] = (TTM EPS or None, newest period end summed)
     once everything filed by days[i] is known; None when the latest four known quarters are not consecutive."""
-    events = sorted((q["known"], q["end"], q) for q in quarters if q["known"] and q["eps"] is not None)
+    events = sorted(((q["known"], q["end"], q) for q in quarters if q["known"] and q["eps"] is not None),
+                    key=lambda e: e[:2])                     # two filings of one quarter on one day: file order
     days, vals, seen = [], [], {}
     i = 0
     while i < len(events):
@@ -425,10 +426,11 @@ def in_spans(d: str, spans: list) -> bool:
 def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snapshot_end: str | None = None,
           first_day: str = "2007-12-01", truncate: str | None = None, spinoffs: list = (),
           audit_known=None) -> Panel:
-    """The panel of one company. truncate: drop every input dated after this day (statements by filing date,
-    bars and dividends by date) for the self-test that nothing on or before it changes; audit_known(raw row)
-    -> (day, placeholder) decides which statements survive the cut when given (the test's own reading of the
-    filing dates, so a leak in known_day shows). The split basis is
+    """The panel of one company. truncate: drop every bar and dividend dated after this day and every statement
+    known on or after it, for the self-test that nothing on or before it changes (T at a close uses only
+    statements known before that day, so a leak of even one day shows at a cut on a filing day);
+    audit_known(raw row) -> (day, placeholder) decides which statements survive the cut when given (the test's
+    own reading of the filing dates, so a leak in known_day shows). The split basis is
     settled on the full data first: putting old statements on today's share basis is a change of units that a
     later split forces, not information about what came after (prices are on today's basis too).
     spinoffs: confirmed spin-off ex-dates; no new T plan for 365 days after one (the trailing EPS still holds
@@ -452,7 +454,7 @@ def build(symbol: str, snap: Path, spans: list, versions=("T", "F", "FY"), snaps
         cut = day(truncate)
         def kept(r):
             k = audit_known(r["raw"])[0] if audit_known else r["known"]
-            return k is not None and k <= cut
+            return k is not None and k < cut
         quarters = [q for q in quarters if kept(q)]
         years = [y for y in years if kept(y)]
     dates = [b["date"] for b in bars]

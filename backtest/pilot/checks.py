@@ -10,7 +10,8 @@ Checks before any result is read, on the frozen snapshot (all in the cloud; SPEC
              band code fed the skill's own next-twelve-month EPS (reported years, then today's consensus)
              reproduces analyze.price_range's forward-P/E band and 'now' range exactly
   truncation version T: deleting every bar after a cut and every statement filed on or after it (by this
-             file's own reading of the filing dates) changes nothing on or before the cut
+             file's own reading of the filing dates) changes nothing on or before the cut; half the cuts are
+             filing days, where a leak of a single day shows
   fills      the trade audit: every buy at the open after a fair close on or after its tranche date and by the
              expiry, under the chase limit, tranche k after k - 1, never at an open that fills a sale of the
              plan; every sale at the open after its signal close, except the delisting and spin-off sales at
@@ -223,10 +224,15 @@ def check_pipeline(snap: Path, comps: list) -> dict:
 def check_truncation(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> dict:
     bad, done = [], 0
     per = max(1, n // len(comps))
+    filing_cuts = 0
     for _, sym, sector, spans in comps:
         full = P.build(sym, snap, spans, versions=("T",), snapshot_end=z)
         days = [d for i, d in enumerate(full.dates) if d >= R.FIRST_DAY and full.member[i]]
-        for cut in sorted(rnd.sample(days, min(len(days), per))):
+        rows = [r for part in ("inc_q", "inc_a") for r in P.read(snap / "raw" / part / f"{sym}.json") if r.get("date")]
+        filings = sorted({filed(r)[0].isoformat() for r in rows} & set(days))
+        on_filing = set(rnd.sample(filings, min(len(filings), per)))
+        filing_cuts += len(on_filing)
+        for cut in sorted(set(rnd.sample(days, min(len(days), per))) | on_filing):
             t = P.build(sym, snap, spans, versions=("T",), truncate=cut, snapshot_end=cut, audit_known=filed)
             k = len(t.dates)
             same = t.dates == full.dates[:k] and t.eps["T"] == full.eps["T"][:k] and \
@@ -237,7 +243,7 @@ def check_truncation(snap: Path, comps: list, n: int, rnd: random.Random, z: str
                               t.eps["T"][i] != full.eps["T"][i]), None)
                 bad.append({"symbol": sym, "cut": cut, "first_difference": full.dates[first] if first is not None
                             else None})
-    return {"checked": done, "failed": len(bad), "failures": bad[:20]}
+    return {"checked": done, "filing_day_cuts": filing_cuts, "failed": len(bad), "failures": bad[:20]}
 
 
 def check_fills(snap: Path, comps: list, z: str, spin: dict) -> dict:

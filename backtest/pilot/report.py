@@ -20,7 +20,7 @@ from pathlib import Path
 
 NAMES = {
     "method_T": "你的买法（T 版：当时已公布的 TTM EPS）",
-    "method_F": "上限版 F（事后真实年度 EPS，前瞻 12 个月）",
+    "method_F": "参考版 F（事后真实年度 EPS，前瞻 12 个月）",
     "stop_15pct": "V-a 止损放宽到 15%",
     "exit_all_above_high": "V-b 高于区间上沿全部卖出",
     "V8_cooldown_20": "V-c 清仓后冷却 20 个交易日",
@@ -35,7 +35,7 @@ EXITS = {"stop": "止损", "breakeven": "保本止损", "trailing": "移动止�
          "spin": "分拆前清仓或取消", "exit_high": "高于上沿清仓", "open": "期末仍持有", "closed": "其他",
          "lapsed": "首批追高作废", "expired": "到期没买到", "cancelled_below_stop": "买前跌破止损取消",
          "unfilled": "期末还在等首批"}
-NO_RESULT, PROMISING, NOT_PROMISING, INCONCLUSIVE = "没有结果（检查没通过）", "值得做更大的检验", "不看好", "说不清"
+NO_RESULT, PROMISING, NOT_PROMISING, INCONCLUSIVE = "没有结果（检查没通过）", "有希望", "不看好", "说不准"
 CHECKS = (("calendar", "交易日历"), ("band", "区间"), ("pipeline", "和技能对数"), ("truncation", "未来数据"),
           ("fills", "成交"))
 
@@ -116,13 +116,13 @@ def f_reading(label: str, t_theta, f_theta) -> list:
         return ["F 版没有可比的计划"]
     out = []
     if label == PROMISING:
-        out.append("T 版值得做更大的检验：在试点能测出的范围内，这是对用 TTM 市盈率这版规则的真证据")
+        out.append("T 版有希望：在试点能测出的范围内，这是对用 TTM 市盈率这版规则的真证据")
     if f_theta <= 0:
         out.append("F ≤ 0" + ("，T 也 ≤ 0：对这套规则是很强的反面证据" if t_theta is not None and t_theta <= 0 else
                               "：就算事先确切知道之后的盈利，这套规则也没把买点挑得比随机好，是很强的反面证据"))
     else:
         out.append("F > 0：说明不了什么（F 用了事后的盈利，没有优势时也常显得好）"
-                   + ("；T 不看好，所以对用分析师预期的规则仍是说不清，只能靠从现在起存档的预期来定"
+                   + ("；T 不看好，所以对用分析师预期的规则仍是说不准，只能靠从现在起存档的预期来定"
                       if label == NOT_PROMISING else ""))
     return out
 
@@ -209,6 +209,18 @@ def plan_table(rows: list) -> list:
     return out
 
 
+def group_cells(rows: list) -> str:
+    """Counts and means of a group of plans (SPEC 5.4's breakdowns): plans, plans that bought, the mean return
+    on the money put in, the mean DH_252 of the plans with a full window (void plans count 0, as in the main
+    test), and the share stopped out."""
+    fill = bought(rows)
+    full = [float(r["dh252"]) for r in rows if r["full252"] == "True"]
+    return (f"{len(rows)} | {len(fill)} | "
+            f"{pct(statistics.mean(float(r['ret']) for r in fill), 2) if fill else '—'} | "
+            f"{pp(statistics.mean(full)) if full else '—'}（{len(full)} 笔） | "
+            f"{pct(sum(r['status'] == 'stop' for r in rows) / len(rows)) if rows else '—'}")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--res", required=True)
@@ -237,7 +249,7 @@ def main(argv=None) -> int:
     w += [f"- F 版的读法：{x}" for x in f_reading(label, t.get("dh252", {}).get("theta"),
                                                  fv.get("dh252", {}).get("theta"))]
     w.append("- 50 家只能看出每笔大约 0.5 个百分点以上的优势（相当于投入资金每年约 4 个百分点）；"
-             "现实大小的优势多半会显示为“说不清”。\n")
+             "现实大小的优势多半会显示为“说不准”。\n")
     w.append("## 主检验：你的买法 vs 随机择时（T 版，每笔计划之后 252 个 SPY 交易日、每天用 SPY 对冲后的盈亏，"
              "按计划资金算，扣交易成本）\n")
     w += primary_lines(t.get("dh252"), "252 天对冲收益")
@@ -286,16 +298,22 @@ def main(argv=None) -> int:
         w.append(f"| {NAMES[run]} | {pct(x['cagr'])} | {num(x['sharpe'])} | {pct(x['max_dd'])} | "
                  f"{pct(x.get('held_share'))} | {x.get('plans', '—')} |")
     w.append("")
+    head = "计划数 | 买到的 | 每笔平均（按投入） | 每笔对冲收益（252 天窗口完整的） | 止损比例 |"
     w.append("## 按年份（T 版，按建仓开始的年份；只作描述）\n")
-    w.append("| 年份 | 计划数 | 买到的 | 每笔平均（按投入） | 止损比例 |")
-    w.append("|---|---|---|---|---|")
+    w.append("| 年份 | " + head)
+    w.append("|---|---|---|---|---|---|")
     main_rows = [r for r in plans if r["run"] == "method_T"]
     for y in sorted({r["year"] for r in main_rows}):
-        rows = [r for r in main_rows if r["year"] == y]
-        fill = bought(rows)
-        w.append(f"| {y} | {len(rows)} | {len(fill)} | "
-                 f"{pct(statistics.mean(float(r['ret']) for r in fill), 2) if fill else '—'} | "
-                 f"{pct(sum(r['status'] == 'stop' for r in rows) / len(rows))} |")
+        w.append(f"| {y} | {group_cells([r for r in main_rows if r['year'] == y])}")
+    w.append("")
+    w.append("## 按行业（T 版；只作描述，每个行业只有几家公司）\n")
+    w.append("| 行业 | 公司数 | " + head)
+    w.append("|---|---|---|---|---|---|---|")
+    firms = {}
+    for c in res["companies"]:
+        firms[c["sector"]] = firms.get(c["sector"], 0) + 1
+    for sec, k in sorted(firms.items(), key=lambda kv: (-kv[1], kv[0])):
+        w.append(f"| {sec} | {k} | {group_cells([r for r in main_rows if r['sector'] == sec])}")
     w.append("")
     w.append("## 数据说明\n")
     reasons = {}

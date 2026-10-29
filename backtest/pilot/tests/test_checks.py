@@ -2,16 +2,21 @@
 reproduces the skill's price_range with analysts' estimates."""
 from __future__ import annotations
 
+import datetime as dt
 import json
+import random
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import checks as C  # noqa: E402
+import panel as P  # noqa: E402
+import run_pilot as R  # noqa: E402
 import synth  # noqa: E402
 import test_run as TR  # noqa: E402
 
@@ -64,6 +69,27 @@ class ChecksTest(unittest.TestCase):
         self.assertGreater(self.res["fills"]["plans"], self.res["fills"]["fills"] / 5)
         self.assertEqual(self.res["calendar"]["failed"], 0)
         self.assertEqual(self.res["calendar"]["bars_off_sessions"], {})
+
+    def test_one_day_leaks_are_caught(self):
+        """A statement usable at the close of its own filing day (a non-strict step, or a known day one day
+        early) changes T only on filing days: the truncation check must fail on it, and pass without it."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        orig_step, orig_known = P.step_at, P.known_day
+
+        def same_day(days, vals, d, strict=True):
+            return orig_step(days, vals, d, strict=False)
+
+        def day_early(r):
+            k, ph = orig_known(r)
+            return (k - dt.timedelta(days=1), ph) if k and not ph else (k, ph)
+
+        clean = C.check_truncation(self.snap, comps, 10, random.Random(5), walk["z"])
+        self.assertEqual(clean["failed"], 0)
+        self.assertGreater(clean["filing_day_cuts"], 0)
+        for name, leak in (("step_at", same_day), ("known_day", day_early)):
+            with mock.patch.object(P, name, leak):
+                got = C.check_truncation(self.snap, comps, 10, random.Random(5), walk["z"])
+            self.assertGreater(got["failed"], 0, name)
 
     def test_spin_off_evidence(self):
         rows = {(r["symbol"], r["source"]): r for r in self.res["spins"]}
