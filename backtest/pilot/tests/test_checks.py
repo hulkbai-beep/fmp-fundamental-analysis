@@ -3,6 +3,7 @@ reproduces the skill's price_range with analysts' estimates."""
 from __future__ import annotations
 
 import bisect
+import contextlib
 import datetime as dt
 import json
 import random
@@ -339,6 +340,36 @@ class ChecksTest(unittest.TestCase):
             self.assertEqual({f.get("replay") for f in got["failures"]}, {"levels"}, name)
             self.assertEqual(list(got["failures"][0]["plan"]), [name])
 
+    def test_the_data_reviews_entries_must_name_one_row(self):
+        """Check 'fixes' (SPEC amendment 29): a correction that names exactly one statement row passes; one whose
+        filing date names no row, one that names a row twice over and an exclusion that ends before it starts
+        fail it; entries of a company the run does not hold are listed, and review.md lists every entry."""
+        comps, walk = R.choose(self.snap, json.loads(self.sample.read_text()))
+        self.assertEqual((self.res["fixes"]["failed"], self.res["fixes"]["entries"]), (0, {}))
+        self.assertIn("## 数据审查的修正", (self.out / "review.md").read_text())
+        sym = comps[0][1]
+        q = json.loads((self.snap / "raw" / "inc_q" / f"{sym}.json").read_text())[5]
+        right = {"kind": "inc_q", "date": q["date"][:10], "filed": q["filingDate"][:10], "set": {"epsDiluted": 1.0},
+                 "why": "w"}
+        path = Path(self.tmp.name) / "fixes_check.json"
+        entries = {"rows": [right, dict(right, filed="1999-01-01")],
+                   "exclude": [{"version": "T", "from": "2019-01-02", "to": "2018-06-28", "why": "w"}]}
+        path.write_text(json.dumps({"companies": {sym: entries, "ZZZ": {"rows": [right]}}}))
+        got = C.check_fixes(self.snap, comps, walk["z"], path)
+        self.assertEqual((got["checked"], got["failed"], got["not_in_run"]), (3, 2, ["ZZZ"]))
+        self.assertEqual([x.get("filed", "exclude") for x in got["failures"]], ["1999-01-01", "exclude"])
+        f = self.snap / "raw" / "inc_q" / f"{sym}.json"
+        keep = f.read_text()
+        try:
+            f.write_text(json.dumps(json.loads(keep) + [q]))                # the same row twice
+            path.write_text(json.dumps({"companies": {sym: {"rows": [right]}}}))
+            got = C.check_fixes(self.snap, comps, walk["z"], path)
+        finally:
+            f.write_text(keep)
+        self.assertEqual([(x["date"], x["rows"]) for x in got["failures"]], [(right["date"], 2)])
+        text = C.review_table(walk, {}, {}, [], {"fixes": C.check_fixes(self.snap, comps, walk["z"], path)})
+        self.assertIn(f"- {sym} 季报 {right['date']}（{right['filed']} 公布）：epsDiluted 改为 1.0。w", text)
+
     def test_the_limits_check_finds_the_shapes_it_guards(self):
         """Check 'limits' (SPEC amendment 24): the clean synthetic companies pass; an unclear split whose epoch
         reaches member days (synth.late_verdict A), a quarter filed again after a split (B) and a quarter first
@@ -406,6 +437,63 @@ class ChecksTest(unittest.TestCase):
                 return pop if not pop or not isinstance(pop[0], int) else [i for i in pop if i in want]
         got = C.check_band(snap, comps, 10 ** 6, Days(), "2026-10-23")
         self.assertEqual((got["checked"], got["failed"]), (2 * len(comps) * len(want), 0), got["failures"][:2])
+        tmp.cleanup()
+
+    def test_the_band_check_follows_spin_offs_and_the_data_review(self):
+        """Check 3 builds the panels as the run does, with the confirmed spin-offs and the data review's entries:
+        on the days a spin-off's restart (checks.restarts, read apart from panel.build) or an exclusion leaves
+        without a band there must be none, and after a restart (an exclusion's: the day after its last) the band
+        is the skill's over the window from the restart on; every company with a restart is checked on the days
+        around it too. A build that ignores the spin-off or the exclusion, or whose window after a restart still
+        holds the days before it, fails it."""
+        tmp = tempfile.TemporaryDirectory()
+        snap = Path(tmp.name)
+        synth.company(snap, "SPN", seed=16)
+        comps = [("SPN", "SPN", "Tech", [["2005-01-03", "2030-01-01"]])]
+        x, ex = "2016-03-07", {"version": "F", "from": "2019-01-02", "to": "2019-06-28"}
+        restart = {"T": "2017-03-08", "F": "2017-01-01"}
+        dates = P.build("SPN", snap, comps[0][3], versions=("T",)).dates
+        want = set(range(bisect.bisect_left(dates, R.FIRST_DAY), len(dates), 40))
+        for e in (x, "2016-12-30", "2017-01-02", "2017-03-08", "2019-01-02", "2019-06-28", "2020-01-02", "2020-03-09"):
+            k = bisect.bisect_left(dates, e)
+            want |= set(range(k - 3, k + 3))
+
+        class Days(random.Random):
+            def sample(self, pop, n):
+                pop = list(pop)
+                return pop if not pop or not isinstance(pop[0], int) else [i for i in pop if i in want]
+        bands0, build0 = P.bands, P.build
+
+        def no_restart(dates, close, eps, why_eps, years, q_shares, first_day, resets=()):
+            out, why = bands0(dates, close, eps, why_eps, years, q_shares, first_day)
+            for a, b in resets:                      # no band in the span, but the window keeps the days before it
+                for i in range(bisect.bisect_left(dates, a), bisect.bisect_left(dates, b)):
+                    out[i], why[i] = None, "spin_reset"
+            return out, why
+
+        def ignoring(**over):
+            return lambda *a, **k: build0(*a, **dict(k, **over))
+        got = {}
+        with mock.patch.object(P, "fixes_of", lambda sym, path=P.FIXES: {"exclude": [ex]}):
+            for name, patch in (("right", contextlib.nullcontext()), ("no restart", mock.patch.object(P, "bands", no_restart)),
+                                ("no spin-off", mock.patch.object(P, "build", ignoring(spinoffs=[]))),
+                                ("no exclusion", mock.patch.object(P, "build", ignoring(fixes={})))):
+                with patch:
+                    got[name] = C.check_band(snap, comps, 10 ** 6, Days(), "2026-10-23", {"SPN": [x]})
+        right = got["right"]
+        self.assertEqual((right["checked"], right["failed"], right["restart_companies"]),
+                         (2 * len(want) + right["near_restarts"], 0, 1), right["failures"][:2])
+        self.assertGreaterEqual(right["near_restarts"], 2 * 20)
+        late = got["no restart"]["failures"]
+        self.assertTrue(late and all(f["code"] is None and (restart[f["version"]] <= f["day"] < "2020-03-09" or
+                                                            f["version"] == "F" and ex["to"] < f["day"] < "2022-06-30")
+                                     for f in late))
+        self.assertEqual({(f["version"], f["code"]) for f in got["no spin-off"]["failures"] if f["day"] < restart["F"]},
+                         {("T", "no band expected"), ("F", "no band expected")})
+        off = got["no exclusion"]["failures"]
+        self.assertEqual({(f["version"], f["code"], f["day"] <= ex["to"]) for f in off},
+                         {("F", "no band expected", True), ("F", None, False)})
+        self.assertTrue(all(ex["from"] <= f["day"] < "2022-06-30" for f in off))
         tmp.cleanup()
 
     def test_a_trigger_close_without_an_atr_has_no_chase_limit(self):

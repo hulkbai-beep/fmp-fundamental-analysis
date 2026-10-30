@@ -5,7 +5,8 @@ Checks before any result is read, on the frozen snapshot (all in the cloud; SPEC
   calendar   SPY's split-adjusted and dividend-adjusted sessions agree up to Z (the rule's calendar and the
              hedge's), and every company bar on or after 2008-01-02 falls on a SPY session
   band       the fast daily band equals the skill's analyze.multiple_bands and the full analyze.history_problem
-             on random (company, day, version) triples
+             on random (company, day, version) triples of the panels the run builds (the confirmed spin-offs'
+             restarts and the data review's exclusions leave no band, SPEC amendment 29)
   pipeline   at the snapshot's last day, for every company still listed with analysts' estimates: the pilot's
              band code fed the skill's own next-twelve-month EPS (reported years, then today's consensus)
              reproduces analyze.price_range's forward-P/E band and 'now' range exactly
@@ -27,6 +28,8 @@ Checks before any result is read, on the frozen snapshot (all in the cloud; SPEC
   limits     none of the shapes the known limits of the split basis need (SPEC amendment 24): an epoch of T
              that holds an unclear split and reaches a member day, a period filed on both sides of a split, a
              period first filed after a split though a later period was filed before it
+  fixes      the data review's corrections (statement_fixes.json, SPEC amendment 29): each names exactly one
+             statement row of the snapshot, as panel.build reports it, and each exclusion is a span of T or F
   basis      the statement basis decisions, EPS x shares / net income outliers and annual-vs-quarters gaps of
              every company, for review by eye
   spins      the evidence to confirm each spin-off (the listed events and panel.spin_candidates): the /full
@@ -102,24 +105,68 @@ def check_calendar(snap: Path, comps: list, z: str) -> dict:
             "bars_off_sessions": off}                   # listed for review: sim gives them the previous session
 
 
-def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> dict:
-    bad, done = [], 0
+def restarts(years: list, spin_days: list, v: str) -> list:
+    """SPEC amendment 29, written apart from panel.build: for each confirmed spin-off x, (x, the first day of
+    version v's band window after it): T the day after x + 365 days, F the day after the first fiscal year end
+    on or after x (none: never). From x to the day before it there is no band."""
+    ends = sorted({y["end"] for y in years})
+    out = []
+    for x in sorted(str(s)[:10] for s in spin_days):
+        if v == "T":
+            out.append((x, (P.day(x) + dt.timedelta(days=366)).isoformat()))
+        else:
+            e = next((e for e in ends if e.isoformat() >= x), None)
+            out.append((x, (e + dt.timedelta(days=1)).isoformat() if e else "9999-12-31"))
+    return out
+
+
+def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str, spin: dict | None = None) -> dict:
+    """The band on random (company, day, version) triples of the panels the run builds (with the confirmed
+    spin-offs and the data review's corrections) against the skill's analyze.multiple_bands and the full
+    analyze.history_problem: none on a day a spin-off's restart or the data review leaves without one, and a
+    window that starts at the restart after it (after an exclusion: the day after its last). Every company with
+    a restart is checked, on the days around each restart as well (near_restarts counts those triples)."""
+    bad, done, near = [], 0, 0
     picked = rnd.sample(comps, min(len(comps), 25))
     per = max(1, n // len(picked))
-    for _, sym, sector, spans in picked:
-        p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z)
+    picked += [c for c in comps if c not in picked and ((spin or {}).get(c[0]) or P.fixes_of(c[1]).get("exclude"))]
+    for key, sym, sector, spans in picked:
+        spin_days = (spin or {}).get(key, [])
+        p = P.build(sym, snap, spans, versions=R.VERSIONS, snapshot_end=z, spinoffs=spin_days)
         sp = P.split_factors(P.read(snap / "raw" / "splits" / f"{sym}.json"))
-        years = P.statement_rows(P.read(snap / "raw" / "inc_a" / f"{sym}.json"), sp, {}, unclear="none", units="fix",
+        fixes = P.fixes_of(sym)
+        years = P.statement_rows(P.statements(snap, sym, "inc_a", fixes), sp, {}, unclear="none", units="fix",
                                  eps_shares="later")
-        q_raw = P.read(snap / "raw" / "inc_q" / f"{sym}.json")
+        q_raw = P.statements(snap, sym, "inc_q", fixes)
         reading = {"T": P.statement_rows(q_raw, sp, {}, unclear="mark", units="fix", eps_shares="later"),
                    "F": P.statement_rows(q_raw, sp, {}, unclear="none", units="fix", eps_shares="later")}
+        out_of = {v: [(x["from"], x["to"]) for x in fixes.get("exclude", []) if x["version"] == v] for v in ("T", "F")}
+        resets = {v: restarts(years, spin_days, v) + [(a, (P.day(b) + dt.timedelta(days=1)).isoformat())
+                                                      for a, b in out_of[v]] for v in ("T", "F")}
         days = [i for i, d in enumerate(p.dates) if d >= FIRST_DAY and p.member[i]]
-        for i in rnd.sample(days, min(len(days), per)):
+        # around each restart: the last day before x and x, the span's last day and the restart, the first day a
+        # band can have its MIN_BAND_DAYS P/E days, and the day the 3-year window leaves the restart behind
+        around = set()
+        for x, s in resets["T"] + resets["F"]:
+            far = "9999-12-31" if s >= "9999" else (P.day(s) + dt.timedelta(days=P.LOOKBACK_DAYS)).isoformat()
+            j, k, far = (bisect.bisect_left(p.dates, e) for e in (x, s, far))
+            around |= {j - 1, j, k - 1, k, k + P.MIN_BAND_DAYS - 2, k + P.MIN_BAND_DAYS - 1, k + P.MIN_BAND_DAYS,
+                       far - 1, far, far + 1}
+        around = sorted(set(days) & around)
+        near += 2 * len(around)
+        for i in rnd.sample(days, min(len(days), per)) + around:
             for v in ("T", "F"):
                 d = P.day(p.dates[i])
                 start = (d - dt.timedelta(days=P.LOOKBACK_DAYS)).isoformat()
-                window = [(p.dates[j], p.c[j]) for j in range(i + 1) if p.dates[j] >= start]
+                r = max((s for x, s in resets[v] if x <= p.dates[i]), default=None)
+                if (r is not None and p.dates[i] < r) or any(a <= p.dates[i] <= b for a, b in out_of[v]):
+                    done += 1
+                    if p.band[v][i] is not None:
+                        bad.append({"symbol": sym, "day": p.dates[i], "version": v, "code": "no band expected",
+                                    "got": p.band[v][i], "want": None})
+                    continue
+                window = [(p.dates[j], p.c[j]) for j in range(i + 1) if p.dates[j] >= max(start, r or start)]
+                full_window = [(p.dates[j], p.c[j]) for j in range(i + 1) if p.dates[j] >= start]
                 until = next(u for u, _ in p.epochs["T"] if u is None or p.dates[i] <= u)
                 ys = P.t_years(years, p.report, until) if v == "T" else years
                 yrs = [{"date": y["end"].isoformat(), "shares": y["shares"]} for y in P.latest_by_end(ys, d)]
@@ -128,7 +175,7 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
                 qs = [q for q in reading[v] if q["known"] < d and q["shares"] and
                       (v == "F" or not q.get("unclear_until") or (until and q["unclear_until"].isoformat() >= until))]
                 cur = max(qs, key=lambda q: (q["known"], q["end"]))["shares"] if qs else None
-                code = A.history_problem(yrs, window, start, cur)[0]
+                code = A.history_problem(yrs, full_window, start, cur)[0]     # the checks: the whole window
                 eps = dict(zip(p.dates, p.window_eps(v, i)))
                 now = A.pos_div(p.c[i], p.eps[v][i])
                 want = A.multiple_bands([], window, eps.get, lambda _d: None, now, None)[0]
@@ -144,7 +191,8 @@ def check_band(snap: Path, comps: list, n: int, rnd: random.Random, z: str) -> d
                     bad.append({"symbol": sym, "day": p.dates[i], "version": v, "code": code,
                                 "got": got, "want": None if want is None else {k: want[k] for k in
                                                                                ("p25", "median", "p75", "now_pct")}})
-    return {"checked": done, "failed": len(bad), "failures": bad[:20]}
+    return {"checked": done, "failed": len(bad), "failures": bad[:20], "near_restarts": near,
+            "restart_companies": sum(1 for c in picked if (spin or {}).get(c[0]) or P.fixes_of(c[1]).get("exclude"))}
 
 
 def _closes(rows: list, field: str) -> list:
@@ -781,7 +829,8 @@ def check_basis(snap: Path, comps: list, z: str) -> dict:
         rep = p.report
         keep = {k: rep[k] for k in ("basis_q", "basis_a", "annual_vs_quarters", "spin_candidates")}
         if any(keep["basis_q"].get(k) or keep["basis_a"].get(k) for k in
-               ("boundary", "partial", "share_steps", "eps_units", "eps_shares", "review")) or keep["annual_vs_quarters"] \
+               ("boundary", "partial", "share_steps", "eps_units", "eps_shares", "review", "share_units",
+                "from_year")) or keep["annual_vs_quarters"] \
                 or keep["spin_candidates"]:
             out[sym] = json.loads(json.dumps(keep, default=str))
     return out
@@ -824,6 +873,34 @@ def check_limits(snap: Path, comps: list, z: str) -> dict:
                          for e, ks in sorted(known.items()) if before and e <= before and min(ks) >= x]
     return {"checked": len(comps), "held_epochs": epochs, "failed": len(reach) + len(refiled) + len(late),
             "reaching": reach, "refiled_across_split": refiled, "filed_late_across_split": late}
+
+
+def check_fixes(snap: Path, comps: list, z: str, path: Path = P.FIXES) -> dict:
+    """The data review's entries (statement_fixes.json, SPEC amendment 29) against the snapshot, counted here
+    apart from panel.statements: a row correction must name exactly one row of its kind with its period end
+    and filing date, and panel.build must report that one row; an exclusion must be of version T or F and end
+    no earlier than it starts. Entries of companies the run does not hold are listed."""
+    data = json.loads(path.read_text(encoding="utf-8")).get("companies", {}) if path.is_file() else {}
+    bad, done = [], 0
+    for key, sym, sector, spans in comps:
+        f = data.get(sym)
+        if not f:
+            continue
+        told = P.build(sym, snap, spans, versions=("T",), snapshot_end=z, fixes=f).report.get("fixes", [])
+        told = [(x["kind"], x["date"], x["filed"], x["rows"]) for x in told]
+        for e in f.get("rows", []):
+            done += 1
+            n = sum(1 for r in P.read(snap / "raw" / e["kind"] / f"{sym}.json")
+                    if str(r.get("date"))[:10] == e["date"] and str(r.get("filingDate"))[:10] == e["filed"])
+            if n != 1 or (e["kind"], e["date"], e["filed"], 1) not in told:
+                bad.append({"symbol": sym, "kind": e["kind"], "date": e["date"], "filed": e["filed"], "rows": n})
+        for e in f.get("exclude", []):
+            done += 1
+            if e.get("version") not in ("T", "F") or not P.day(e["from"]) <= P.day(e["to"]):
+                bad.append({"symbol": sym, "exclude": e})
+    return {"checked": done, "failed": len(bad), "failures": bad,
+            "entries": {sym: data[sym] for _, sym, _, _ in comps if data.get(sym)},
+            "not_in_run": sorted(set(data) - {sym for _, sym, _, _ in comps})}
 
 
 def panel_facts(snap: Path, comps: list, z: str, spin: dict) -> dict:
@@ -904,6 +981,14 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
             parts += [f"{name} EPS×股数÷净利润不在 0.6–1.6、只列出 {len(x['review'])} 行（"
                       + "，".join(f"{u['end']} {u['eps_x_shares_over_ni']:g}" for u in x["review"][:8])
                       + ("…" if len(x["review"]) > 8 else "") + "）"] if x.get("review") else []
+            parts += [f"{name} 股数单位错（差一千、一百万倍）、改 {len(x['share_units'])} 行（"
+                      + "，".join(f"{u['end']} {u['shares']:g}→{u['now']:g}" for u in x["share_units"][:8])
+                      + ("…" if len(x["share_units"]) > 8 else "") + "）"] if x.get("share_units") else []
+            parts += [f"{name} 不是单季的行（重复全年 repeat、EPS 为 0 的占位 zero）、按全年减前三季改 "
+                      f"{len(x['from_year'])} 行（"
+                      + "，".join(f"{u['end']} {u['kind']} {u['eps']:g}→{'无' if u['now'] is None else format(u['now'], 'g')}"
+                                 for u in x["from_year"][:8])
+                      + ("…" if len(x["from_year"]) > 8 else "") + "）"] if x.get("from_year") else []
             parts += [f"{name} 相邻两期股数跳变、拆股解释不了，只列出 {len(x['share_steps'])} 处（"
                       + "，".join(f"{u['older_end']}→{u['newer_end']} ×{u['ratio']:g}" for u in x["share_steps"][:8])
                       + ("…" if len(x["share_steps"]) > 8 else "") + "）"] if x.get("share_steps") else []
@@ -911,6 +996,19 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
         parts += [f"大幅单日涨跌 {len(b['spin_candidates'])} 次"] if b.get("spin_candidates") else []
         if parts:
             w.append(f"- {sym}：" + "；".join(parts))
+    fx = res.get("fixes")
+    if fx:
+        w.append("\n## 数据审查的修正（statement_fixes.json，SPEC 修订 29）\n")
+        for sym, f in fx["entries"].items():
+            for e in f.get("rows", []):
+                w.append(f"- {sym} {'季报' if e['kind'] == 'inc_q' else '年报'} {e['date']}（{e['filed']} 公布）："
+                         + "，".join(f"{k} 改为 {v}" for k, v in e["set"].items()) + f"。{e.get('why', '')}")
+            for e in f.get("exclude", []):
+                w.append(f"- {sym} {e['version']} 版 {e['from']} 到 {e['to']} 不给区间。{e.get('why', '')}")
+        w.append(f"- 修正 {fx['checked']} 项，对不上快照里恰好一行的 {fx['failed']} 项"
+                 + "".join(f"；{x['symbol']} {x.get('date') or x['exclude']}" for x in fx["failures"]))
+        if fx["not_in_run"]:
+            w.append(f"- 不在这次运行里的公司：{'、'.join(fx['not_in_run'])}")
     lim = res.get("limits")
     if lim:
         w.append("\n## 拆股口径的已知限制（SPEC 修订 24）\n")
@@ -942,7 +1040,9 @@ def review_table(walk: dict, facts: dict, basis: dict, spins: list, res: dict) -
     for k, v in res.items():
         if isinstance(v, dict) and "failed" in v:
             n = v.get("checked", v.get("compared", v.get("fills")))
-            w.append(f"- {k}：{n} 项，失败 {v['failed']}")
+            w.append(f"- {k}：{n} 项，失败 {v['failed']}"
+                     + (f"（其中分拆或排除段前后 {v['near_restarts']} 项，涉及 {v['restart_companies']} 家公司）"
+                        if "near_restarts" in v else ""))
     return "\n".join(w) + "\n"
 
 
@@ -976,7 +1076,7 @@ def main(argv=None) -> int:
     ap.add_argument("--sample", default=str(HERE / "sample.json"))
     ap.add_argument("--spinoffs", default=str(HERE / "spinoffs.json"))
     ap.add_argument("--only", nargs="*", default=["calendar", "band", "pipeline", "truncation", "fills", "limits",
-                                                  "basis", "spins", "review"])
+                                                  "fixes", "basis", "spins", "review"])
     ap.add_argument("--same", nargs=2, metavar="OUT", help="compare two run_pilot outputs (check 8) and stop")
     a = ap.parse_args(argv)
     if a.same:
@@ -1021,7 +1121,7 @@ def main(argv=None) -> int:
     if "calendar" in a.only:
         res["calendar"] = check_calendar(snap, comps, z)
     if "band" in a.only:
-        res["band"] = check_band(snap, comps, a.pairs, rnd, z)
+        res["band"] = check_band(snap, comps, a.pairs, rnd, z, spin)
     if "pipeline" in a.only:
         res["pipeline"] = check_pipeline(snap, comps)
     if "truncation" in a.only:
@@ -1030,6 +1130,8 @@ def main(argv=None) -> int:
         res["fills"] = check_fills(snap, comps, z, spin)
     if "limits" in a.only:
         res["limits"] = check_limits(snap, comps, z)
+    if "fixes" in a.only:
+        res["fixes"] = check_fixes(snap, comps, z)
     if "basis" in a.only or "review" in a.only:
         res["basis"] = check_basis(snap, comps, z)
     if "spins" in a.only or "review" in a.only:
@@ -1047,7 +1149,7 @@ def main(argv=None) -> int:
     for k, v in res.items():
         if isinstance(v, dict) and "failed" in v:
             print(k, {x: y for x, y in v.items() if x in ("checked", "compared", "plans", "fills", "sales",
-                                                          "every_start_plans", "failed")})
+                                                          "every_start_plans", "near_restarts", "failed")})
     print("basis: review", len(res.get("basis", {})), "companies;", "spin-off rows", len(res.get("spins", [])))
     return 1 if any(isinstance(v, dict) and v.get("failed") for v in res.values()) else 0
 

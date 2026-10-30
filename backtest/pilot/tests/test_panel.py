@@ -519,6 +519,216 @@ class PanelTest(unittest.TestCase):
         self.assertIsNone(q.band["T"][i])
         self.assertIn(q.why["T"][i], ("eps_not_positive", "price_jump"))
 
+    def test_a_q4_row_that_repeats_the_year_is_put_right(self):
+        """A Q4 row holding its fiscal year's figures (FMP's Q4 = FY) gets the year less its three earlier
+        quarters, on today's basis (panel.from_the_year): version T then reads what it reads when the row is
+        right, across the 2014 split too, and annual_check lists nothing; without all three earlier quarters
+        known by then the row has no EPS."""
+        synth.company(self.snap, "Q4A", seed=11)
+        clean = P.build("Q4A", self.snap, SPANS)
+        path = self.snap / "raw" / "inc_q" / "Q4A.json"
+        years = {r["date"]: r for r in json.loads((self.snap / "raw" / "inc_a" / "Q4A.json").read_text())}
+        rows = json.loads(path.read_text())
+        for r in rows:
+            if r["period"] == "Q4" and r["date"][:4] in ("2010", "2013", "2016"):
+                r["epsDiluted"], r["netIncome"] = years[r["date"]]["epsDiluted"], years[r["date"]]["netIncome"]
+        path.write_text(json.dumps(rows))
+        p = P.build("Q4A", self.snap, SPANS)
+        self.assertEqual([(x["end"], x["kind"]) for x in p.report["basis_q"]["from_year"]],
+                         [("2010-12-31", "repeat"), ("2013-12-31", "repeat"), ("2016-12-31", "repeat")])
+        for i, d in enumerate(p.dates):
+            a, b = clean.eps["T"][i], p.eps["T"][i]
+            self.assertTrue(a == b if a is None or b is None else abs(a - b) < 1e-5, d)
+        self.assertEqual(p.report["annual_vs_quarters"], [])
+        path.write_text(json.dumps([r for r in rows if r["date"] != "2016-06-30"]))
+        p = P.build("Q4A", self.snap, SPANS)
+        self.assertEqual([(x["end"], x["kind"], x["now"], len(x["quarters"]))
+                          for x in p.report["basis_q"]["from_year"]][-1], ("2016-12-31", "repeat", None, 2))
+
+    def test_a_zero_eps_placeholder_is_put_right(self):
+        """A Q4 row with diluted and basic EPS both 0 as filed while its net income over its diluted count is
+        not (FMP's derived Q4 of some companies) gets the fiscal year less its three earlier quarters, or that
+        net income over the count when no fiscal year of its end is known by then: version T then reads what it
+        reads when the row is right, across the 2014 split too. A quarter whose net income over its count is
+        under 0.01 in size keeps its 0."""
+        tr = synth.company(self.snap, "ZER", seed=13)
+        clean = P.build("ZER", self.snap, SPANS)
+        qpath, apath = (self.snap / "raw" / part / "ZER.json" for part in ("inc_q", "inc_a"))
+        rows = json.loads(qpath.read_text())
+        for r in rows:
+            if r["period"] == "Q4" and r["date"][:4] in ("2011", "2016", "2019"):
+                r["epsDiluted"] = r["eps"] = 0
+        qpath.write_text(json.dumps(rows))
+        apath.write_text(json.dumps([r for r in json.loads(apath.read_text()) if r["date"] != "2019-12-31"]))
+        p = P.build("ZER", self.snap, SPANS)
+        self.assertEqual([(x["end"], x["kind"], len(x["quarters"])) for x in p.report["basis_q"]["from_year"]],
+                         [("2011-12-31", "zero", 3), ("2016-12-31", "zero", 3), ("2019-12-31", "zero", 3)])
+        for i, d in enumerate(p.dates):
+            a, b = clean.eps["T"][i], p.eps["T"][i]
+            self.assertTrue(a == b if a is None or b is None else abs(a - b) < 1e-5, d)
+        self.assertEqual(p.report["annual_vs_quarters"], [])
+        for r in rows:
+            if r["date"] == "2013-06-30":
+                r["epsDiluted"], r["eps"], r["netIncome"] = 0, 0, 0.5e6
+        qpath.write_text(json.dumps(rows))
+        p = P.build("ZER", self.snap, SPANS)
+        self.assertNotIn("2013-06-30", [x["end"] for x in p.report["basis_q"]["from_year"]])
+        e = next(e for end, _, _, e in tr["quarters"] if end == dt.date(2013, 6, 30))
+        i = p.dates.index("2013-09-03")                      # Q2 2013 known, Q3 not yet
+        self.assertAlmostEqual(p.eps["T"][i], clean.eps["T"][i] - e, places=5)
+
+    def test_share_counts_in_the_wrong_unit_are_put_right(self):
+        """A quarter whose share count FMP gives in units of a million with its EPS figured on that count, and
+        one whose count alone is so: step 0 puts them right (share_units), and version T and its share check
+        then read what they read when the rows are right."""
+        synth.company(self.snap, "UNI", seed=12)
+        clean = P.build("UNI", self.snap, SPANS)
+        path = self.snap / "raw" / "inc_q" / "UNI.json"
+        rows = json.loads(path.read_text())
+        for r in rows:
+            if r["date"] in ("2016-06-30", "2016-09-30"):
+                r["weightedAverageShsOutDil"] /= 1e6
+            if r["date"] == "2016-06-30":
+                r["epsDiluted"] *= 1e6
+        path.write_text(json.dumps(rows))
+        p = P.build("UNI", self.snap, SPANS)
+        self.assertEqual([(x["end"], x["now"], x["eps_now"] == x["eps"]) for x in p.report["basis_q"]["share_units"]],
+                         [("2016-06-30", 100e6, False), ("2016-09-30", 100e6, True)])
+        for i, d in enumerate(p.dates):
+            a, b = clean.eps["T"][i], p.eps["T"][i]
+            self.assertTrue(a == b if a is None or b is None else abs(a - b) < 1e-9, d)
+        self.assertEqual(p.why["T"], clean.why["T"])
+
+    def test_a_spin_off_factor_explains_no_share_step(self):
+        """FMP books a spin-off's price adjustment as a split (759/500 for Xerox in 2017), which changes no share
+        count: step 3 does not read a real step in the counts near such a factor as a partial restatement (the
+        older rows stay as filed and the step is listed), while a 3-for-2 split still explains the same step."""
+        d = dt.date
+        rows = [{"end": d(y, 12, 31), "known": d(y + 1, 3, 1), "period": "FY", "eps": 2.0,
+                 "shares": 100e6 * (1.52 if y >= 2010 else 1.0), "ni": 200e6 * (1.52 if y >= 2010 else 1.0)}
+                for y in range(2005, 2016)]
+        got = {}
+        for f in (759 / 500, 1.5):
+            rep = {}
+            out = P.normalize_basis(rows, [(d(2017, 1, 3), f)], rep, unclear="none", units="fix", eps_shares="later")
+            got[f] = ([x["factor"] for x in rep["partial"]], [x["older_end"] for x in rep["share_steps"]],
+                      sorted({r["shares"] for r in out if r["end"].year < 2010}))
+        self.assertEqual(got[759 / 500], ([], ["2009-12-31"], [100e6]))
+        self.assertEqual(got[1.5], ([1.5], [], [150e6]))
+        self.assertTrue(all(P.share_split(f) for f in (2.0, 1.5, 0.25, 21 / 20, 1 / 20, 3.0)))
+        self.assertFalse(any(P.share_split(f) for f in (759 / 500, 4423 / 1000, 400 / 1617, 2500 / 2053)))
+
+    def test_four_quarters_on_counts_far_apart_have_no_ttm(self):
+        """Four quarters whose diluted counts differ by more than history_problem allows between two counts (a
+        merger paid in shares that triples the count from 2017) add up to no per-share figure: version T has no
+        EPS from the day after the first quarter on the new count is filed to the day the four latest are all on
+        it, and reads what it reads without the step on every other day. status.py's U2, frozen before the data,
+        reads the TTM without this guard."""
+        synth.company(self.snap, "MRG", seed=14)
+        clean = P.build("MRG", self.snap, SPANS)
+        for part in ("inc_q", "inc_a"):
+            path = self.snap / "raw" / part / "MRG.json"
+            rows = json.loads(path.read_text())
+            for r in rows:
+                if r["date"] >= "2017-01-01":
+                    r["weightedAverageShsOutDil"] *= 3
+                    r["netIncome"] *= 3
+            path.write_text(json.dumps(rows))
+        p = P.build("MRG", self.snap, SPANS)
+        first = synth.filed_on(dt.date(2017, 3, 31), "Q1").isoformat()
+        last = synth.filed_on(dt.date(2017, 12, 31), "Q4").isoformat()
+        raw = self.snap / "raw"
+        u2 = P.ttm_steps(P.statement_rows(P.read(raw / "inc_q" / "MRG.json"),        # status.assess's reading
+                                          P.split_factors(P.read(raw / "splits" / "MRG.json")), {}))
+        for i, d in enumerate(p.dates):
+            if first < d <= last:
+                self.assertIsNone(p.eps["T"][i], d)
+                self.assertIsNotNone(P.ttm_at(*u2, P.day(d))[0], d)
+            else:
+                a, b = clean.eps["T"][i], p.eps["T"][i]
+                self.assertTrue(a == b if a is None or b is None else abs(a - b) < 1e-9, d)
+
+    def test_the_data_reviews_corrections_and_exclusions(self):
+        """The data review's entries (statement_fixes.json, panel.fixes_of): a row correction replaces the fields
+        of the one row of its kind, period end and filing date before anything reads the row, and the report
+        lists every entry with the number of rows it named (0 when it names none); an exclusion leaves its
+        version no band from its first day to its last (data_review), and its band window starts again the day
+        after it, as after a spin-off, so the bands are as they were once the window has moved past it; the other
+        version is as it was."""
+        synth.company(self.snap, "FIX", seed=15)
+        clean = P.build("FIX", self.snap, SPANS)
+        q = next(r for r in json.loads((self.snap / "raw" / "inc_q" / "FIX.json").read_text())
+                 if r["date"] == "2016-06-30")
+        y = next(r for r in json.loads((self.snap / "raw" / "inc_a" / "FIX.json").read_text())
+                 if r["date"] == "2016-12-31")
+        rows = [{"kind": "inc_q", "date": "2016-06-30", "filed": q["filingDate"], "set": {"epsDiluted": q["epsDiluted"] + 1}},
+                {"kind": "inc_q", "date": "2016-06-30", "filed": "2016-08-05", "set": {"epsDiluted": 9.0}},
+                {"kind": "inc_a", "date": "2016-12-31", "filed": y["filingDate"], "set": {"epsDiluted": y["epsDiluted"] + 0.5}}]
+        p = P.build("FIX", self.snap, SPANS, fixes={"rows": rows})
+        self.assertEqual([(x["kind"], x["filed"], x["rows"]) for x in p.report["fixes"]],
+                         [("inc_q", "2016-08-04", 1), ("inc_q", "2016-08-05", 0), ("inc_a", "2017-03-01", 1)])
+        known_q2 = synth.filed_on(dt.date(2016, 6, 30), "Q2").isoformat()
+        known_q2_next = synth.filed_on(dt.date(2017, 6, 30), "Q2").isoformat()
+        for i, d in enumerate(p.dates):
+            for v, plus in (("T", 1.0 if known_q2 < d <= known_q2_next else 0.0),
+                            ("FY", 0.5 if "2015-12-31" < d <= "2016-12-31" else 0.0)):
+                a, b = clean.eps[v][i], p.eps[v][i]
+                if a is None or b is None:
+                    self.assertEqual((a, b, plus), (None, None, 0.0), d)
+                else:
+                    self.assertAlmostEqual(b - a, plus, places=9, msg=d)
+        ex = {"version": "F", "from": "2019-01-02", "to": "2019-06-28"}
+        p = P.build("FIX", self.snap, SPANS, fixes={"exclude": [ex]})
+        k = bisect.bisect_left(p.dates, "2019-06-29")
+        past = (dt.date(2019, 6, 29) + dt.timedelta(days=P.LOOKBACK_DAYS)).isoformat()
+        restarted = 0
+        for i, d in enumerate(p.dates):
+            b, w, b0, w0 = p.band["F"][i], p.why["F"][i], clean.band["F"][i], clean.why["F"][i]
+            if ex["from"] <= d <= ex["to"]:
+                self.assertEqual((b, w), (None, "data_review"), d)
+            elif d < ex["from"] or d >= past or (b0 is None and w0 != "short_history"):
+                self.assertEqual((b, w), (b0, w0), d)
+            else:
+                n = sum(1 for j in range(k, i + 1) if p.eps["F"][j] and p.eps["F"][j] > 0)
+                self.assertEqual(b["n"] if b else w, n if n >= P.MIN_BAND_DAYS else "short_history", d)
+                restarted += b is not None
+        self.assertGreater(restarted, 250)
+        self.assertEqual((p.band["T"], p.why["T"]), (clean.band["T"], clean.why["T"]))
+        fixes = Path(self.tmp.name) / "fixes.json"
+        fixes.write_text(json.dumps({"companies": {"FIX": {"exclude": [ex]}}}))
+        self.assertEqual((P.fixes_of("FIX", fixes), P.fixes_of("ZZZ", fixes), P.fixes_of("FIX", fixes.with_name("no"))),
+                         ({"exclude": [ex]}, {}, {}))
+
+    def test_a_spin_off_restarts_the_band_windows(self):
+        """A confirmed spin-off x (SPEC amendment 29): version T has no band from x for 365 days and F none to the
+        end of the fiscal year x falls in (spin_reset), neither starts a plan then, and after that each band's
+        window holds no P/E day before its restart, so the bands are those without the spin-off again once the
+        window has moved past it. F has no EPS on the days before x whose blend weights a fiscal year ending
+        more than 182 days after x (spin_ntm): from 2015 on, whose next year is 2016."""
+        synth.company(self.snap, "SPN", seed=16)
+        x = "2016-03-07"
+        clean, p = (P.build("SPN", self.snap, SPANS, spinoffs=s) for s in ([], [x]))
+        stop = {"T": (dt.date(2016, 3, 7) + dt.timedelta(days=365)).isoformat(), "F": "2016-12-31"}
+        for v in ("T", "F"):
+            restart = (P.day(stop[v]) + dt.timedelta(days=1)).isoformat()
+            k = bisect.bisect_left(p.dates, restart)
+            for i, d in enumerate(p.dates):
+                b, w, b0 = p.band[v][i], p.why[v][i], clean.band[v][i]
+                if v == "F" and "2015-01-01" <= d < x:
+                    self.assertEqual((p.eps["F"][i], b, w), (None, None, "spin_ntm"), d)
+                    self.assertIsNotNone(clean.eps["F"][i], d)
+                elif d < x or d >= (P.day(restart) + dt.timedelta(days=P.LOOKBACK_DAYS)).isoformat():
+                    self.assertEqual((p.eps[v][i], b, w), (clean.eps[v][i], b0, clean.why[v][i]), d)
+                elif d < restart:
+                    self.assertEqual((b, w), (None, "spin_reset"), d)
+                else:
+                    n = sum(1 for j in range(k, i + 1) if p.eps[v][j] and p.eps[v][j] > 0)
+                    self.assertEqual(b["n"] if b else w, n if n >= P.MIN_BAND_DAYS else "short_history", d)
+            self.assertEqual([d for d, no in zip(p.dates, p.no_new[v]) if no],
+                             [d for d in p.dates if x <= d <= stop[v]])
+        self.assertEqual(p.no_new["FY"], p.no_new["F"])
+        self.assertEqual(p.spin_exit, {p.dates.index(x) - 1})
+
 
 if __name__ == "__main__":
     unittest.main()

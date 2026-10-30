@@ -43,7 +43,7 @@ EXITS = {"stop": "止损", "breakeven": "保本止损", "trailing": "移动止�
          "unfilled": "期末还在等首批"}
 NO_RESULT, PROMISING, NOT_PROMISING, INCONCLUSIVE = "没有结果（检查没通过）", "有希望", "不看好", "说不准"
 CHECKS = (("calendar", "交易日历"), ("band", "区间"), ("pipeline", "和技能对数"), ("truncation", "未来数据"),
-          ("fills", "成交"), ("limits", "已知限制"))
+          ("fills", "成交"), ("limits", "已知限制"), ("fixes", "数据修正"))
 FLAG = {"True": True, "False": False, "": None}
 CSV_TYPES = {"start": int, "year": int, "fills": int, "full252": FLAG.get, "full126": FLAG.get,
              "below_mid": FLAG.get, "temp0": lambda x: x or None, "day": str, "status": str}   # else a metric
@@ -135,6 +135,8 @@ def checks_pass(res: dict, ch: dict | None, repro: dict | None, plans: list) -> 
         for k, name in (("band", "区间"), ("truncation", "未来数据")):
             if k in ch and (ch[k].get("checked") or 0) < MIN_SAMPLED:
                 notes.append(f"{name}检查只查了 {ch[k].get('checked') or 0} 项，至少要 {MIN_SAMPLED} 项")
+        if "band" in ch and ch["band"].get("restart_companies") and not ch["band"].get("near_restarts"):
+            notes.append("区间检查没有查到分拆或排除段前后的任何一天")
         if "fills" in ch and not 0 < (ch["fills"].get("pool_days") or 0) == ch["fills"].get("every_start_plans"):
             notes.append(f"成交检查只重放了随机起步表的 {ch['fills'].get('every_start_plans') or 0} 笔计划，"
                          f"起步池有 {ch['fills'].get('pool_days') or 0} 天，要每天都重放")

@@ -50,8 +50,9 @@ VARIANTS = {                                    # SPEC v1 section 7: version T, 
 SLEEVE_ONLY = ("cooldown", "cooldown_after")    # rules a plan simulated alone never meets: the main table serves
 AT_CLOSE = ("delisted", "spin")                 # sales at the close of their bar (SPEC R10)
 OUTPUTS = ("results.json", "plans.csv", "portfolio.json", "status.json")     # with pools_<version>.json
+# what results come from: the code and the data review's corrections of the statements (panel.FIXES)
 CODE = [HERE / f for f in ("market.py", "panel.py", "placebo.py", "run_pilot.py", "sim.py", "stats.py",
-                           "status.py")] + [HERE.parent.parent / "scripts" / "analyze.py"]   # what results come from
+                           "status.py", "statement_fixes.json")] + [HERE.parent.parent / "scripts" / "analyze.py"]
 
 
 def md5_of(path: Path) -> str:

@@ -1,0 +1,118 @@
+{
+ "rule": "The data review's corrections of FMP statement rows and spans with no band (SPEC v1 amendment 29), read by panel.build for every company (panel.fixes_of, panel.statements). A row correction names one row by kind (inc_q, inc_a), period end and filing date, and gives the fields that replace FMP's before anything else reads the row; it is point-in-time because each value was public on the row's own filing day: the figure the company reported in that filing (or its earnings release of that day or earlier), or the row's own bottom-line net income over its own diluted count, which the company's other rows confirm. A row goes here only when two reviewers found the same error in the snapshot and no rule the code applies to every company can see it on the day the row is used. An exclusion gives a version (T or F) no band from one day to another (reason data_review): for errors no row correction can put right.",
+ "reviewed": "From the statement triage of 2026-10-30 (seven company groups, each judged by one reviewer and checked by a second; SPEC amendment 29), on the snapshot of 2026-10-28 (zip md5 65f003ec605814fdc2f5d90508863981), before any result was opened. The filed figures were checked against the SEC documents named in each entry. MS's Q4 2010 was found while its Q4 2009, which the check of the last group found, was checked against MS's releases.",
+ "companies": {
+  "STJ": {
+   "rows": [
+    {"kind": "inc_q", "date": "2006-09-30", "filed": "2006-11-07", "set": {"epsDiluted": 0.32, "netIncome": 115540000},
+     "why": "FMP's Q3 2006 row holds the nine months less Q2 (0.67, net income 252.609M on the nine-month count). St. Jude reported Q3 2006 net earnings 115.540M and diluted EPS 0.32 (365.171M shares).",
+     "source": "https://www.sec.gov/Archives/edgar/data/0000203077/000089710106002100/stjude063950_ex99-1.htm"}
+   ]
+  },
+  "APOL": {
+   "rows": [
+    {"kind": "inc_q", "date": "2006-05-31", "filed": "2007-05-22", "set": {"epsDiluted": 0.75, "netIncome": 131454000},
+     "why": "FMP's Q3 FY2006 row is the nine months (1.94, 339.122M; the 10-Q came late, on the 10-K's day). The 10-Q gives the quarter: net income 131.454M, diluted 0.75.",
+     "source": "https://www.sec.gov/Archives/edgar/data/0000929887/000095015307001194/p73710ae10vq.htm"},
+    {"kind": "inc_q", "date": "2010-02-28", "filed": "2010-03-29", "set": {"epsDiluted": 0.60, "netIncome": 92606000},
+     "why": "FMP's Q2 FY2010 row (1.92, 298.026M) is neither the quarter nor the six months. Apollo reported net income attributable 92.606M and diluted EPS 0.60 (155.168M shares); the year's other quarters and the FY row agree with it.",
+     "source": "https://www.sec.gov/Archives/edgar/data/0000929887/000095012310029092/p17209exv99w1.htm"},
+    {"kind": "inc_q", "date": "2011-02-28", "filed": "2011-03-29", "set": {"epsDiluted": -0.45, "netIncome": -64038000},
+     "why": "FMP's Q2 FY2011 row (2.71, 392.242M) has the wrong net income line. Apollo reported a net loss attributable of 64.038M and diluted EPS -0.45 (142.354M shares, after the BPP impairment); the year's other quarters and the FY row agree with it.",
+     "source": "https://www.sec.gov/Archives/edgar/data/0000929887/000095012311029971/p18769exv99w1.htm"}
+   ]
+  },
+  "BRCM": {
+   "rows": [
+    {"kind": "inc_q", "date": "2012-09-30", "filed": "2012-10-23", "set": {"epsDiluted": 0.38, "netIncome": 220000000},
+     "why": "FMP's Q3 2012 row mixes the nine months (revenue 5.926B, the nine-month total) into the quarter (0.72, 415M). Broadcom reported Q3 2012 net income 220M and diluted EPS 0.38 (579M shares) on 2012-10-23; FY2012 less the other quarters gives the same.",
+     "source": "https://www.sec.gov/Archives/edgar/data/0001054374/000105437412000020/brcm-20120930x8kex.htm"}
+   ]
+  },
+  "BXP": {
+   "rows": [
+    {"kind": "inc_a", "date": "2019-12-31", "filed": "2020-03-02", "set": {"epsDiluted": 3.299484},
+     "why": "FMP's FY2019 EPS 0.40 matches neither income line of its own row. Its bottom-line net income 511.034M over its 154.883M diluted shares is 3.2995, and the year's four quarters (each its own bottom line over its shares) sum to 3.30.",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2022-03-31", "filed": "2022-05-02", "set": {"epsDiluted": 0.911104},
+     "why": "FMP's Q1 2022 EPS 0.48 matches neither income line of its own row: 143.047M / 157.004M = 0.9111. With this, Q2 and Q4 put right the same way, the year's quarters sum to FY2022's 5.40.",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2022-06-30", "filed": "2022-08-05", "set": {"epsDiluted": 1.416879},
+     "why": "FMP's Q2 2022 EPS 1.04 matches neither income line of its own row: 222.722M / 157.192M = 1.4169.",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2022-12-31", "filed": "2023-02-27", "set": {"epsDiluted": 0.769591},
+     "why": "FMP's Q4 2022 EPS 0.23 matches neither income line of its own row: 120.912M / 157.112M = 0.7696.",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"}
+   ]
+  },
+  "MGM": {
+   "rows": [
+    {"kind": "inc_a", "date": "2020-12-31", "filed": "2021-02-26", "set": {"epsDiluted": -2.018011},
+     "why": "FMP's FY2020 EPS -2.67 is net income from continuing operations over the shares (no discontinued operations), not the result attributable to MGM: bottom line -997.204M / 494.152M = -2.018 (MGM reported -2.02).",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_a", "date": "2022-12-31", "filed": "2023-02-24", "set": {"epsDiluted": 3.48966},
+     "why": "FMP's FY2022 EPS 0.50 is net income from continuing operations (206.731M) over the shares; the bottom line 1,441.205M / 412.993M = 3.49 (MGM reported 3.49).",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2022-03-31", "filed": "2022-05-02", "set": {"epsDiluted": -0.060964},
+     "why": "FMP's Q1 2022 EPS -0.0786 is net income from continuing operations over the shares; the bottom line -27.002M / 442.916M = -0.061 (MGM reported -0.06).",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2022-09-30", "filed": "2022-11-02", "set": {"epsDiluted": -1.45},
+     "why": "FMP's Q3 2022 EPS -2.70 is net income from continuing operations over the shares; the bottom line -568.787M over the 392.267M basic shares of a loss quarter = -1.45 (MGM reported -1.45).",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOut"}
+   ]
+  },
+  "STT": {
+   "rows": [
+    {"kind": "inc_q", "date": "2005-12-31", "filed": "2006-02-21", "set": {"epsDiluted": 0.748285, "netIncome": 249000000},
+     "why": "FMP's Q4 2005 row carries a discontinued-operations loss of 116M that belongs to Q3 2005 (whose row already has it): the year's continuing income and the FY row add up only without it. The quarter is its own continuing income 249M over its 332.761M diluted shares.",
+     "source": "the row's own netIncomeFromContinuingOperations / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2009-09-30", "filed": "2009-11-06", "set": {"epsDiluted": 0.656244},
+     "why": "FMP's Q3 2009 EPS 1.05 is the operating figure of the earnings release; the 10-Q of the row's filing day reports net income 327M and diluted EPS 0.66 on 498.29M shares, which the row's own fields give.",
+     "source": "the row's own netIncome / weightedAverageShsOutDil"}
+   ]
+  },
+  "ASH": {
+   "rows": [
+    {"kind": "inc_a", "date": "2010-09-30", "filed": "2010-09-30", "set": {"epsDiluted": 4.18, "netIncome": 332000000},
+     "why": "FMP's only FY2010 row is the year as recast a year later (Distribution moved to discontinued operations, pension gains and losses marked to market: net income 141M), with an EPS of 1.63 that matches neither report, while its FY2006-FY2009 rows and the four FY2010 quarters (sum 4.18) are as first reported. F blends FY2010 with FY2009 on ASH's last member days, so the year is put on their basis: Ashland reported FY2010 net income 332M and diluted EPS 4.18 (79M shares) in November 2010, before the row's known day.",
+     "source": "Ashland's FY2010 earnings release, Form 8-K exhibit 99.1, SEC accession 0001305014-10-000074"}
+   ]
+  },
+  "MTW": {
+   "rows": [
+    {"kind": "inc_q", "date": "2005-03-31", "filed": "2005-05-03", "set": {"epsDiluted": 0.215087},
+     "why": "FMP's Q1 2005 EPS 0.15 matches no income line and no split basis of its row: its net income 6.5M over its 30.220M shares is 0.2151 (Manitowoc's six months to June, 1.00, less Q2's 0.78 is 0.22).",
+     "source": "the row's own bottomLineNetIncome / weightedAverageShsOutDil"},
+    {"kind": "inc_q", "date": "2005-06-30", "filed": "2005-08-03", "set": {"epsDiluted": 0.78},
+     "why": "FMP's Q2 2005 EPS 0.54 matches no income line and no split basis of its row. Manitowoc reported Q2 2005 net earnings 24.055M and diluted EPS 0.78 (30.748M shares).",
+     "source": "Manitowoc's Q2 2005 earnings release, Form 8-K exhibit 99.1, SEC accession 0001104659-05-034501"}
+   ]
+  },
+  "SRCL": {
+   "rows": [
+    {"kind": "inc_q", "date": "2015-09-30", "filed": "2015-11-09", "set": {"epsDiluted": 0.59, "netIncome": 52263000},
+     "why": "FMP's Q3 2015 row mixes vintages: its EPS 0.47 is the earnings release's, its net income 69.449M the restatement of August 2016. The 10-Q filed on the row's day reported net income attributable 52.263M and diluted EPS 0.59 (to common 50.579M, 86.120M shares); the restated 0.81 was public only from 2016-08-12 and stays out.",
+     "source": "Stericycle's Q3 2015 Form 10-Q, SEC accession 0000861878-15-000049"},
+    {"kind": "inc_q", "date": "2017-06-30", "filed": "2017-08-09", "set": {"epsDiluted": -1.74},
+     "why": "FMP's Q2 2017 EPS -1.69 is the loss attributable to Stericycle over the shares, before the preferred dividend (9.185M) less the gain on repurchased preferred (4.459M), which every other 2017 row deducts. The 10-Q reported a net loss to common of 148.768M and diluted EPS -1.74 (85.272M shares).",
+     "source": "Stericycle's Q2 2017 Form 10-Q, SEC accession 0001564590-17-017033"}
+   ]
+  },
+  "MS": {
+   "rows": [
+    {"kind": "inc_q", "date": "2009-12-31", "filed": "2010-02-26", "set": {"epsDiluted": 0.29},
+     "why": "FMP's Q4 2009 EPS 0.47 is the year less the nine months, figured before the preferred dividends: net income applicable to MS 617M over the diluted shares. Morgan Stanley reported earnings applicable to common shareholders of 376M and 0.29 per diluted share.",
+     "source": "https://www.sec.gov/Archives/edgar/data/0000895421/000115752310000201/a6145082ex99_1.htm"},
+    {"kind": "inc_q", "date": "2010-12-31", "filed": "2011-02-28", "set": {"epsDiluted": 0.41},
+     "why": "FMP's Q4 2010 EPS 0.57 is the same shape: net income applicable to MS 836M over the diluted shares, before the preferred dividends and the earnings allocated to participating securities. Morgan Stanley reported earnings applicable to common shareholders of 600M and 0.41 per diluted share.",
+     "source": "https://www.sec.gov/Archives/edgar/data/0000895421/000115752311000250/a6574280ex99-1.htm"}
+   ]
+  },
+  "IPG": {
+   "exclude": [
+    {"version": "T", "from": "2008-01-02", "to": "2012-06-30",
+     "why": "FMP's quarterly EPS for 2006-2012 are figured before preferred dividends, and its Q4 rows carry the next Q1's share count, so version T reads 18-68% high against IPG's reported quarters, by a factor that changes inside every band window. No correction of single rows puts this right; the residual after 2012-06-30 is under 10% of the window (documented)."}
+   ]
+  }
+ }
+}
