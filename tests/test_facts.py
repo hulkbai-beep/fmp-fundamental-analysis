@@ -40,10 +40,8 @@ FULL, DOCS = {}, {}
 JUDGEMENT = {"score", "rating", "rated", "bull", "bullish", "bear", "bearish", "cheap", "expensive", "undervalued",
              "overvalued", "target", "upside", "downside", "buy", "sell", "signal", "recommend", "recommendation",
              "verdict", "attractive", "label", "confidence", "pillar", "flag", "flags", "safety"}
-FREE_TEXT = {"company.name", "company.exchange", "company.sector", "company.industry", "insider.by_insider[].name",
-             "insider.by_insider[].role", "insider.latest_purchases[].name", "insider.latest_purchases[].role",
-             "insider.latest_purchases[].url", "peers[].name", "data_quality.restricted[]", "data_quality.errors[]",
-             "data_quality.route"}
+FREE_TEXT = {"company.name", "company.exchange", "company.sector", "company.industry", "peers[].name",
+             "data_quality.restricted[]", "data_quality.errors[]", "data_quality.route"}
 CODES = {"status", "kind", "method", "reason", "id", "source", "basis", "as_of_basis", "fcf_start_basis",
          "growth_source", "beta_source", "history_basis", "z_zone", "z2_zone", "not_meaningful"}
 
@@ -300,24 +298,20 @@ class Documents(unittest.TestCase):
 
     def test_files_saved_by_earlier_versions_still_convert(self):
         r = copy.deepcopy(FULL["QUAL"])
-        for k in ("generated_at", "insider", "market", "peers", "ttm", "price_time"):
+        for k in ("generated_at", "market", "peers", "ttm", "price_time"):
             r.pop(k, None)
         r["meta"].pop("connection")
         r["price_range"].pop("trailing_problem")
         f = F.build(r)
         self.assertEqual(validate(f, SCHEMA, SCHEMA), [])
-        self.assertEqual((f["insider"], f["rates"], f["valuation"]["vs_group"], f["data_quality"]["route"]),
-                         (None, None, None, None))
+        self.assertEqual((f["rates"], f["valuation"]["vs_group"], f["data_quality"]["route"]), (None, None, None))
         self.assertEqual((f["generated_at"], f["price"]["source"]), (r["as_of"], "profile"))
 
-    def test_insider_states(self):
-        f = DOCS["QUAL"]["insider"]
-        self.assertEqual((f["status"], f["purchases"]["insiders"]), ("ok", 3))
-        r = copy.deepcopy(FULL["QUAL"])
-        r["insider"] = {"restricted": True}
-        f = F.build(r)
-        self.assertEqual(f["insider"]["status"], "restricted")
-        self.assertEqual(validate(f, SCHEMA, SCHEMA), [])
+    def test_insider_trades_are_left_out(self):
+        self.assertTrue(FULL["QUAL"]["insider"])               # the full result still has them, for the report
+        for f in DOCS.values():
+            self.assertNotIn("insider", f)
+        self.assertNotIn("insider", SCHEMA["properties"])
 
 
 class ScoreFromFacts(unittest.TestCase):

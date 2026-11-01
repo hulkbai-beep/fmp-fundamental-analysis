@@ -393,32 +393,6 @@ def _peers(r):
     return out or None
 
 
-def _insider(ins):
-    """Open-market purchases and sales (SEC Form 4) as published; null when not fetched (--no-insider).
-    status restricted: the FMP plan does not include the data, and every other field is null."""
-    if ins is None:
-        return None
-    if ins.get("restricted"):
-        return {"status": "restricted", "from": None, "to": None, "complete": None, "other_transactions": None,
-                "purchases": None, "sales": None, "sales_vs_market_cap": None, "by_insider": None,
-                "latest_purchases": None}
-    def side(s):
-        s = s or {}
-        return {"trades": _int(s.get("trades")), "insiders": _int(s.get("insiders")), "shares": _num(s.get("shares")),
-                "value": _num(s.get("value"))}
-    return {"status": "ok", "from": _day(ins.get("from")), "to": _day(ins.get("to")),
-            "complete": bool(ins.get("complete")), "other_transactions": _int(ins.get("other")),
-            "purchases": side(ins.get("buys")), "sales": side(ins.get("sells")),
-            "sales_vs_market_cap": _num(ins.get("sells_vs_mcap")),
-            "by_insider": [{"name": p.get("name"), "role": p.get("role"), "bought_value": _num(p.get("bought")),
-                            "sold_value": _num(p.get("sold")), "last_date": _day(p.get("last"))}
-                           for p in ins.get("insiders") or []],
-            "latest_purchases": [{"date": _day(t.get("date")), "name": t.get("name"), "role": t.get("role"),
-                                  "shares": _num(t.get("shares")), "price": _num(t.get("price")),
-                                  "value": _num(t.get("value")), "url": t.get("url")}
-                                 for t in ins.get("purchases") or []]}
-
-
 def _data_quality(r):
     years, meta = r.get("years") or [], r.get("meta") or {}
     stmt = years[-1].get("currency") if years else None
@@ -459,7 +433,6 @@ def build(r):
         "models": _models(r),
         "consensus": _consensus(r),
         "peers": _peers(r),
-        "insider": _insider(r.get("insider")),
         "data_quality": _data_quality(r),
     }
 

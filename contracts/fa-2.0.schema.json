@@ -85,20 +85,9 @@
         "reported": {"$ref": "#/$defs/num"},
         "gap": {"description": "estimate / reported - 1", "$ref": "#/$defs/num"}
       }
-    },
-    "trades": {
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["trades", "insiders", "shares", "value"],
-      "properties": {
-        "trades": {"$ref": "#/$defs/int"},
-        "insiders": {"$ref": "#/$defs/int"},
-        "shares": {"$ref": "#/$defs/num"},
-        "value": {"$ref": "#/$defs/num"}
-      }
     }
   },
-  "required": ["contract", "method_version", "ticker", "generated_at", "as_of", "as_of_basis", "statements_through", "price", "company", "periods", "statements", "metrics", "ttm", "growth", "valuation", "rates", "models", "consensus", "peers", "insider", "data_quality"],
+  "required": ["contract", "method_version", "ticker", "generated_at", "as_of", "as_of_basis", "statements_through", "price", "company", "periods", "statements", "metrics", "ttm", "growth", "valuation", "rates", "models", "consensus", "peers", "data_quality"],
   "properties": {
     "contract": {"description": "the version key (also used by fa-1.x)", "const": "fa-2.0"},
     "method_version": {"description": "moves when a formula or a data check changes", "type": "string"},
@@ -695,60 +684,6 @@
           "roe": {"$ref": "#/$defs/num"},
           "roic": {"$ref": "#/$defs/num"},
           "net_debt_to_ebitda": {"$ref": "#/$defs/num"}
-        }
-      }
-    },
-    "insider": {
-      "description": "open-market purchases and sales by officers, directors and 10% owners (SEC Form 4) over the last 12 months; null when skipped (--no-insider)",
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["status", "from", "to", "complete", "other_transactions", "purchases", "sales", "sales_vs_market_cap", "by_insider", "latest_purchases"],
-      "properties": {
-        "status": {
-          "description": "restricted: not in the FMP plan; the other fields are then null",
-          "enum": ["ok", "restricted"]
-        },
-        "from": {"$ref": "#/$defs/day"},
-        "to": {"$ref": "#/$defs/day"},
-        "complete": {"description": "every filing in the window was read", "type": ["boolean", "null"]},
-        "other_transactions": {
-          "description": "Form 4 rows that are not open-market trades (awards, exercises, tax)",
-          "$ref": "#/$defs/int"
-        },
-        "purchases": {"$ref": "#/$defs/trades"},
-        "sales": {"$ref": "#/$defs/trades"},
-        "sales_vs_market_cap": {"$ref": "#/$defs/num"},
-        "by_insider": {
-          "type": ["array", "null"],
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["name", "role", "bought_value", "sold_value", "last_date"],
-            "properties": {
-              "name": {"$ref": "#/$defs/str"},
-              "role": {"$ref": "#/$defs/str"},
-              "bought_value": {"$ref": "#/$defs/num"},
-              "sold_value": {"$ref": "#/$defs/num"},
-              "last_date": {"$ref": "#/$defs/day"}
-            }
-          }
-        },
-        "latest_purchases": {
-          "type": ["array", "null"],
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["date", "name", "role", "shares", "price", "value", "url"],
-            "properties": {
-              "date": {"$ref": "#/$defs/day"},
-              "name": {"$ref": "#/$defs/str"},
-              "role": {"$ref": "#/$defs/str"},
-              "shares": {"$ref": "#/$defs/num"},
-              "price": {"$ref": "#/$defs/num"},
-              "value": {"$ref": "#/$defs/num"},
-              "url": {"$ref": "#/$defs/str"}
-            }
-          }
         }
       }
     },
