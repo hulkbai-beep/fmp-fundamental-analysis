@@ -84,6 +84,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
    | `--no-insider` | Skip the insider-trades section (the score does not use it); to save API calls or if the endpoint fails |
    | `--json out.json` | User wants the raw numbers |
    | `--contract out.json` | Another tool or skill will consume the result: writes the fa-1.1 contract (see below) |
+   | `--facts out.json` | Another tool will make its own judgement: writes the fa-2.0 facts, with no score or price levels (see below) |
    | `--refresh` | User says data looks stale or a company just reported |
 3. **Check the header and "Data notes"** first: which fiscal years, whether TTM was available,
    the sector note, the Treasury date, and which endpoints the plan skipped. Mention material
@@ -251,9 +252,23 @@ price's trading day, `statements_through` the latest statement period). 1.1 adds
 `valuation.availability`: for the forward P/E and EV/EBITDA bands, the primary value range, the reverse
 DCF, the DCF, the FCF-yield spread and the industry comparison, whether each is `ok`, a `fallback` (a
 stand-in measure, such as the trailing multiple when there is no forward P/E range) or `unavailable`, with
-the reason (for example `loss_making`, `financial`, `negative_fcf`) and a sentence. The contract selects
-facts and judges nothing. Its fields are only ever added; renaming or removing one means fa-2.0, and
-`tests/test_contract.py` checks the output against the schema.
+the reason (for example `loss_making`, `financial`, `negative_fcf`) and a sentence. The contract carries
+the fundamental score computed here. Its fields are only ever added, and `tests/test_contract.py` checks
+the output against the schema.
+
+## Facts for other tools (fa-2.0)
+
+`--facts out.json` writes **fa-2.0**, the facts of the analysis with no judgement: the statements and
+standard ratios per fiscal year (and TTM), the multiples now, at each fiscal year end and against their own
+history, the next-twelve-month multiple's 3-year distribution, the industry and sector P/E, the analysts'
+consensus as published, and the standard models (Piotroski, Altman, a DCF with every input, the reverse
+DCF). It has no score, label, flag, price level, price target or margin of safety: those belong to the tool
+that makes the decision. `python scripts/contract.py full.json --facts [-o out.json]` converts a saved
+`--json` file, including files saved by earlier versions. `contracts/fa-2.0.schema.json` describes every
+field. Per-period data are column arrays lined up with their `period` array; a value that is missing or
+does not apply is null, and the block's `status` code says why. fa-2.0 sits beside fa-1.1 for now: the
+decision engine moves to it first, then the score and fa-1.1 leave this skill. `tests/test_facts.py`
+checks the schema, that no judgement word appears, and that the score can be rebuilt from fa-2.0 alone.
 
 ## Raw data for anything else
 

@@ -11,6 +11,8 @@ Usage:
   python contract.py aapl.json             print the contract of a saved `analyze.py --json` file
   python contract.py aapl.json -o c.json   write it to a file instead
   python analyze.py AAPL --contract c.json write it straight from a run
+  python contract.py aapl.json --facts     print the fa-2.0 facts of the saved file instead (see facts.py),
+                                           also for files saved by earlier versions
 
 Conventions:
   as_of               the trading day the price belongs to (the quote's date, else the last daily close)
@@ -27,6 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import facts as F  # noqa: E402
 import score as S  # noqa: E402
 
 CONTRACT = "fa-1.1"   # 1.1 adds valuation.availability; 1.x versions only add fields
@@ -335,16 +338,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=f"Build the {CONTRACT} contract from a saved analyze.py --json file")
     ap.add_argument("full_json")
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--facts", action="store_true", help=f"build the {F.FACTS} facts instead (see facts.py)")
     a = ap.parse_args(argv)
+    what = f"{F.FACTS} facts" if a.facts else f"{CONTRACT} contract"
     try:
         r = json.loads(Path(a.full_json).read_text(encoding="utf-8"))
-        text = dumps(build(r))
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        print(f"Cannot build the contract from {a.full_json}: {e!r}", file=sys.stderr)
+        text = F.dumps(F.build(r)) if a.facts else dumps(build(r))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        print(f"Cannot build the {what} from {a.full_json}: {e!r}", file=sys.stderr)
         return 1
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")
-        print(f"({CONTRACT} contract written to {a.out})", file=sys.stderr)
+        print(f"({what} written to {a.out})", file=sys.stderr)
     else:
         print(text)
     return 0

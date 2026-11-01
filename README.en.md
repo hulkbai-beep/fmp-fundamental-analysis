@@ -20,6 +20,7 @@ What it covers:
 - Automated flags: positives and concerns, as leads to check, not conclusions
 - Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
 - The fa-1.1 contract for other tools: `--contract` writes a small, versioned JSON summary for a decision engine, screener or other tool to read (see "Option 2: command line")
+- The fa-2.0 facts: `--facts` writes the facts and standard models only, with no score or price levels, and leaves the judgement to the decision engine (see "Option 2: command line")
 
 All calculations are done by the scripts; Claude only interprets the results.
 
@@ -43,20 +44,24 @@ fmp-fundamental-analysis/
 │   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
 │   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
 │   ├── insider.py      # Insider trades: open-market purchases and sales
-│   ├── contract.py     # The fa-1.1 contract: the small summary other tools read
+│   ├── contract.py     # The fa-1.1 contract: the small summary other tools read; --facts converts a saved result to fa-2.0
+│   ├── facts.py        # The fa-2.0 facts: statements, ratios, multiples and standard models, no score
 │   ├── symbols.py      # Ticker normalisation: BRK.B -> BRK-B, foreign listings refused
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
 ├── contracts/
-│   └── fa-1.1.schema.json  # Every field of the contract (JSON Schema)
+│   ├── fa-1.1.schema.json  # Every field of the contract (JSON Schema)
+│   └── fa-2.0.schema.json  # Every field of fa-2.0
 ├── ui/
 │   ├── server.py       # Local web server
 │   ├── index.html      # Web page
 │   └── i18n.js         # Chinese/English toggle and translation tables for the web page
 └── tests/              # Offline tests, no API key needed: python -m unittest discover -s tests
-    ├── fake_fmp.py     # Offline fake FMP data (five made-up companies: QUAL, TRAP, BANK, EXCH, UTIL) for tests and trying the page
+    ├── fake_fmp.py     # Offline fake FMP data (eight made-up companies: QUAL, TRAP, BANK, EXCH, UTIL, QTRS, ADJE, REIT) for tests and trying the page
     ├── test_score.py   # Tests of the score
     ├── test_insider.py # Tests of the insider-trades summary
     ├── test_contract.py  # Tests of the contract: the output must match the schema and the full result
+    ├── test_facts.py   # Tests of fa-2.0: the schema, no judgement words, and the same score rebuilt from fa-2.0 alone
+    ├── fa2_score_input.py  # Rebuilds the score's input from fa-2.0 (the decision engine's side, for the tests)
     └── test_symbols.py   # Tests of the ticker normalisation
 ```
 
@@ -264,6 +269,7 @@ Common options:
 | `--no-insider` | Skip insider trades (no insider section); saves 1 to 5 API calls; the score is unchanged | You don't need the section, or the endpoint fails |
 | `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers |
 | `--contract out.json` | Also save the fa-1.1 contract: a small, versioned summary for other tools (see below) | A decision engine, screener or other tool will use the result |
+| `--facts out.json` | Also save the fa-2.0 facts: facts and standard models only, no score or price levels (see below) | A decision engine will make its own judgement |
 | `--refresh` | Ignore the cache and fetch again | Data looks stale, or the company just reported |
 
 Example:
@@ -289,7 +295,16 @@ python scripts/analyze.py NVDA --contract nvda_contract.json   # write it during
 python scripts/contract.py nvda_full.json -o nvda_contract.json # convert a saved --json file
 ```
 
-The full `--json` result is internal and may change; the contract is the public interface, whose fields are only ever added (renaming or removing one means fa-2.0). `contracts/fa-1.1.schema.json` describes every field: the score, pillars and caps, every indicator, the valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the price's trading day, `statements_through` the end of the latest statement period). 1.1 adds `valuation.availability`: for the forward P/E and EV/EBITDA bands, the primary value range, the reverse DCF, the DCF, the FCF-yield spread and the industry comparison, whether each is `ok`, a `fallback` (a stand-in measure, for example the trailing multiple when there is no forward P/E range) or `unavailable`, with a reason code (such as `loss_making`, `financial` or `negative_fcf`) and a sentence. The contract selects facts and judges nothing.
+The full `--json` result is internal and may change; the contract is the public interface, whose fields are only ever added. `contracts/fa-1.1.schema.json` describes every field: the score, pillars and caps, every indicator, the valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the price's trading day, `statements_through` the end of the latest statement period). 1.1 adds `valuation.availability`: for the forward P/E and EV/EBITDA bands, the primary value range, the reverse DCF, the DCF, the FCF-yield spread and the industry comparison, whether each is `ok`, a `fallback` (a stand-in measure, for example the trailing multiple when there is no forward P/E range) or `unavailable`, with a reason code (such as `loss_making`, `financial` or `negative_fcf`) and a sentence. The contract carries the fundamental score computed here; for the facts alone, use fa-2.0 below.
+
+The fa-2.0 facts (alongside fa-1.1 for now):
+
+```bash
+python scripts/analyze.py NVDA --facts nvda_facts.json                # write it during the analysis
+python scripts/contract.py nvda_full.json --facts -o nvda_facts.json  # convert a saved --json file, also from earlier versions
+```
+
+fa-2.0 holds facts only: the statements and standard ratios per fiscal year (and TTM), the multiples now, at each fiscal year end and against their own history, the next-twelve-month multiple's 3-year distribution, the industry and sector P/E, the analysts' consensus as published, and Piotroski, Altman, a DCF (every input is a field) and the reverse DCF. It has no score, label, flag, price level, price target or margin of safety; those belong to the tool that makes the decision. Per-period data are column arrays lined up with their `period` array; a value that is missing or does not apply is null, and the block's `status` code says why. `contracts/fa-2.0.schema.json` describes every field. The decision engine moves to fa-2.0 first; the score and fa-1.1 then leave this skill.
 
 Tickers: share classes may be typed `BRK.B`, `BRK/B` or `brk b`; they become FMP's `BRK-B` (`scripts/symbols.py`). A foreign exchange suffix (such as `SHOP.TO` or `0700.HK`) is refused with a hint to use the US ticker or ADR.
 
