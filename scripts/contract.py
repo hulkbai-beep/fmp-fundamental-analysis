@@ -344,7 +344,7 @@ def main(argv=None):
         return 1
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")
-        print(f"({CONTRACT} contract written to {a.out})")
+        print(f"({CONTRACT} contract written to {a.out})", file=sys.stderr)
     else:
         print(text)
     return 0

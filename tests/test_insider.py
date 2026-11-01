@@ -63,7 +63,7 @@ class Summary(unittest.TestCase):
         self.assertEqual(s["other"], 3)  # tax withholding, award, option exercise; not the Form 3
         self.assertAlmostEqual(s["sells_vs_mcap"], 5e-5)
         self.assertIsNone(s["cluster"])
-        self.assertEqual(I.flags(s), [])
+        self.assertIsNone(s["officer_buy"])
 
     def test_cluster_needs_three_insiders_within_90_days(self):
         two = [row(10, "A", "P-Purchase", 100, 10), row(40, "B", "P-Purchase", 100, 10), row(200, "C", "P-Purchase", 100, 10)]
@@ -73,19 +73,19 @@ class Summary(unittest.TestCase):
         self.assertEqual((c["insiders"], c["value"]), (3, 12000))
         self.assertEqual((c["from"], c["to"]), ((TODAY - dt.timedelta(days=80)).isoformat(),
                                                 (TODAY - dt.timedelta(days=10)).isoformat()))
-        self.assertTrue(I.flags(I.summarize(three, TODAY))[0].startswith("Insider cluster buying: 3 insiders bought 12.00K"))
 
-    def test_large_ceo_purchase_is_flagged_on_its_own(self):
+    def test_large_ceo_purchase_is_recorded_on_its_own(self):
         rows = [row(15, "TAN LIP BU", "P-Purchase", 105263, 95, owner="director, officer: CEO"),
                 row(20, "Small", "P-Purchase", 100, 95, owner="officer: EVP, CFO")]   # under BIG_BUY
-        f = I.flags(I.summarize(rows, TODAY))
-        self.assertEqual(f, [f"Insider buying: TAN LIP BU (Director, CEO) bought 10.00M on the open market on "
-                             f"{(TODAY - dt.timedelta(days=15)).isoformat()}"])
+        s = I.summarize(rows, TODAY)
+        ob = s["officer_buy"]
+        self.assertIsNone(s["cluster"])
+        self.assertEqual((ob["name"], ob["role"], ob["value"], ob["date"]),
+                         ("TAN LIP BU", "Director, CEO", 105263 * 95, (TODAY - dt.timedelta(days=15)).isoformat()))
 
     def test_not_in_plan(self):
         s = I.summarize(None, TODAY)
         self.assertEqual(s, {"restricted": True})
-        self.assertEqual(I.flags(s), [])
         self.assertIn("not in your FMP plan", I.render(s))
 
 
@@ -142,12 +142,14 @@ class EndToEnd(unittest.TestCase):
             cls.bank = A.analyze(A.parse_args(["BANK", "--peers", "none"]))
         cls.i18n = (ROOT / "ui" / "i18n.js").read_text(encoding="utf-8")
 
-    def test_section_flag_and_score(self):
+    def test_section_and_score(self):
         rep = self.A.render(self.qual)
         self.assertIn("Insider trades (last 12 months, observation only)", rep)
         self.assertIn("| Purchases | 3 | 3 |", rep)
         self.assertIn("[Form 4](https://www.sec.gov/", rep)
-        self.assertTrue(any(g.startswith("Insider cluster buying: 3 insiders") for g in self.qual["flags"]["green"]))
+        self.assertEqual(self.qual["insider"]["cluster"]["insiders"], 3)   # recorded as data ...
+        self.assertFalse([g for g in self.qual["flags"]["green"] if "nsider" in g])  # ... not as a positive
+        self.assertNotIn("better returns", rep)
         self.assertEqual(self.qual["score"], self.qual_off["score"])  # observation only
         self.assertNotIn("Insider trades", self.A.render(self.qual_off))
         self.assertIn("No open-market purchases or sales in this period.", self.A.render(self.bank))
@@ -162,7 +164,6 @@ class EndToEnd(unittest.TestCase):
         cells = [c.strip() for l in lines if l.startswith("|") for c in l.strip("|").split("|")]
         texts = [l for l in lines if not l.startswith("|")] + [c for c in cells if re.search(r"[a-z]{3}", c)
                                                               and not c.startswith("[Form 4]")]
-        texts += [g for g in self.qual["flags"]["green"] if g.startswith("Insider")]
         names = {"Stone Maria", "Diaz Carlos", "Lee Ann", "Park Min"}
         for t in texts:
             if t in names:

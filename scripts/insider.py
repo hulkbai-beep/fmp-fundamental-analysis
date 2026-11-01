@@ -6,9 +6,7 @@ owners (SEC Form 4) over the last 12 months.
 analyze.py adds them to each report for observation only; the fundamental score does not use them.
 Only open-market purchases (transaction code P) and sales (code S) count. Awards, option exercises,
 shares withheld for tax, gifts and the other codes are not trades at the market price and are left out.
-Purchases with an insider's own money, especially by several insiders within a few months, have
-historically come before better returns; sales are mostly diversification, taxes or pre-planned
-(10b5-1) sales and say little on their own.
+Sales are mostly diversification, taxes or pre-planned (10b5-1) sales and say little on their own.
 """
 from __future__ import annotations
 
@@ -23,7 +21,7 @@ MAX_PAGES = 5         # up to 500 filings: large companies file many awards and 
 LOOKBACK_DAYS = 365
 CLUSTER_DAYS = 90     # "several insiders buying together": CLUSTER_MIN or more people within 90 days
 CLUSTER_MIN = 3
-BIG_BUY = 100_000     # a CEO or CFO purchase of at least this much is flagged on its own
+BIG_BUY = 100_000     # a CEO or CFO purchase of at least this much is recorded on its own (officer_buy)
 TOP = 10              # rows in the insider and purchase tables
 
 
@@ -159,21 +157,6 @@ def summarize(rows, today, market_cap=None, complete=True):
     }
 
 
-def flags(s):
-    """Positives for the automated flags: a cluster of purchases, else a large CEO or CFO purchase.
-    Sales raise no flag: most are diversification, taxes or pre-planned."""
-    if not s or s.get("restricted"):
-        return []
-    if s["cluster"]:
-        c = s["cluster"]
-        return [f"Insider cluster buying: {c['insiders']} insiders bought {money(c['value'])} on the open market "
-                f"between {c['from']} and {c['to']}"]
-    if s["officer_buy"]:
-        t = s["officer_buy"]
-        return [f"Insider buying: {t['name']} ({t['role']}) bought {money(t['value'])} on the open market on {t['date']}"]
-    return []
-
-
 # ============================================================ report
 def render(s):
     if s.get("restricted"):
@@ -203,8 +186,6 @@ def render(s):
                          [[t["date"], t["name"], t["role"], f"{t['shares']:,.0f}", f"{t['price']:,.2f}",
                            money(t["value"]), f"[Form 4]({t['url']})" if _sec_url(t["url"]) else "-"]
                           for t in s["purchases"]]))
-    out.append(f"\nObservation only, not used in the score. Purchases with the insider's own money, especially "
-               f"by {CLUSTER_MIN} or more insiders within {CLUSTER_DAYS} days, have historically come before better "
-               f"returns, mostly at small and mid-size companies. Sales are mostly diversification, taxes or "
-               f"pre-planned (10b5-1) sales and say little on their own.")
+    out.append("\nObservation only, not used in the score. Sales are mostly diversification, taxes or "
+               "pre-planned (10b5-1) sales and say little on their own.")
     return "\n".join(out)

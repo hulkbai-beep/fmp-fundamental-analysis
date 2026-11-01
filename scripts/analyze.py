@@ -229,9 +229,7 @@ def derive(y, p):
     y["sbc_pct"] = div(y["sbc"], rev)
     y["capex_pct"] = div(y["capex"], rev)
 
-    for k, src in (("revenue_yoy", "revenue"), ("gross_profit_yoy", "gross_profit"),
-                   ("operating_income_yoy", "operating_income"), ("net_income_yoy", "net_income"),
-                   ("eps_yoy", "eps"), ("fcf_yoy", "fcf"), ("shares_yoy", "shares")):
+    for k, src in (("revenue_yoy", "revenue"), ("eps_yoy", "eps"), ("shares_yoy", "shares")):
         y[k] = yoy(y[src], p[src]) if p else None
     return y
 
@@ -457,13 +455,10 @@ def run_dcf(years, basis, cur, args, rev_cagr, sector_kind, r, r_source):
     inner = [v for i, row in enumerate(grid) for j, v in enumerate(row)
              if v is not None and abs(rs[i] - r) <= 0.0101 and abs(gs[j] - g1) <= 0.0201]
     implied, implied_note = reverse_dcf(fcf0, gt, r, nd, mi, shares, price)
-    fixed = None
-    if r_source.startswith("CAPM") and abs(r - M.FALLBACK_DISCOUNT) > 0.0005:
-        fixed = (dcf_value(fcf0, g1, gt, M.FALLBACK_DISCOUNT, nd, mi, shares) or {}).get("per_share")
     return {
         "fcf_start": fcf0, "fcf_start_basis": base_label,
         "growth_1_5": g1, "growth_source": g_src, "terminal_growth": gt, "discount_rate": r,
-        "discount_source": r_source, "value_at_fixed_rate": fixed,
+        "discount_source": r_source,
         "net_debt": nd, "shares": shares,
         "value_per_share": base["per_share"], "terminal_value_share": base["tv_share"],
         "margin_of_safety": base["per_share"] / price - 1 if price else None,
@@ -604,7 +599,6 @@ def analyst_view(est, pt, last_fy, price, today):
         out["price_target"] = {
             "consensus": cons, "median": num(pt, "targetMedian"),
             "high": num(pt, "targetHigh"), "low": num(pt, "targetLow"),
-            "upside": div(cons, price) - 1 if cons and price else None,
         }
     return out
 
@@ -894,7 +888,9 @@ def make_flags(years, cur, hist_cmp, pio, alt, dcf, rev_cagr, sector_kind):
 
     if dcf and "skipped" not in dcf:
         mos = dcf.get("margin_of_safety")
-        if mos is not None and mos >= 0.20:
+        if dcf["value_per_share"] <= 0:
+            red.append("Base-case DCF value is not positive: net debt exceeds the discounted cash flows")
+        elif mos is not None and mos >= 0.20:
             green.append(f"Base-case DCF value {pct(mos)} above price")
         elif mos is not None and mos <= -0.30:
             red.append(f"Price is {pct(-mos / (1 + mos))} above base-case DCF value")
@@ -1217,7 +1213,6 @@ def render(r):
         ["FCF yield", pct(cur["fcf_yield"])],
         ["Dividend yield (cash paid)", pct(cur["dividend_yield"])],
         ["Shareholder yield (div + buyback - issuance)", pct(cur["shareholder_yield"])],
-        [f"PEG (P/E / {len(years) - 1}y EPS CAGR)", ratio(r["peg"])],
     ]))
 
     out.append("\n## 6. Quality scores")
@@ -1252,13 +1247,15 @@ def render(r):
             ["Net debt deducted", money(d["net_debt"])],
             ["Shares", money(d["shares"])],
         ]))
-        out.append(f"\n**Base-case value {per_share(d['value_per_share'])} per share vs price {per_share(cur['price'])} "
-                   f"-> {pct(d['margin_of_safety'])} {'upside' if (d['margin_of_safety'] or 0) >= 0 else 'downside'}.** "
+        if d["value_per_share"] <= 0:
+            head = (f"Base-case value {per_share(d['value_per_share'])} per share is not positive: net debt exceeds "
+                    f"the discounted cash flows, so it is not compared with the price.")
+        else:
+            head = (f"Base-case value {per_share(d['value_per_share'])} per share vs price {per_share(cur['price'])} "
+                    f"-> {pct(d['margin_of_safety'])} {'upside' if (d['margin_of_safety'] or 0) >= 0 else 'downside'}.")
+        out.append(f"\n**{head}** "
                    f"Reasonable range (discount +/-1pt, growth +/-2pt): {per_share(d['range_low'])} - {per_share(d['range_high'])}. "
                    f"Terminal value is {pct(d['terminal_value_share'])} of the total.")
-        if d.get("value_at_fixed_rate") is not None:
-            out.append(f"(At the previous fixed {pct(M.FALLBACK_DISCOUNT)} discount rate the base case would be "
-                       f"{per_share(d['value_at_fixed_rate'])} per share.)")
         grid_rows = [[pct(rr)] + [per_share(v) for v in row] for rr, row in zip(d["grid_rates"], d["grid"])]
         out.append("\nValue per share (rows = discount rate, columns = growth yrs 1-5):")
         out.append(table(["r \\ g"] + [pct(g) for g in d["grid_growths"]], grid_rows))
@@ -1283,7 +1280,7 @@ def render(r):
     if a.get("price_target"):
         pt = a["price_target"]
         out.append(f"\nPrice target consensus {per_share(pt['consensus'])} (median {per_share(pt['median'])}, "
-                   f"range {per_share(pt['low'])}-{per_share(pt['high'])}) -> {pct(pt['upside'])} vs price.")
+                   f"range {per_share(pt['low'])}-{per_share(pt['high'])}).")
     if not a:
         out.append("Not available on this FMP plan.")
 
@@ -1603,7 +1600,6 @@ def analyze(args):
     n = len(years) - 1
     cg = {k: cagr(years[0][k], years[-1][k], n) for k in
           ("revenue", "gross_profit", "operating_income", "net_income", "eps", "fcf", "shares")}
-    peg = pos_div(current["pe"], cg["eps"] * 100) if cg["eps"] and cg["eps"] > 0 else None
 
     pio = piotroski(years)
     alt = altman(years[-1], mcap)
@@ -1613,13 +1609,12 @@ def analyze(args):
                          sector_kind=sector_kind)
     red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
     insider = I.summarize(ins_rows, today, mcap, ins_complete) if f_ins else None
-    green += I.flags(insider)
 
     result = {
         "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "sector_kind": sector_kind, "sector_note": sector_note,
-        "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg, "peg": peg,
+        "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg,
         "valuation_history": hist, "history_compare": hist_cmp,
         "piotroski": pio, "altman": alt, "dcf": dcf, "analyst": analyst, "price_range": ranges,
         "self_snapshot": lfy_snapshot(profile, years), "peers": peers,
@@ -1628,7 +1623,7 @@ def analyze(args):
         "price_series": series,  # daily closes used for valuation history (the UI charts the last year)
         "candles": candles, "candles_note": candles_note,  # last year of daily bars, only when args.candles (UI)
         "meta": {"network_calls": client.stats["network_calls"], "cache_hits": client.stats["cache_hits"],
-                 "restricted": client.restricted, "errors": client.errors,
+                 "restricted": sorted(client.restricted), "errors": sorted(client.errors),
                  "connection": client.describe()},
     }
     result["score"] = S.score(result)
@@ -1677,12 +1672,12 @@ def main(argv=None):
     out = {k: v for k, v in result.items() if k not in ("price_series", "candles", "candles_note")}
     if args.json:
         Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
-        print(f"\n(JSON written to {args.json})")
+        print(f"(JSON written to {args.json})", file=sys.stderr)
     if args.contract:
         # built from the JSON form, so it matches `contract.py <json file>` exactly
         c = C.build(json.loads(json.dumps(out, default=str)))
         Path(args.contract).write_text(C.dumps(c), encoding="utf-8")
-        print(f"\n({C.CONTRACT} contract written to {args.contract})")
+        print(f"({C.CONTRACT} contract written to {args.contract})", file=sys.stderr)
     return 0
 
 

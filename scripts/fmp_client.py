@@ -490,9 +490,6 @@ PROBES = [
     ("income-statement", {"period": "quarter", "limit": 4}),
     ("balance-sheet-statement", {"period": "annual", "limit": 5}),
     ("cash-flow-statement", {"period": "annual", "limit": 5}),
-    ("key-metrics", {"period": "annual", "limit": 5}),
-    ("ratios", {"period": "annual", "limit": 5}),
-    ("financial-growth", {"period": "annual", "limit": 5}),
     ("historical-price-eod/light", {}),
     ("historical-price-eod/full", {}),
     ("stock-peers", {}),
@@ -501,15 +498,12 @@ PROBES = [
 ]
 
 
-# Market-wide data (no symbol): sector/industry and macro endpoints the skill may use.
+# Market-wide data (no symbol): the sector/industry and macro endpoints the scripts call.
 # {today}, {month_ago}, {week_ago}, {in_2w} and {last_bday} are filled in at run time.
 MARKET_PROBES = [
     ("sector-performance-snapshot", {"date": "{last_bday}"}),
-    ("industry-performance-snapshot", {"date": "{last_bday}"}),
     ("historical-sector-performance", {"sector": "Technology"}),
     ("historical-sector-performance", {"sector": "Technology", "from": "{year_ago}", "to": "{today}"}),
-    ("sector-pe-snapshot", {"date": "{last_bday}"}),
-    ("industry-pe-snapshot", {"date": "{last_bday}"}),
     ("historical-sector-pe", {"sector": "Technology"}),
     ("historical-sector-pe", {"sector": "Technology", "from": "{five_years_ago}", "to": "{today}"}),
     ("historical-industry-pe", {"industry": "Consumer Electronics", "from": "{five_years_ago}", "to": "{today}"}),
@@ -521,11 +515,8 @@ MARKET_PROBES = [
     ("economic-indicators", {"name": "federalFunds"}),
     ("economic-indicators", {"name": "federalFunds", "from": "{two_years_ago}", "to": "{today}"}),
     ("economic-indicators", {"name": "CPI", "from": "{two_years_ago}", "to": "{today}"}),
-    ("economic-indicators", {"name": "inflationRate"}),
     ("economic-indicators", {"name": "unemploymentRate", "from": "{two_years_ago}", "to": "{today}"}),
-    ("economic-indicators", {"name": "realGDP", "from": "{two_years_ago}", "to": "{today}"}),
     ("economic-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
-    ("earnings-calendar", {"from": "{week_ago}", "to": "{in_2w}"}),
 ]
 
 

@@ -686,6 +686,26 @@ class EndToEnd(unittest.TestCase):
                  for n in (i["note"], i["detail"].get("base_note")) if n}
         self.assertLessEqual(notes, set(S.NOTES))
 
+    def test_dcf_value_not_positive(self):
+        """Net debt above the discounted cash flows: one plain sentence, no "-104% above" and no division by zero."""
+        import copy
+        i18n = (ROOT / "ui" / "i18n.js").read_text(encoding="utf-8")
+        rules = [re.compile(m) for m in re.findall(r"\[/(\^.+?\$)/,", i18n)]
+        for value in (0.0, -12.5):
+            r = copy.deepcopy(self.results["QUAL"])
+            r["dcf"]["value_per_share"] = value
+            r["dcf"]["margin_of_safety"] = value / r["current"]["price"] - 1
+            red, green = self.A.make_flags(r["years"], r["current"], r["history_compare"], r["piotroski"], r["altman"],
+                                           r["dcf"], r["cagr"]["revenue"], r["sector_kind"])
+            flag = "Base-case DCF value is not positive: net debt exceeds the discounted cash flows"
+            self.assertIn(flag, red)
+            self.assertFalse([t for t in red + green if "above base-case DCF" in t or "above price" in t])
+            line = next(l for l in self.A.render(r).split("\n") if l.startswith("**Base-case value"))
+            self.assertIn("is not positive", line)
+            self.assertNotIn("downside", line)
+            for text in (flag, line):
+                self.assertTrue(any(x.search(text) for x in rules), f"no translation for: {text}")
+
     def test_report_section(self):
         for sym, r in self.results.items():
             text = self.A.render(r)

@@ -16,7 +16,7 @@ What it covers:
 - Rates and macro backdrop (optional): Treasury yield curve, Fed funds rate, the latest readings of CPI / PPI / PCE / payrolls / Fed decisions, and the next three weeks' schedule
 - Analyst estimates and price targets
 - Price range: forward P/E and EV/EBITDA ranges at three points, **now**, **the end of the current fiscal year** and **the end of the next fiscal year** (next-12-month EPS / EBITDA × the 25th / 50th / 75th percentile of the company's own 3-year multiple on the same basis); volatility ranges to those two fiscal year ends (68% and 95%, optionally from options-implied volatility); all side by side with the DCF range, analyst price targets and the 52-week range
-- Insider trades (observation only, not scored): open-market purchases and sales by officers and directors over the last 12 months, leaving out awards, option exercises, shares withheld for tax and other trades not at the market price; several insiders buying within 90 days, or a large CEO / CFO purchase, is flagged in the automated flags
+- Insider trades (observation only, not scored): open-market purchases and sales by officers and directors over the last 12 months, leaving out awards, option exercises, shares withheld for tax and other trades not at the market price; the trades are listed, with no flag
 - Automated flags: positives and concerns, as leads to check, not conclusions
 - Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
 - The fa-1.1 contract for other tools: `--contract` writes a small, versioned JSON summary for a decision engine, screener or other tool to read (see "Option 2: command line")
@@ -42,7 +42,7 @@ fmp-fundamental-analysis/
 │   ├── analyze.py      # Main analysis script: builds the full report
 │   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
 │   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
-│   ├── insider.py      # Insider trades: open-market purchases and sales, and cluster buying
+│   ├── insider.py      # Insider trades: open-market purchases and sales
 │   ├── contract.py     # The fa-1.1 contract: the small summary other tools read
 │   ├── symbols.py      # Ticker normalisation: BRK.B -> BRK-B, foreign listings refused
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py

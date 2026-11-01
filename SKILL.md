@@ -91,8 +91,7 @@ This is for the user's own browsing; when you analyse a stock, still run `script
 4. **Sanity-check the DCF inputs.** The default discount rate is CAPM: the latest 10-year
    Treasury yield + the company's beta x FMP's US equity risk premium, kept within 7-13%
    (the DCF table prints the inputs and the Treasury date; it falls back to a fixed 9% when the
-   rates data is unavailable). The report also shows the base case at the old fixed 9%. Override
-   with `--discount` when beta misstates the risk (a beta near 0 or above 2, heavy leverage, a
+   rates data is unavailable). Override with `--discount` when beta misstates the risk (a beta near 0 or above 2, heavy leverage, a
    recent IPO, a business in transition) and say why. If the default growth or starting FCF is
    unreasonable for this business, re-run with explicit `--growth` / `--fcf-base` and say which
    assumptions you changed and why. Two runs with clearly stated assumptions beat one opaque run.
