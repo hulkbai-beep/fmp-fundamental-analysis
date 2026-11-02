@@ -266,6 +266,7 @@ const ZH_EXACT = new Map(Object.entries({
   "Policy rate, jobs and prices (economic-indicators, latest two readings)": "政策利率、就业与物价（经济指标，最近两期）",
   "Latest key US releases (economic calendar, last 60 days)": "美国关键数据最新公布值（经济日历，近 60 天）",
   "Next key US events (next 3 weeks)": "接下来的美国关键数据（未来 3 周）",
+  "Price performance": "股价表现",
   // table headers
   "Metric": "指标", "CAGR": "复合增速", "Multiple": "倍数", "Now": "当前", "Hist. median": "历史中位数",
   "Hist. range": "历史区间", "Now vs median": "当前 vs 中位数", "Measure": "项目", "Value": "数值",

@@ -279,6 +279,16 @@ class Report(unittest.TestCase):
         self.assertEqual(untranslated(REPORTS["QUAL"] + "\nA sentence nobody translated.", doc),
                          ["A sentence nobody translated."])
 
+    def test_what_run_prints_has_a_chinese_translation(self):
+        """The report as analyze.run() writes it: with the macro section (macro.render_macro, then the returns
+        table of macro.render_returns), the peer table and the API-call line."""
+        import analyze as A
+        with mock.patch.object(A, "FMPClient", fake_fmp.FakeClient):
+            for name in ("QUAL_macro", "QUAL_peers", "BANK"):
+                with self.subTest(name):
+                    doc, text = A.run(A.parse_args(CASES[name]))
+                    self.assertIn("- API calls: ", text)
+                    self.assertEqual(untranslated(text, doc), [])
 
     def test_the_word_check_finds_planted_words(self):
         doc = copy.deepcopy(DOCS["QUAL"])
