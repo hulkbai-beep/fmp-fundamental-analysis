@@ -114,6 +114,7 @@ function perShare(v) {
   return (v < 0 ? "-" : "") + i.replace(/\B(?=(\d{3})+$)/g, ",") + "." + f;
 }
 const last = a => Array.isArray(a) && a.length ? a[a.length - 1] : null;
+const txt = v => v == null ? "n/a" : String(v);
 
 // Language: "zh" (default) shows the page and the report in Chinese; "en" shows the original English report.
 let LANG = "zh";
@@ -191,12 +192,14 @@ function tiles(d) {
   const fcf = nm.has("fcf") ? kind : [pct(now.fcf_yield), now.fcf_yield != null ? basis : ""];
   const roic = last(d.metrics?.roic);
   const g = d.growth || {}, cagr = g.cagr?.revenue;
-  const growth = cagr != null ? [pct(cagr), `${g.from}-${g.to}`] : ["n/a", g.years ? "" : t("na_short")];
+  const growth = cagr != null ? [pct(cagr), `${txt(g.from)}-${txt(g.to)}`] : ["n/a", g.years ? "" : t("na_short")];
   const pio = m.piotroski;
   // next-12-month EPS: the fiscal year in progress and the next one, weighted by the time left in the first
-  const ntm = fw.ntm, w = ntm && ntm.weight != null && (ntm.fys || []).length === 2 ? Math.round(ntm.weight * 100) : null;
+  const ntm = fw.ntm, fys = ntm?.fys || [];
+  const w = ntm && ntm.weight != null && fys.length === 2 && fys.every(y => y != null) ? Math.round(ntm.weight * 100)
+    : null;
   const fpe = nm.has("pe") ? kind : !ntm ? ["n/a", t("na_no_est")] : fw.pe_ntm == null ? ["n/a", t("na_ntm_eps")]
-    : [mult(fw.pe_ntm), w == null ? "" : `${w}% FY${ntm.fys[0]} + ${100 - w}% FY${ntm.fys[1]}`];
+    : [mult(fw.pe_ntm), w == null ? "" : `${w}% FY${fys[0]} + ${100 - w}% FY${fys[1]}`];
   const dcf = m.dcf || {}, vps = dcf.value_per_share;
   const dcfNote = { fcf_not_positive: t("na_dcf_fcf"), invalid_inputs: t("na_dcf_inputs"),
     skipped_financial: t("na_dcf_financial") }[dcf.status] || "";
@@ -204,17 +207,19 @@ function tiles(d) {
   const dcfValue = nm.has("dcf") ? kind : vps == null ? ["n/a", dcfNote]
     : [perShare(vps), dcf.status === "value_not_positive" ? t("na_dcf_negative") : c.statement_currency];
   return tile(t("s_pe"), pe) + tile(t("s_ev"), ev) + tile(t("s_fcfy"), fcf) +
-    tile(t("s_roic"), [pct(roic), roic != null ? last(d.statements?.period) : ""]) + tile(t("s_cagr"), growth) +
-    tile(t("s_pio"), pio ? [`${pio.score} / ${pio.out_of}`, pio.fy] : ["n/a", t("na_short")]) +
+    tile(t("s_roic"), [pct(roic), roic != null ? last(d.statements?.period) || "" : ""]) + tile(t("s_cagr"), growth) +
+    tile(t("s_pio"), pio ? [`${txt(pio.score)} / ${txt(pio.out_of)}`, pio.fy || ""] : ["n/a", t("na_short")]) +
     tile(t("s_fpe"), fpe) + tile(t("s_dcf"), dcfValue);
 }
 
-// Data not fetched from FMP's official API (a third-party proxy, or a document that does not say)
-function routeNotice(dq) {
-  const route = dq?.route;
-  if (route && route.startsWith("official")) return "";
-  return `<div class="notice">${route ? t("notice_proxy", esc(route.replace(/^third-party proxy at /, "")))
-    : esc(t("notice_no_route"))}</div>`;
+// Data not fetched from FMP's official API (a third-party proxy, or a document that does not say), and a run whose
+// HTTPS certificate verification was off (fa-2.0 does not record it; the report's data notes say so)
+function notices(dq, report) {
+  const route = dq?.route, out = [];
+  if (!(route && route.startsWith("official")))
+    out.push(route ? t("notice_proxy", esc(route.replace(/^third-party proxy at /, ""))) : esc(t("notice_no_route")));
+  if (report.includes("\n- HTTPS certificate verification was OFF for this run.")) out.push(esc(t("notice_tls")));
+  return out.map(n => `<div class="notice">${n}</div>`).join("");
 }
 
 function headCard(d, head) {
@@ -244,7 +249,7 @@ function render(data) {
   const head = parts[0].startsWith("## ") ? "" : parts.shift().split("\n").filter(l => !l.startsWith("# ")).join("\n");
   const sections = parts.filter(s => s.startsWith("## "));
   if (curTab >= sections.length) curTab = 0;
-  let h = routeNotice(d.data_quality) + headCard(d, head);
+  let h = notices(d.data_quality, report) + headCard(d, head);
   if (sections.length) {
     h += `<div class="tabs">` + sections.map((s, i) => `<button type="button" class="tab${i === curTab ? " on" : ""}" ` +
       `data-i="${i}">${esc(tr(s.split("\n")[0].slice(3)))}</button>`).join("") + `</div>`;

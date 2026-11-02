@@ -19,7 +19,7 @@ import statistics
 
 # Company types other than "general" (company.kind), and the measures named in company.not_meaningful.
 KINDS = {
-    "financial": "Financial company (bank or insurer)",
+    "financial": "Financial company",
     "fee_financial": ("Fee-based financial company (exchange, data provider or insurance broker), analysed like "
                       "other companies; clearing margin and client money sit on its balance sheet"),
     "reit": "REIT; net income is after property depreciation",
@@ -64,6 +64,16 @@ def money(v):
         if a >= div_:
             return f"{s}{a / div_:.2f}{suf}"
     return f"{s}{a:.0f}"
+
+
+def txt(v):
+    return "n/a" if v is None else str(v)
+
+
+def one_line(v):
+    """A text from FMP (a name, an endpoint, an error) on one line: a line break inside it (\\r, \\n, U+2028,
+    U+2029) would split a list item or a table row."""
+    return "n/a" if v is None else " ".join(str(v).split())
 
 
 def pct(v):
@@ -144,7 +154,7 @@ def periods(f):
         p = {}
         for b in blocks:
             p.update({k: col[i] if i < len(col) else None for k, col in b.items() if isinstance(col, list)})
-        out.append(dict(p, label=label))
+        out.append(dict(p, label=label or p.get("end") or "n/a"))
     if f.get("ttm"):
         out.append(dict(f["ttm"], label=f["ttm"].get("period") or "TTM"))
     return out
@@ -158,14 +168,15 @@ def price_text(f):
 # ---------------------------------------------------------------------------- sections
 def header(f):
     c, px, per = f.get("company") or {}, f.get("price") or {}, f.get("periods") or {}
-    out = [f"# {f.get('ticker')} - {c['name']}" if c.get("name") else f"# {f.get('ticker')}"]
-    out.append(f"{c.get('sector') or 'n/a'} / {c.get('industry') or 'n/a'} | {c.get('exchange') or 'n/a'} | "
-               f"Price {price_text(f)} | Market cap {money(c.get('market_cap'))} | Beta {ratio(c.get('beta'))}")
+    out = [f"# {f.get('ticker')} - {one_line(c['name'])}" if c.get("name") else f"# {f.get('ticker')}"]
+    sector, industry, exchange = (one_line(c.get(k) or None) for k in ("sector", "industry", "exchange"))
+    out.append(f"{sector} / {industry} | {exchange} | Price {price_text(f)} | Market cap {money(c.get('market_cap'))} "
+               f"| Beta {ratio(c.get('beta'))}")
     fys, ccy = per.get("fiscal_years") or [], c.get("statement_currency") or px.get("currency")
-    span = "n/a" if not fys else fys[0] if len(fys) == 1 else f"{fys[0]}-{fys[-1]}"
+    span = "n/a" if not fys else txt(fys[0]) if len(fys) == 1 else f"{txt(fys[0])}-{txt(fys[-1])}"
     ttm = f.get("ttm")
     out.append(f"\nData basis: annual {span}" + (f" in {ccy}" if ccy else "") +
-               (f" + TTM to {ttm.get('end')}" if ttm else " (TTM unavailable: using last fiscal year)") +
+               (f" + TTM to {txt(ttm.get('end'))}" if ttm else " (TTM unavailable: using last fiscal year)") +
                f". Valuation uses {per.get('valuation_basis') or 'n/a'} figures. As of {f.get('as_of') or 'n/a'}.")
     kind = c.get("kind") or "general"
     if kind != "general":
@@ -185,8 +196,9 @@ def statement_sections(f):
     cg = g.get("cagr") or {}
     out = ["\n## 1. Growth"]
     n = g.get("years") or 0
-    out.append(f"Last column: compound annual growth (CAGR) over {n} year{'' if n == 1 else 's'}, {g.get('from')} to "
-               f"{g.get('to')}." if n else "Last column: compound annual growth (CAGR), which needs at least 2 fiscal years.")
+    out.append(f"Last column: compound annual growth (CAGR) over {n} year{'' if n == 1 else 's'}, "
+               f"{txt(g.get('from'))} to {txt(g.get('to'))}." if n else
+               "Last column: compound annual growth (CAGR), which needs at least 2 fiscal years.")
     out.append(table(["Metric"] + heads + ["CAGR"], metric_rows(ps, [
         ("Revenue", "revenue", money, pct(cg.get("revenue"))),
         ("Revenue YoY", "revenue_yoy", pct, ""),
@@ -268,7 +280,7 @@ def _band_lines(b, name, base, years, start, end):
     """A forward multiple's daily distribution and where today sits in it. name: 'P/E' or 'EV/EBITDA'."""
     out = [f"{years}-year forward {name} on next-12-month {base}: 25th percentile {mult(b.get('p25'))}, median "
            f"{mult(b.get('median'))}, 75th percentile {mult(b.get('p75'))} (10th-90th {mult(b.get('p10'))} - "
-           f"{mult(b.get('p90'))}; {b.get('n')} trading days, {start} to {end})."]
+           f"{mult(b.get('p90'))}; {txt(b.get('n'))} trading days, {txt(start)} to {txt(end)})."]
     p = b.get("pctile")
     if p is None or b.get("now") is None:
         out.append(f"Today's next-12-month {base} is not positive, so there is no forward {name} for today.")
@@ -353,12 +365,12 @@ def forward_section(f):
     vr = get(f, "consensus", "vs_reported") or {}
     gap = vr.get("eps") or {}
     if "pe" in shown and gap.get("gap") is not None and abs(gap["gap"]) > 0.05:
-        out.append(f"Analysts' {vr.get('fy')} EPS ({per_share(gap.get('estimate'))}) differs from reported diluted EPS "
-                   f"({per_share(gap.get('reported'))}) by {pct(gap['gap'])}: the estimates may be on an adjusted "
-                   f"(non-GAAP) basis, while the P/E history uses reported EPS for reported years.")
+        out.append(f"Analysts' {txt(vr.get('fy'))} EPS ({per_share(gap.get('estimate'))}) differs from reported "
+                   f"diluted EPS ({per_share(gap.get('reported'))}) by {pct(gap['gap'])}: the estimates may be on an "
+                   f"adjusted (non-GAAP) basis, while the P/E history uses reported EPS for reported years.")
     gap = vr.get("ebitda") or {}
     if "ev_ebitda" in shown and gap.get("gap") is not None and abs(gap["gap"]) > 0.10:
-        out.append(f"Analysts' {vr.get('fy')} EBITDA ({money(gap.get('estimate'))}) differs from reported EBITDA "
+        out.append(f"Analysts' {txt(vr.get('fy'))} EBITDA ({money(gap.get('estimate'))}) differs from reported EBITDA "
                    f"({money(gap.get('reported'))}) by {pct(gap['gap'])}: the estimates may be on an adjusted basis "
                    f"(for example before stock-based compensation), while the EV/EBITDA history uses reported EBITDA "
                    f"for reported years.")
@@ -367,9 +379,9 @@ def forward_section(f):
 
 def _group_now(g):
     if g.get("status") == "negative":
-        return f"negative ({g.get('date')})"
+        return f"negative ({txt(g.get('date'))})"
     if g.get("status") == "stale":
-        return f"n/a (last {g.get('date')})"
+        return f"n/a (last {txt(g.get('date'))})"
     return mult(g.get("pe"))
 
 
@@ -384,18 +396,18 @@ def group_section(f):
              f"{mult(hist.get('min'))} - {mult(hist.get('max'))}" if hist.get("n") else "n/a", "", ""]]
     groups = [(key, vg.get(key) or {}) for key in ("industry", "sector")]
     for key, g in groups:
-        name = f"{key.capitalize()}: {g.get('name') or 'n/a'}"
+        name = f"{key.capitalize()}: {one_line(g.get('name') or None)}"
         if (g.get("status") or "unavailable") == "unavailable":
             rows.append([name] + ["n/a"] * 5)
             continue
         rows.append([name, _group_now(g), mult(g.get("median")), f"{mult(g.get('min'))} - {mult(g.get('max'))}",
                      pct_digits(g.get("pe_pctile"), 0), mult(g.get("year_ago"))])
     out.append(table(["P/E", "Now", "Hist. median", "Hist. range", "Percentile in hist.", "1y ago"], rows))
-    spans = [f"{key} daily since {g.get('since')} (latest {g.get('date')})" for key, g in groups
+    spans = [f"{key} daily since {txt(g.get('since'))} (latest {txt(g.get('date'))})" for key, g in groups
              if (g.get("status") or "unavailable") != "unavailable"]
     if hist.get("n"):
         spans.insert(0, f"company at its last {hist['n']} fiscal year-ends")
-    ex = f" ({vg['exchange']}-listed companies)" if vg.get("exchange") else ""
+    ex = f" ({one_line(vg['exchange'])}-listed companies)" if vg.get("exchange") else ""
     out.append(f"\nCompany P/E vs industry: {pct(get(vg, 'industry', 'premium'))}; vs sector: "
                f"{pct(get(vg, 'sector', 'premium'))}. Industry/sector P/E is FMP's aggregate for the group{ex}, not a "
                f"market-cap-weighted index. History: {'; '.join(spans) or 'n/a'}.")
@@ -406,7 +418,7 @@ def quality_section(f):
     out = ["\n## 8. Quality scores"]
     pio = get(f, "models", "piotroski")
     if pio:
-        out.append(f"**Piotroski F-score {pio.get('fy')}: {pio.get('score')} / {pio.get('out_of')}** "
+        out.append(f"**Piotroski F-score {txt(pio.get('fy'))}: {txt(pio.get('score'))} / {txt(pio.get('out_of'))}** "
                    f"(tests passed / tests with data)")
         out.append(table(["Test", "Result"], [[PIOTROSKI_TESTS.get(t.get("id"), t.get("id")),
                                                {True: "pass", False: "fail"}.get(t.get("pass"), "n/a")]
@@ -416,9 +428,9 @@ def quality_section(f):
     alt = get(f, "models", "altman") or {}
     parts = []
     if alt.get("z") is not None:
-        parts.append(f"Altman Z {alt['z']:.2f} ({alt.get('z_zone')}; >2.99 safe, <1.81 distress)")
+        parts.append(f"Altman Z {alt['z']:.2f} ({txt(alt.get('z_zone'))}; >2.99 safe, <1.81 distress)")
     if alt.get("z2") is not None:
-        parts.append(f"Z'' (non-manufacturer) {alt['z2']:.2f} ({alt.get('z2_zone')}; >2.6 safe, <1.1 distress)")
+        parts.append(f"Z'' (non-manufacturer) {alt['z2']:.2f} ({txt(alt.get('z2_zone'))}; >2.6 safe, <1.1 distress)")
     out.append("\n" + (" | ".join(parts) or "Altman Z: not available (needs working capital, retained earnings, EBIT, "
                                             "revenue, total assets and total liabilities)."))
     if alt.get("status") == "not_meaningful":
@@ -428,9 +440,9 @@ def quality_section(f):
 
 def _capm_note(d):
     """How the CAPM rate was set, as analyze.py wrote it (macro.capm_note)."""
-    note = (f"CAPM: 10Y Treasury {pct_digits(d.get('rf'), 2)} ({d.get('rf_date')}) + beta {ratio(d.get('beta'))} "
+    note = (f"CAPM: 10Y Treasury {pct_digits(d.get('rf'), 2)} ({txt(d.get('rf_date'))}) + beta {ratio(d.get('beta'))} "
             f"x US equity risk premium {pct_digits(d.get('erp'), 2)}")
-    if d.get("beta_source") != "profile":
+    if d.get("beta_source") == "default_1":
         note += " [beta defaulted to 1.0]"
     note += f" = {pct_digits(d.get('raw'), 2)}"
     if d.get("clamped"):
@@ -458,7 +470,7 @@ def dcf_section(f):
         out.append(DCF_SKIPS.get(d.get("status"), "DCF not available."))
         return out
     out.append("FCF-based, 10 years + terminal value.")
-    basis = (f"{get(f, 'periods', 'valuation_basis')} FCF" if inp.get("fcf_start_basis") == "valuation_basis"
+    basis = (f"{txt(get(f, 'periods', 'valuation_basis'))} FCF" if inp.get("fcf_start_basis") == "valuation_basis"
              else "average FCF of last 3 fiscal years")
     disc = inp.get("discount_rate") or {}
     out.append(table(["Assumption", "Value"], [
@@ -499,7 +511,7 @@ def consensus_section(f):
         # the old report's columns, plus the EBITDA consensus it showed in its forward EV/EBITDA tables
         out.append(table(["FY", "EPS est. (low-high)", "Fwd P/E", "Revenue est.", "Rev. growth", "EBITDA est.",
                           "# analysts"],
-                         [[f"{e.get('fy')} (ended, not yet reported)" if e.get("ended") else e.get("fy"),
+                         [[f"{txt(e.get('fy'))} (ended, not yet reported)" if e.get("ended") else txt(e.get("fy")),
                            f"{per_share(e.get('eps_avg'))} ({per_share(e.get('eps_low'))}-{per_share(e.get('eps_high'))})",
                            mult(e.get("pe_on_fy_eps")), money(e.get("revenue_avg")), pct(e.get("revenue_growth")),
                            money(e.get("ebitda_avg")), "n/a" if e.get("analysts") is None else e["analysts"]]
@@ -510,7 +522,7 @@ def consensus_section(f):
             for key, name, fmt in (("eps", "EPS (diluted)", per_share), ("ebitda", "EBITDA", money),
                                    ("revenue", "Revenue", money)) if vr.get(key)]
     if rows:
-        out.append(f"\nAnalysts' figures for {vr.get('fy')}, the last reported year, against the reported ones:")
+        out.append(f"\nAnalysts' figures for {txt(vr.get('fy'))}, the last reported year, against the reported ones:")
         out.append(table(["Item", "Analysts", "Reported", "Gap"], rows))
         notes = []
         if vr.get("revenue"):
@@ -549,9 +561,10 @@ def peers_section(f, number):
     rows = []
     for p in [dict(own_row(f), status="self")] + peers:
         if p.get("status") == "no_data":
-            rows.append([p.get("symbol"), "no data (plan restriction or unknown ticker)"] + [""] * 9)
+            rows.append([txt(p.get("symbol")), "no data (plan restriction or unknown ticker)"] + [""] * 9)
             continue
-        rows.append([f"{p.get('symbol')} *" if p.get("status") == "self" else p.get("symbol"), money(p.get("market_cap"))]
+        symbol = txt(p.get("symbol"))
+        rows.append([f"{symbol} *" if p.get("status") == "self" else symbol, money(p.get("market_cap"))]
                     + [fmt(p.get(k)) for k, fmt in PEER_COLUMNS])
     ok = [p for p in peers if p.get("status") == "ok"]
     if ok:
@@ -562,15 +575,17 @@ def peers_section(f, number):
     return out
 
 
-def data_notes(f, calls):
+def data_notes(f, calls, tls_verify=None):
     dq, px = f.get("data_quality") or {}, f.get("price") or {}
     out = ["\n## Data notes"]
     route = dq.get("route")
     if route and route.startswith("official"):
         out.append("- Data route: official FMP API.")
     elif route:
-        out.append(f"- Data route: {route}. Data is not served by FMP directly; spot-check key figures against "
-                   f"company filings.")
+        out.append(f"- Data route: {one_line(route)}. Data is not served by FMP directly; spot-check key figures "
+                   f"against company filings.")
+    if tls_verify is False:
+        out.append("- HTTPS certificate verification was OFF for this run.")
     if px.get("source") == "quote":
         out.append(f"- Price from the latest quote at {px['time']} New York time." if px.get("time") else
                    "- Price from the latest quote.")
@@ -581,7 +596,7 @@ def data_notes(f, calls):
     if rates is None and get(f, "valuation", "vs_group") is None:
         out.append("- Treasury, sector and industry data skipped (--no-market).")
     elif rates and rates.get("treasury_10y") is not None:
-        out.append(f"- Treasury yields as of {rates.get('date')} (FMP treasury-rates).")
+        out.append(f"- Treasury yields as of {txt(rates.get('date'))} (FMP treasury-rates).")
         if rates.get("equity_risk_premium") is None:
             out.append("- US equity risk premium unavailable" +
                        (": DCF used the fixed default discount rate." if fixed else "."))
@@ -594,8 +609,8 @@ def data_notes(f, calls):
         out.append(f"- Statements are in {cm.get('statements')} and the price in {cm.get('price')}: the multiples and "
                    f"yields mix the two currencies, and the DCF value per share is in {cm.get('statements')}.")
     if dq.get("restricted"):
-        out.append(f"- Skipped (not in your FMP plan): {', '.join(dq['restricted'])}")
-    for e in dict.fromkeys(dq.get("errors") or []):
+        out.append(f"- Skipped (not in your FMP plan): {', '.join(one_line(r) for r in dq['restricted'])}")
+    for e in dict.fromkeys(one_line(e) for e in dq.get("errors") or []):
         out.append(f"- Error: {e}")
     if calls is not None:
         out.append(f"- API calls: {calls[0]} network, {calls[1]} from cache.")
@@ -604,7 +619,7 @@ def data_notes(f, calls):
     return out
 
 
-def render(f, macro_md=None, calls=None):
+def render(f, macro_md=None, calls=None, tls_verify=None):
     """The report of a fa-2.x document. macro_md: the rates & macro section's body; calls: (network, cache)."""
     if not str(f.get("contract") or "").startswith("fa-2"):
         raise ValueError(f"not a fa-2.x document (contract {f.get('contract')!r})")
@@ -616,5 +631,5 @@ def render(f, macro_md=None, calls=None):
         number += 1
     if macro_md:
         out += [f"\n## {number}. Rates & macro backdrop", macro_md.strip("\n")]
-    out += data_notes(f, calls)
+    out += data_notes(f, calls, tls_verify)
     return "\n".join(out)

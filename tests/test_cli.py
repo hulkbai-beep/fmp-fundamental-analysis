@@ -173,7 +173,7 @@ class Calls(unittest.TestCase):
                 mock.patch.object(A.R, "render", return_value=REPORT) as rd:
             doc, report = A.run(A.parse_args(["QUAL", "--peers", "none"]))
         self.assertEqual(report, REPORT)
-        rd.assert_called_once_with(doc, macro_md=None, calls=(14, 0))
+        rd.assert_called_once_with(doc, macro_md=None, calls=(14, 0), tls_verify=True)
         self.assertEqual(validate(doc), [])
 
 

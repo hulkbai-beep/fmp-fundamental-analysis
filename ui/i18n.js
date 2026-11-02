@@ -18,6 +18,7 @@ const UI = {
     err_contract: c => `这个页面只显示 fa-2 格式的基本面数据（基本面 skill v2.0），收到的数据${c ? `是 ${c}` : "没有 contract 字段"}。`,
     notice_proxy: host => `数据来自 <b>FMP 第三方代理接口</b>（${host}），不是 FMP 官方服务器。重要数字请对照公司财报核实。`,
     notice_no_route: "这份数据没有记录是从 FMP 官方接口还是第三方代理取得的。重要数字请对照公司财报核实。",
+    notice_tls: "本次 HTTPS 证书验证已关闭：与数据接口之间的连接没有经过验证。",
     as_of: "截至", mcap: "市值", px_time: s => `报价 ${s} 美东`,
     s_pe: "P/E", s_ev: "EV/EBITDA", s_fcfy: "FCF 收益率", s_roic: "ROIC", s_cagr: "营收 CAGR", s_pio: "Piotroski",
     s_fpe: "前瞻 P/E（未来 12 个月）", s_dcf: "DCF 每股价值",
@@ -39,6 +40,7 @@ const UI = {
     err_contract: c => `This page shows fa-2 documents only (fundamental skill v2.0); the data it received ${c ? `is ${c}` : "has no contract field"}.`,
     notice_proxy: host => `Data comes from a <b>third-party FMP proxy</b> (${host}), not FMP's official server. Verify key figures against company filings.`,
     notice_no_route: "This data does not say whether it came from FMP's official API or a third-party proxy. Verify key figures against company filings.",
+    notice_tls: "HTTPS certificate verification was off for this run: the connection to the data source was not verified.",
     as_of: "as of", mcap: "Mkt cap", px_time: s => `Quote ${s} ET`,
     s_pe: "P/E", s_ev: "EV/EBITDA", s_fcfy: "FCF yield", s_roic: "ROIC", s_cagr: "Revenue CAGR", s_pio: "Piotroski",
     s_fpe: "Forward P/E (next 12 months)", s_dcf: "DCF value / share",
@@ -166,6 +168,7 @@ const ZH_EXACT = new Map(Object.entries({
   "None of the tracked events is scheduled in the next 3 weeks.": "未来 3 周没有跟踪的关键数据。",
   // data notes
   "Data route: official FMP API.": "数据来源：FMP 官方 API。",
+  "HTTPS certificate verification was OFF for this run.": "本次运行关闭了 HTTPS 证书验证。",
   "Treasury, sector and industry data skipped (--no-market).": "跳过了国债、板块和行业数据（--no-market）。",
   "Source: Financial Modeling Prep. Computed figures are approximations; verify against filings before acting.":
     "数据源：Financial Modeling Prep。计算结果是近似值，做决定前请对照财报核实。",
@@ -180,7 +183,7 @@ const SECTORS = {
 const sectorZh = s => SECTORS[s] ? `${SECTORS[s]}（${s}）` : s;
 // Company types other than "general" and the measures that do not apply to them, as facts_report.py names them.
 const KIND_ZH = {
-  "Financial company (bank or insurer)": "金融公司（银行或保险公司）",
+  "Financial company": "金融公司",
   "Fee-based financial company (exchange, data provider or insurance broker), analysed like other companies; clearing margin and client money sit on its balance sheet":
     "收费型金融公司（交易所、数据服务商或保险经纪），按普通公司分析；清算保证金和客户资金记在它的资产负债表上",
   "REIT; net income is after property depreciation": "REIT；净利润已扣除物业折旧",
@@ -211,6 +214,7 @@ const EVENTS = {
 const MONTHS = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 function eventZh(name) {
   const m = name.match(/^(.*?)(?:\s*\((\w{3}|Q[1-4])\))?$/);
+  if (!m) return name;  // "." stops at a line break inside the text (\r, U+2028, U+2029): not an event name
   const base = EVENTS[m[1].toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim()];
   if (!base) return name;
   const period = m[2] ? (MONTHS[m[2]] ? `${MONTHS[m[2]]} 月` : m[2]) : "";

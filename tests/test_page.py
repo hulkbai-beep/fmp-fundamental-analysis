@@ -38,7 +38,7 @@ DYNAMIC_CALLS = {"t(el.dataset.i18n)", "t(el.dataset.i18nPh)", "t(el.dataset.i18
 # and tiles, the flags card, the implied-volatility input).
 REMOVED_KEYS = re.compile(r"^(sc_|rc_|chart_|k_|p_|lbl_|ind_|note_|val_|cap_|cf_|cr_|q_|zone_|conf_|grp_|pctile|"
                           r"pio_scaled|altman_rule|month$|no_ohlc$|no_prices$|flags_title$|pos$|neg$|none$|"
-                          r"s_mos$|s_range|f_iv$|iv_tip$|ph_realized$|notice_tls$)")
+                          r"s_mos$|s_range|f_iv$|iv_tip$|ph_realized$)")
 # What the page may no longer mention (case-sensitive: the Piotroski tile reads models.piotroski.score).
 REMOVED_TEXT = ("candle", "Candle", "ohlc", "drawPrice", "priceCard", "PERIODS", "scoreCard", "r.score", "viewsHtml",
                 "flag", "Flag", "price_range", "rangeChart", "drawRange", "rcRows", "RC_COLOR", "margin_of_safety",
@@ -174,6 +174,21 @@ class Engine(unittest.TestCase):
         self.assertIn("data.report", SCRIPT)
         for absent in ("data.candles", "data.prices", "candles_note", ".profile", ".current", "r.years"):
             self.assertNotIn(absent, SCRIPT)
+
+    def test_the_tls_notice_reads_the_line_the_report_writes(self):
+        """fa-2.0 does not record that HTTPS certificate verification was off; the page reads it from the report's
+        data notes, so the two texts must stay the same."""
+        line = "- HTTPS certificate verification was OFF for this run."
+        self.assertIn(f'"{line}"', (ROOT / "scripts" / "facts_report.py").read_text(encoding="utf-8"))
+        self.assertIn(f'report.includes("\\n{line}")', SCRIPT)
+        self.assertIn('t("notice_tls")', SCRIPT)
+
+    def test_the_translator_returns_what_it_cannot_read(self):
+        """eventZh() runs on every text zh() gets. Its "." stops at a line break inside the text (\\r, U+2028,
+        U+2029), so the match can be null: it must then return the text, not throw and blank the page."""
+        body = I18N[I18N.index("function eventZh("):]
+        body = body[:body.index("\n}\n")]
+        self.assertRegex(body, r"const m = name\.match\(.+\);\n\s*if \(!m\) return name;")
 
 
 class Labels(unittest.TestCase):

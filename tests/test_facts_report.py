@@ -245,7 +245,7 @@ class Report(unittest.TestCase):
                     self.assertIn(R.MEASURES[k], line[0].split("Not meaningful for this type of company:")[1])
                 notes[c["kind"]] = line[0]
         self.assertEqual(sorted(notes), ["fee_financial", "financial", "reit", "utility"])
-        self.assertEqual(notes["financial"], "**Company type:** Financial company (bank or insurer). Not meaningful for "
+        self.assertEqual(notes["financial"], "**Company type:** Financial company. Not meaningful for "
                                              "this type of company: gross margin, EV/EBITDA, EV / sales, free cash "
                                              "flow, DCF, Altman Z.")
 
@@ -328,18 +328,75 @@ class Report(unittest.TestCase):
                 self.assertEqual(text.replace(block, "", 1).replace(calls, "", 1), plain)
                 self.assertEqual(R.render(DOCS[name], calls=(0, 9)).count("- API calls: 0 network, 9 from cache."), 1)
 
+    def test_tls_note_only_when_verification_was_off(self):
+        line = "- HTTPS certificate verification was OFF for this run."
+        doc = DOCS["QUAL"]
+        self.assertNotIn(line, R.render(doc))
+        self.assertNotIn(line, R.render(doc, tls_verify=True))
+        text = R.render(doc, tls_verify=False)
+        self.assertEqual(text.count(line), 1)
+        self.assertEqual(untranslated(text, doc), [])
+
+    def test_texts_from_fmp_stay_on_one_line(self):
+        """A line break inside a name, an endpoint or an error from FMP would split a list item or a table row, and
+        the page translates the report one line at a time."""
+        doc = copy.deepcopy(DOCS["QUAL"])
+        doc["company"]["name"] = "QUAL\u2028Test Corp"
+        doc["company"]["industry"] = "Software\u2029Application"
+        doc["valuation"]["vs_group"]["industry"]["name"] = "Software\rApplication"
+        doc["data_quality"]["errors"] = ["HTTP 404 on quote: Not Found\rThe requested URL\nwas not found",
+                                         "line\u2028separator"]
+        text = R.render(doc)
+        self.assertEqual(text.splitlines(), text.split("\n"))     # no other line break inside any line
+        self.assertTrue(text.startswith("# QUAL - QUAL Test Corp\nTechnology / Software Application | NASDAQ | "))
+        self.assertIn("\n| Industry: Software Application | ", text)
+        self.assertIn("\n- Error: HTTP 404 on quote: Not Found The requested URL was not found\n"
+                      "- Error: line separator\n", text)
+
+    def test_nullable_texts_render_as_na(self):
+        for name in ("QUAL", "QUAL_peers", "ADJE", "QTRS"):
+            doc = copy.deepcopy(DOCS[name])
+            doc["statements"]["period"][0] = None
+            doc["periods"]["fiscal_years"][0] = None
+            doc["periods"]["valuation_basis"] = None
+            doc["growth"]["from"] = doc["growth"]["to"] = None
+            if doc.get("ttm"):
+                doc["ttm"]["end"] = None
+            doc["models"]["piotroski"].update(fy=None, score=None, out_of=None)
+            doc["models"]["altman"].update(z_zone=None, z2_zone=None)
+            doc["models"]["dcf"]["inputs"]["discount_rate"].update(rf_date=None, beta_source=None)
+            doc["rates"]["date"] = None
+            fb = doc["valuation"]["forward_band"]
+            fb["from"] = fb["to"] = None
+            for k in ("pe", "ev_ebitda"):
+                if fb.get(k):
+                    fb[k]["n"] = None
+            for g in ("industry", "sector"):
+                doc["valuation"]["vs_group"][g].update(date=None, since=None)
+            for e in doc["consensus"]["estimates"]:
+                e["fy"] = None
+            doc["consensus"]["vs_reported"]["fy"] = None
+            for p in doc.get("peers") or []:
+                p["symbol"] = None
+            with self.subTest(name):
+                text = R.render(doc)
+                self.assertNotRegex(text, r"\bNone\b")
+                self.assertNotIn("[beta defaulted to 1.0]", text)
+
     def test_documents_converted_from_old_results(self):
         full = json.loads((DATA / "old_full_v1.1_QUAL.json").read_text(encoding="utf-8"))
-        older = copy.deepcopy(full)   # as v1.0 saved it: no generation time, market data, peers, TTM or quote time
+        # without the keys added while v1.0 was being built: generation time, market data, peers, TTM, quote time
+        older = copy.deepcopy(full)
         for k in ("generated_at", "market", "peers", "ttm", "price_time"):
             older.pop(k)
         older["meta"].pop("connection")
         older["price_range"].pop("trailing_problem")
-        for label, r in (("v1.1", full), ("v1.0", older)):
+        for label, r in (("v1.1", full), ("fewer keys", older)):
             with self.subTest(label):
                 doc = F.build(r)
                 text = R.render(doc)
                 self.assertTrue(text.startswith("# QUAL - QUAL Test Corp\n"))
+                self.assertNotRegex(text, r"\bNone\b")
                 self.assertEqual(headings(text), SECTIONS + ["Data notes"])
                 self.assertEqual(judgements(text, doc), [])
                 self.assertEqual([t for t in REMOVED if t in text], [])
