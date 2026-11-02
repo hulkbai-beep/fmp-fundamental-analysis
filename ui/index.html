@@ -7,15 +7,11 @@
 <style>
 :root {
   --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #dde2e8;
-  --accent: #2563eb; --pos: #15803d; --neg: #b91c1c; --warn-bg: #fff7e6; --warn-text: #8a5a00;
-  --row: #f1f4f8;
-  /* price-range methods: a categorical order checked for color-blind separation on the card colors */
-  --c-pe: #2a78d6; --c-ev: #1baf7a; --c-dcf: #6250d6; --c-tgt: #e87ba4; --c-trade: #94a3b8; --c-vol: #eda100;
+  --accent: #2563eb; --neg: #b91c1c; --warn-bg: #fff7e6; --warn-text: #8a5a00; --row: #f1f4f8;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #0f1216; --card: #181c22; --text: #e6e9ee; --muted: #98a2b0; --border: #2a313a;
-    --accent: #6ea0ff; --pos: #4ade80; --neg: #f87171; --warn-bg: #2b2210; --warn-text: #f5c56b; --row: #1f252d;
-    --c-pe: #3987e5; --c-ev: #199e70; --c-dcf: #9085e9; --c-tgt: #d55181; --c-trade: #64748b; --c-vol: #c98500; }
+    --accent: #6ea0ff; --neg: #f87171; --warn-bg: #2b2210; --warn-text: #f5c56b; --row: #1f252d; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -34,64 +30,39 @@ button { font: inherit; background: var(--accent); color: #fff; border: 0; borde
   padding: 8px 18px; cursor: pointer; font-weight: 600; }
 button:disabled { opacity: .6; cursor: wait; }
 .chk { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 8px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 14px; }
-.notice { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 13px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 14px;
+  overflow-wrap: anywhere; }
+.notice { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; margin-top: 14px;
+  font-size: 13px; overflow-wrap: anywhere; }
 .error { color: var(--neg); white-space: pre-wrap; }
 .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: baseline; }
 .name { font-size: 22px; font-weight: 700; }
 .sub { color: var(--muted); font-size: 13px; }
-.price { font-size: 26px; font-weight: 700; text-align: right; }
+.price { font-size: 26px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .pmeta { text-align: right; }
-.pos { color: var(--pos); } .neg { color: var(--neg); }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, calc(50% - 5px)), 1fr)); gap: 10px; margin-top: 14px; }
-.stat.wide { grid-column: span 2; }
+/* eight tiles: four a row, two on a phone */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
 .stat { background: var(--row); border-radius: 8px; padding: 10px; }
-.stat .k { font-size: 12px; color: var(--muted); } .stat .v { font-size: 18px; font-weight: 700; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .price, .pmeta { text-align: left; } }
-.grid2 .card { margin-top: 0; }
+.stat .k, .stat .n { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* the report's own header lines (sector line, data basis, company type), under the tiles */
+.rhead { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.rhead p { margin: 2px 0; }
+.rhead b { color: var(--text); }
+@media (max-width: 760px) { .price, .pmeta { text-align: left; } }
+@media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 h3 { margin: 0 0 8px; font-size: 15px; }
 .section h3 { margin-top: 18px; }
-ul.flags { margin: 0; padding-left: 18px; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .tab { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; }
 .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.section { overflow-x: auto; }
+.section { overflow-x: auto; overflow-wrap: normal; }
 .section a { color: var(--accent); }
 .section h2 { font-size: 16px; margin: 0 0 10px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
 th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: right; white-space: nowrap; }
 th:first-child, td:first-child, th.l, td.l { text-align: left; }
 th { color: var(--muted); font-weight: 600; background: var(--row); }
-svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.phead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
-.phead h3 { margin: 0; }
-.pchg { margin-left: auto; font-size: 13px; font-weight: 600; }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; align-self: center; }
-.seg button { background: transparent; color: var(--muted); border: 0; border-radius: 0; padding: 4px 11px;
-  font-size: 12px; font-weight: 500; cursor: pointer; }
-.seg button + button { border-left: 1px solid var(--border); }
-.seg button.on { background: var(--row); color: var(--text); font-weight: 600; }
-.readout { display: flex; flex-wrap: wrap; gap: 2px 14px; min-height: 20px; margin: 8px 0 4px; font-size: 12px;
-  color: var(--muted); font-variant-numeric: tabular-nums; }
-.readout b { color: var(--text); font-weight: 600; }
-.chartbox { position: relative; margin: 6px 0 8px; }
-.chartbox svg { display: block; overflow: visible; }
-.chartbox svg:focus { outline: none; }
-.chartbox svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-svg text.chip { fill: var(--card); font-weight: 600; }
-.rangechart svg * { pointer-events: none; }
-.rangechart svg .hit { pointer-events: all; fill: transparent; }
-.rangechart svg .hit:hover { fill: var(--row); }
-svg text.gh { fill: var(--muted); font-size: 12px; font-weight: 600; }
-svg text.ml { fill: var(--text); font-size: 13px; }
-svg text.val { fill: var(--muted); font-size: 12px; }
-.tip { position: absolute; z-index: 2; pointer-events: none; background: var(--card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6; white-space: nowrap;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
-.tip .tt { color: var(--muted); }
-.tip b { font-variant-numeric: tabular-nums; }
-.flags2 { gap: 4px 28px; }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; }
 .top h1 { margin: 0; }
 button.lang { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500;
@@ -100,78 +71,7 @@ button.lang { background: var(--card); color: var(--text); border: 1px solid var
   border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes s { to { transform: rotate(360deg); } }
 details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); }
-/* fundamental score card */
-.shead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
-.shead h3 { margin: 0; }
-.sbig { margin-left: auto; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.sval { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.slabel { font-size: 15px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--row); }
-.scale { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 14px 0 4px;
-  font-size: 12px; text-align: center; color: var(--muted); }
-.scale div { padding: 4px 0; background: var(--row); border-left: 1px solid var(--card); }
-.scale div:first-child { border-left: 0; border-radius: 6px 0 0 6px; }
-.scale div:nth-child(5) { border-radius: 0 6px 6px 0; }
-.scale div.on { color: var(--text); font-weight: 700; }
-.scale .mark { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; background: var(--text);
-  border-radius: 2px; padding: 0; border: 0; }
-.scaleticks { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); font-size: 11px; color: var(--muted);
-  font-variant-numeric: tabular-nums; margin-bottom: 10px; }
-.scaleticks span { text-align: center; transform: translateX(50%); }  /* centred on each cell's right edge */
-.prow { display: grid; grid-template-columns: minmax(84px, 1.1fr) 46px minmax(90px, 2fr) 52px 64px 64px; gap: 8px;
-  align-items: center; font-variant-numeric: tabular-nums; }
-.prow > :nth-child(n+2) { text-align: right; }
-.prow.hdr { font-size: 12px; color: var(--muted); padding: 0 0 2px 18px; }
-.prow.hdr .sm { display: none; }
-details.pil { margin-top: 0; border-top: 1px solid var(--border); }
-details.pil > summary { list-style: none; padding: 7px 0; color: var(--text); display: flex; align-items: center; gap: 4px; }
-details.pil > summary::-webkit-details-marker { display: none; }
-details.pil > summary::before { content: "▸"; width: 14px; color: var(--muted); flex: none; }
-details.pil[open] > summary::before { content: "▾"; }
-details.pil > summary .prow { flex: 1; }
-.pname { font-weight: 600; }
-.track { position: relative; height: 10px; background: var(--row); border-radius: 5px; }
-.track::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--muted); }
-.fill { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
-.fill.pos { background: var(--pos); } .fill.neg { background: var(--neg); }
-.itable { overflow-x: auto; margin: 0 0 8px 18px; }
-.itable table { margin: 4px 0 6px; }
-.itable td.l { white-space: normal; min-width: 150px; }
-.itable tr.na td { color: var(--muted); font-size: 12px; white-space: normal; }
-.inote { display: block; font-size: 12px; color: var(--muted); white-space: normal; }
-.bands { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-start; }
-.bands span { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--row); color: var(--muted); white-space: nowrap; }
-.bands span.on { background: var(--accent); color: var(--card); font-weight: 600; }
-.bands span.over { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
-.slist { margin: 6px 0 0; padding-left: 18px; }
-.views { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 4px 0 12px; }
-.views svg { flex: none; }
-.views .frame { fill: none; stroke: var(--border); } .views .axis { stroke: var(--muted); stroke-width: 1; }
-.views .qon { fill: var(--accent); opacity: 0.14; } .views .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
-.views .vtext { flex: 1; min-width: 180px; font-variant-numeric: tabular-nums; }
-.views .vtext div { margin: 2px 0; } .views .qname { font-weight: 700; margin-top: 6px; }
-.ssec { margin-top: 12px; }
-.ssec b { font-size: 13px; }
-@media (max-width: 760px) {
-  .prow { grid-template-columns: minmax(56px, 1fr) 36px minmax(36px, 1fr) 46px 48px; gap: 6px; }
-  .prow > :nth-child(6) { display: none; }
-  .prow.hdr .lg { display: none; } .prow.hdr .sm { display: inline; }
-  .sbig { margin-left: 0; }
-  /* indicator rows as cards: name, value and score on top, the bands under them, weight and contribution last */
-  .itable { margin-left: 0; overflow: visible; }
-  .itable thead { display: none; }
-  .itable table, .itable tbody { display: block; }
-  .itable tr { display: grid; grid-template-columns: 1fr auto 34px; grid-template-areas: "n v s" "b b b" "w c c";
-    column-gap: 10px; row-gap: 4px; padding: 7px 0; border-bottom: 1px solid var(--border); }
-  .itable td { border: 0; padding: 0; min-width: 0; }
-  .itable td.l { min-width: 0; }
-  .itable td:nth-child(1) { grid-area: n; } .itable td:nth-child(2) { grid-area: v; }
-  .itable td:nth-child(3) { grid-area: b; } .itable td:nth-child(4) { grid-area: s; }
-  .itable td:nth-child(5) { grid-area: w; text-align: left; } .itable td:nth-child(6) { grid-area: c; }
-  .itable td:nth-child(n+5) { font-size: 12px; color: var(--muted); }
-  .itable td[data-l]::before { content: attr(data-l) " "; }
-  .itable tr.na { display: block; }
-}
-pre { white-space: pre-wrap; font-size: 12px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; margin: 0; }
 </style>
 </head>
 <body>
@@ -186,7 +86,6 @@ pre { white-space: pre-wrap; font-size: 12px; }
     <label><span data-i18n="f_discount"></span><input class="small" name="discount" data-i18n-ph="ph_auto" data-i18n-title="discount_tip"></label>
     <label><span data-i18n="f_growth"></span><input class="small" name="growth" data-i18n-ph="ph_auto"></label>
     <label><span data-i18n="f_terminal"></span><input class="small" name="terminal" placeholder="2.5"></label>
-    <label><span data-i18n="f_iv"></span><input class="small" name="iv" data-i18n-ph="ph_realized" data-i18n-title="iv_tip"></label>
     <label><span data-i18n="f_fcf"></span><select name="fcf_base"><option value="latest" data-i18n="opt_latest"></option><option value="avg3" data-i18n="opt_avg3"></option></select></label>
     <label class="chk"><input type="checkbox" name="macro" value="1"><span data-i18n="c_macro"></span></label>
     <label class="chk"><input type="checkbox" name="refresh" value="1"><span data-i18n="c_refresh"></span></label>
@@ -196,16 +95,25 @@ pre { white-space: pre-wrap; font-size: 12px; }
 </div>
 <script src="i18n.js"></script>
 <script>
+// The page shows one fa-2.0 document (facts only) and its report, as /api/analyze answers them:
+// {"result": the fa-2.0 document, "report": the markdown of scripts/facts_report.py, "log": stderr}.
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const fmtPct = v => v == null ? "n/a" : (v * 100).toFixed(1) + "%";
-const fmtX = v => v == null ? "n/a" : v.toFixed(1) + "x";
-function fmtMoney(v) {
+// Number formats of the report (scripts/facts_report.py), so the tiles read like its tables.
+const pct = v => v == null ? "n/a" : Math.abs(v) < 0.0005 ? "0.0%" : (v * 100).toFixed(1) + "%";
+const mult = v => v == null ? "n/a" : Math.abs(v) < 0.05 ? "0.0x" : v.toFixed(1) + "x";
+function money(v) {
   if (v == null) return "n/a";
-  const a = Math.abs(v);
-  for (const [d, s] of [[1e12, "T"], [1e9, "B"], [1e6, "M"]]) if (a >= d) return (v / d).toFixed(2) + s;
-  return v.toFixed(2);
+  const a = Math.abs(v), s = v < 0 ? "-" : "";
+  for (const [d, x] of [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]]) if (a >= d) return s + (a / d).toFixed(2) + x;
+  return s + a.toFixed(0);
 }
+function perShare(v) {
+  if (v == null) return "n/a";
+  const [i, f] = Math.abs(v).toFixed(2).split(".");
+  return (v < 0 ? "-" : "") + i.replace(/\B(?=(\d{3})+$)/g, ",") + "." + f;
+}
+const last = a => Array.isArray(a) && a.length ? a[a.length - 1] : null;
 
 // Language: "zh" (default) shows the page and the report in Chinese; "en" shows the original English report.
 let LANG = "zh";
@@ -231,7 +139,7 @@ $("#lang").onclick = () => {
   else if ($("#go").disabled) $("#out").innerHTML = loadingHtml(lastSymbol);
 };
 
-// Minimal markdown -> HTML for the report produced by analyze.py (headings, tables, bold, lists, SEC links).
+// Minimal markdown -> HTML for the report (headings, tables, bold, lists, SEC links).
 // Each text piece goes through tr() first, so the Chinese view translates headings, cells and sentences.
 function inline(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
@@ -266,467 +174,86 @@ function md(text) {
   return html;
 }
 
-// Charts are drawn at their container's real width, so text keeps its CSS size, and redrawn when that width
-// changes (including the first time a hidden tab is shown). render() disconnects the old observers.
-let observers = [];
-function mount(el, draw) {
-  const ro = new ResizeObserver(() => {
-    const w = Math.floor(el.clientWidth);
-    if (w && w !== el._w) { el._w = w; draw(el, w); }
-  });
-  ro.observe(el);
-  observers.push(ro);
-}
-const ctx2d = document.createElement("canvas").getContext("2d");
-function textW(s, px, weight = 400) {
-  ctx2d.font = `${weight} ${px}px ${getComputedStyle(document.body).fontFamily}`;
-  return ctx2d.measureText(s).width;
-}
-function niceTicks(lo, hi, n) {
-  const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= raw) * mag, out = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toFixed(8));
-  return out;
-}
-const fmtTick = v => String(+v.toFixed(2));
-const fmtVol = v => v >= 1e9 ? (v / 1e9).toFixed(2) + "B" : v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(0) + "K" : String(v);
-const signPct = v => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%</span>`;
+// A stat tile: its label, the document's value (n/a when there is none) and a note under it: the period or unit
+// of the value, or why there is none. A measure the document marks as not meaningful for this type of company
+// (company.not_meaningful) shows n/a, even though the document still carries its value.
+const tile = (label, [value, note]) => `<div class="stat"><div class="k">${esc(label)}</div>` +
+  `<div class="v">${esc(value)}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
 
-// Share price: daily candles (green = close above open, red = below) with volume underneath, or weekly candles
-// when the chart is too narrow for one candle a day. When the data source has no open/high/low prices, a line
-// of the daily closes. Hover or arrow keys show one candle's numbers.
-// Periods end at the latest bar: a number is that many calendar months back, "ytd" starts on January 1 of the
-// latest bar's year. The choice is remembered by key.
-const PERIODS = [["3m", 3], ["6m", 6], ["ytd", "ytd"], ["1y", 12]];
-let period = "6m";
-try { const p = localStorage.getItem("period"); if (PERIODS.some(([k]) => k === p)) period = p; } catch (e) {}
-
-function periodCutoff(last, span) {  // the period holds the bars dated after this ISO date
-  const [y, m, d] = last.split("-").map(Number);
-  if (span === "ytd") return `${y - 1}-12-31`;
-  const k = y * 12 + m - 1 - span, ty = Math.floor(k / 12), tm = k % 12 + 1;
-  const td = Math.min(d, new Date(Date.UTC(ty, tm, 0)).getUTCDate());  // e.g. May 31 - 3 months = Feb 28
-  return `${ty}-${String(tm).padStart(2, "0")}-${String(td).padStart(2, "0")}`;
+function tiles(d) {
+  const c = d.company || {}, now = d.valuation?.now || {}, fw = d.valuation?.forward || {}, m = d.models || {};
+  const nm = new Set(c.not_meaningful || []), basis = d.periods?.valuation_basis || "";
+  const kind = ["n/a", t("na_kind")];
+  // today's multiples and yields use the valuation basis period (the TTM, else the latest fiscal year)
+  const pe = nm.has("pe") ? kind : now.pe != null ? [mult(now.pe), basis]
+    : ["n/a", now.earnings_yield != null && now.earnings_yield <= 0 ? t("na_loss") : ""];
+  const ev = nm.has("ev_ebitda") ? kind : [mult(now.ev_ebitda), now.ev_ebitda != null ? basis : ""];
+  const fcf = nm.has("fcf") ? kind : [pct(now.fcf_yield), now.fcf_yield != null ? basis : ""];
+  const roic = last(d.metrics?.roic);
+  const g = d.growth || {}, cagr = g.cagr?.revenue;
+  const growth = cagr != null ? [pct(cagr), `${g.from}-${g.to}`] : ["n/a", g.years ? "" : t("na_short")];
+  const pio = m.piotroski;
+  // next-12-month EPS: the fiscal year in progress and the next one, weighted by the time left in the first
+  const ntm = fw.ntm, w = ntm && ntm.weight != null && (ntm.fys || []).length === 2 ? Math.round(ntm.weight * 100) : null;
+  const fpe = nm.has("pe") ? kind : !ntm ? ["n/a", t("na_no_est")] : fw.pe_ntm == null ? ["n/a", t("na_ntm_eps")]
+    : [mult(fw.pe_ntm), w == null ? "" : `${w}% FY${ntm.fys[0]} + ${100 - w}% FY${ntm.fys[1]}`];
+  const dcf = m.dcf || {}, vps = dcf.value_per_share;
+  const dcfNote = { fcf_not_positive: t("na_dcf_fcf"), invalid_inputs: t("na_dcf_inputs"),
+    skipped_financial: t("na_dcf_financial") }[dcf.status] || "";
+  // the DCF value per share is in the statements' currency
+  const dcfValue = nm.has("dcf") ? kind : vps == null ? ["n/a", dcfNote]
+    : [perShare(vps), dcf.status === "value_not_positive" ? t("na_dcf_negative") : c.statement_currency];
+  return tile(t("s_pe"), pe) + tile(t("s_ev"), ev) + tile(t("s_fcfy"), fcf) +
+    tile(t("s_roic"), [pct(roic), roic != null ? last(d.statements?.period) : ""]) + tile(t("s_cagr"), growth) +
+    tile(t("s_pio"), pio ? [`${pio.score} / ${pio.out_of}`, pio.fy] : ["n/a", t("na_short")]) +
+    tile(t("s_fpe"), fpe) + tile(t("s_dcf"), dcfValue);
 }
 
-const barsOf = d => d.candles?.length ? d.candles.map(([date, o, h, l, c, v]) => ({ date, o, h, l, c, v }))
-  : (d.prices || []).map(([date, c]) => ({ date, c }));
-
-function weekly(bars) {  // one candle per Monday-Sunday week; date..end are its first and last trading days
-  const out = [];
-  for (const b of bars) {
-    const d = new Date(b.date + "T00:00:00Z"), monday = new Date(d - ((d.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
-    const w = out[out.length - 1];
-    if (w && w.week === monday) {
-      Object.assign(w, { h: Math.max(w.h, b.h), l: Math.min(w.l, b.l), c: b.c, end: b.date, v: b.v == null ? w.v : (w.v || 0) + b.v });
-    } else out.push({ ...b, week: monday, end: b.date });
-  }
-  return out;
+// Data not fetched from FMP's official API (a third-party proxy, or a document that does not say)
+function routeNotice(dq) {
+  const route = dq?.route;
+  if (route && route.startsWith("official")) return "";
+  return `<div class="notice">${route ? t("notice_proxy", esc(route.replace(/^third-party proxy at /, "")))
+    : esc(t("notice_no_route"))}</div>`;
 }
 
-function priceCard(data) {
-  const ohlc = !!data.candles?.length;
-  return `<div class="card pricecard"><div class="phead"><h3>${esc(t("chart_title"))}</h3>
-      <span class="sub psub">${esc(t(ohlc ? "chart_daily" : "chart_close"))}</span>
-      <span class="pchg"></span>
-      <div class="seg" role="group">${PERIODS.map(([k]) =>
-        `<button type="button" data-p="${k}" class="${k === period ? "on" : ""}">${esc(t("p_" + k))}</button>`).join("")}</div></div>
-    <div class="readout"></div><div class="chartbox candles"></div>
-    ${!ohlc && data.prices?.length ? `<p class="sub" title="${esc(data.candles_note || "")}">${esc(t("no_ohlc"))}</p>` : ""}</div>`;
-}
-
-function drawPrice(el, w) {
-  const daily = barsOf(lastData), card = el.closest(".pricecard");
-  if (daily.length < 2) { el.innerHTML = `<p class="sub">${esc(t("no_prices"))}</p>`; return; }
-  const AR = 60, X0 = 2, PW = w - AR - X0, ohlc = daily[0].o != null;
-  const cut = periodCutoff(daily[daily.length - 1].date, PERIODS.find(([k]) => k === period)[1]);
-  const d0 = daily.findIndex(b => b.date > cut);
-  const base = d0 > 0 ? daily[d0 - 1].c : (daily[0].o ?? daily[0].c);  // close before the period starts
-  const wk = ohlc && PW / (daily.length - d0) < 3;
-  const all = wk ? weekly(daily.slice(d0)) : daily, n0 = wk ? 0 : d0, bars = all.slice(n0), n = bars.length;
-  const hasVol = ohlc && bars.some(b => b.v), slot = PW / n;
-  card.querySelector(".psub").textContent = t(!ohlc ? "chart_close" : wk ? "chart_weekly" : "chart_daily");
-  const top = 10, HP = Math.round(Math.min(260, Math.max(180, w * 0.28))), gap = 12, HV = hasVol ? 54 : 0;
-  const bottom = top + HP + (hasVol ? gap + HV : 0), H = bottom + 22;
-  let lo = Math.min(...bars.map(b => ohlc ? b.l : b.c)), hi = Math.max(...bars.map(b => ohlc ? b.h : b.c));
-  const pad = (hi - lo) * 0.06 || hi * 0.02 || 1;
-  lo -= pad; hi += pad;
-  const y = v => top + (hi - v) / (hi - lo) * HP, cx = i => X0 + slot * (i + 0.5);
-  const bw = Math.min(13, Math.max(slot >= 3 ? 2 : 1, Math.round(slot * 0.7)));  // candle body width
-  const bx = i => Math.round(cx(i) - bw / 2), wx = i => bx(i) + Math.floor(bw / 2) + 0.5;  // body left, wick
-  const last = bars[n - 1], prevLast = n > 1 ? bars[n - 2].c : base, lastY = y(last.c);
-  const lastColor = last.c >= prevLast ? "var(--pos)" : "var(--neg)";
-
-  let g = "";
-  for (const v of niceTicks(lo, hi, HP > 220 ? 6 : 5)) {
-    const yy = Math.round(y(v)) + 0.5;
-    g += `<line x1="${X0}" x2="${X0 + PW}" y1="${yy}" y2="${yy}" stroke="var(--border)"/>`;
-    if (Math.abs(yy - lastY) > 12) g += `<text x="${w - AR + 8}" y="${yy + 4}">${fmtTick(v)}</text>`;
-  }
-  let lastX = -1e9;  // month labels at each month's first trading day
-  bars.forEach((b, i) => {
-    const prev = i ? bars[i - 1] : daily[d0 - 1];  // the daily bar before the period, also in weekly mode
-    if (!prev || prev.date.slice(0, 7) === b.date.slice(0, 7)) return;
-    const x = cx(i);
-    if (x - lastX < 46 || x > X0 + PW - 16) return;
-    lastX = x;
-    g += `<line x1="${Math.round(x) + 0.5}" x2="${Math.round(x) + 0.5}" y1="${bottom}" y2="${bottom + 4}" stroke="var(--border)"/>` +
-         `<text x="${Math.max(x, X0 + 14)}" y="${H - 4}" text-anchor="middle">${esc(t("month", b.date.slice(0, 4), +b.date.slice(5, 7)))}</text>`;
-  });
-  g += `<line x1="${X0}" x2="${X0 + PW}" y1="${bottom + 0.5}" y2="${bottom + 0.5}" stroke="var(--border)"/>`;
-
-  let marks = "";
-  if (ohlc) {
-    const vmax = Math.max(...bars.map(b => b.v || 0)), vy = top + HP + gap;
-    bars.forEach((b, i) => {
-      const col = b.c >= b.o ? "var(--pos)" : "var(--neg)", yo = y(b.o), yc = y(b.c);
-      marks += `<line x1="${wx(i)}" x2="${wx(i)}" y1="${y(b.h).toFixed(1)}" y2="${y(b.l).toFixed(1)}" stroke="${col}"/>` +
-               `<rect x="${bx(i)}" y="${Math.min(yo, yc).toFixed(1)}" width="${bw}" height="${Math.max(1, Math.abs(yo - yc)).toFixed(1)}" fill="${col}"/>`;
-      if (hasVol && b.v) {
-        const vh = Math.max(1, b.v / vmax * HV);
-        marks += `<rect x="${bx(i)}" y="${(vy + HV - vh).toFixed(1)}" width="${bw}" height="${vh.toFixed(1)}" fill="${col}" opacity=".4"/>`;
-      }
-    });
-    if (hasVol) g += `<text x="${w - AR + 8}" y="${vy + 10}">${fmtVol(vmax)}</text>`;
-  } else {
-    const d = bars.map((b, i) => (i ? "L" : "M") + cx(i).toFixed(1) + "," + y(b.c).toFixed(1)).join("");
-    const col = `var(${last.c >= base ? "--pos" : "--neg"})`;
-    marks = n > 1 ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`
-      : `<circle cx="${cx(0).toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="${col}"/>`;  // one close: a dot, not an empty path
-  }
-  const lastTag = `<line x1="${X0}" x2="${X0 + PW}" y1="${lastY}" y2="${lastY}" stroke="${lastColor}" stroke-dasharray="2 3"/>` +
-    `<rect x="${w - AR + 2}" y="${lastY - 9}" width="${AR - 2}" height="18" rx="4" fill="${lastColor}"/>` +
-    `<text class="chip" x="${w - AR + 8}" y="${lastY + 4}">${last.c.toFixed(2)}</text>`;
-  el.innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" role="img" tabindex="0" aria-label="${esc(t("chart_aria"))}">
-    ${g}<g${ohlc ? ' shape-rendering="crispEdges"' : ""}>${marks}</g>${lastTag}
-    <line class="xh" x1="0" x2="0" y1="${top}" y2="${bottom}" stroke="var(--muted)" visibility="hidden"/>
-    <rect x="${X0}" y="0" width="${PW}" height="${bottom}" fill="transparent"/></svg>`;
-
-  const chg = card.querySelector(".pchg");
-  chg.innerHTML = signPct(last.c / base - 1);
-  const ro = card.querySelector(".readout"), svg = el.querySelector("svg"), xh = svg.querySelector(".xh");
-  const show = i => {
-    const b = bars[i], prev = i ? bars[i - 1].c : base;
-    ro.innerHTML = `<span>${esc(b.end && b.end !== b.date ? `${b.date} ~ ${b.end.slice(5)}` : b.date)}</span>` +
-      (ohlc ? [["k_open", b.o], ["k_high", b.h], ["k_low", b.l]].map(([k, v]) => `<span>${esc(t(k))} <b>${v.toFixed(2)}</b></span>`).join("") : "") +
-      `<span>${esc(t("k_close"))} <b>${b.c.toFixed(2)}</b></span>` + (prev ? signPct(b.c / prev - 1) : "") +
-      (b.v ? `<span>${esc(t("k_vol"))} <b>${fmtVol(b.v)}</b></span>` : "");
-  };
-  let cur = null;
-  const point = i => {
-    cur = Math.max(0, Math.min(n - 1, i));
-    xh.setAttribute("x1", wx(cur)); xh.setAttribute("x2", wx(cur)); xh.setAttribute("visibility", "visible");
-    show(cur);
-  };
-  const leave = () => { cur = null; xh.setAttribute("visibility", "hidden"); show(n - 1); };
-  svg.onpointermove = svg.onpointerdown = e => point(Math.floor((e.clientX - svg.getBoundingClientRect().left - X0) / slot));
-  svg.onpointerleave = leave;
-  svg.onblur = leave;
-  svg.onkeydown = e => {
-    const d = { ArrowLeft: -1, ArrowRight: 1, Home: -n, End: n }[e.key];
-    if (d) { e.preventDefault(); point((cur ?? n - 1) + d); }
-  };
-  show(n - 1);
-}
-
-// Price range by method: rows grouped by horizon (past 52 weeks, now, 12 months out, each fiscal year end)
-// in time order, each a bar from low to high with a dot at the mid value. Volatility rows show the 68% range
-// on a lighter 95% range. The vertical line is the current price; hovering a row shows its numbers.
-const RC_COLOR = { fwd_pe: "--c-pe", fwd_ev: "--c-ev", dcf: "--c-dcf", targets: "--c-tgt", week52: "--c-trade", volatility: "--c-vol" };
-const rcWhen = s => s.at === "fy_end" ? t("rc_fy_end", s.fy) : t("rc_" + s.at);
-const rcRows = pr => (pr?.summary || []).map(s => ({ ...s, lo: s.low ?? s.mid, hi: s.high ?? s.mid }))
-  .filter(s => s.lo != null && s.hi != null);
-const fmtPx = v => v == null ? "n/a" : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2);
-const rangeTxt = s => `${fmtPx(s.lo)} – ${fmtPx(s.hi)}`;
-
-function rangeChart(pr) {
-  return rcRows(pr).length ? `<div class="chartbox rangechart"></div><p class="sub">${esc(t("rc_note"))}</p>` : "";
-}
-
-function drawRange(el, w) {
-  const pr = lastData.result.price_range, rows = rcRows(pr), price = pr.price;
-  const IND = 14, RH = 28, GH = 24, top = 30;
-  const L = Math.min(w * 0.4, Math.max(...rows.map(s => textW(t("rc_" + s.kind), 13))) + IND + 20);
-  const VW = w < 480 ? 0 : Math.max(...rows.map(s => textW(rangeTxt(s), 12))) + 20;
-  const x0 = L, x1 = w - VW - 10;
-  const vals = rows.flatMap(s => [s.lo, s.hi, s.low95 ?? s.lo, s.high95 ?? s.hi]).concat(price != null ? [price] : []);
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = (hi - lo) * 0.04 || Math.abs(hi) * 0.05 || 1;
-  lo = Math.max(0, lo - pad); hi += pad;
-  const x = v => x0 + (v - lo) / (hi - lo) * (x1 - x0);
-
-  let yy = top, rowsSvg = "", hits = "", grp = null;
-  const pos = [];
-  rows.forEach((s, i) => {
-    const key = s.at + (s.fy || "");
-    if (key !== grp) {
-      if (grp !== null) { yy += 6; rowsSvg += `<line x1="0" x2="${w}" y1="${yy + 0.5}" y2="${yy + 0.5}" stroke="var(--border)"/>`; }
-      rowsSvg += `<text class="gh" x="0" y="${yy + 17}">${esc(rcWhen(s))}</text>`;
-      yy += GH; grp = key;
-    }
-    const cy = yy + RH / 2, col = `var(${RC_COLOR[s.kind]})`, xa = x(s.lo), xb = Math.max(x(s.hi), xa + 4);
-    hits += `<rect class="hit" data-i="${i}" x="0" y="${yy}" width="${w}" height="${RH}" rx="4"/>`;
-    rowsSvg += `<text class="ml" x="${IND}" y="${cy + 4.5}">${esc(t("rc_" + s.kind))}</text>`;
-    if (s.low95 != null && s.high95 != null) {
-      rowsSvg += `<rect x="${x(s.low95)}" y="${cy - 5}" width="${x(s.high95) - x(s.low95)}" height="10" rx="5" fill="${col}" opacity=".3"/>`;
-    }
-    rowsSvg += `<rect x="${xa}" y="${cy - 5}" width="${xb - xa}" height="10" rx="5" fill="${col}"/>`;
-    if (s.mid != null) rowsSvg += `<circle cx="${x(s.mid)}" cy="${cy}" r="4.5" fill="var(--card)" stroke="var(--text)" stroke-width="2"/>`;
-    if (VW) rowsSvg += `<text class="val" x="${w}" y="${cy + 4}" text-anchor="end">${rangeTxt(s)}</text>`;
-    pos.push(yy);
-    yy += RH;
-  });
-  const bottom = yy + 4, H = bottom + 22;
-  let grid = "";
-  for (const v of niceTicks(lo, hi, Math.max(3, Math.round((x1 - x0) / 90)))) {
-    const xv = Math.round(x(v)) + 0.5;
-    if (xv < x0 - 1 || xv > x1 + 1) continue;
-    grid += `<line x1="${xv}" x2="${xv}" y1="${top - 4}" y2="${bottom}" stroke="var(--border)"/>` +
-            `<text x="${xv}" y="${H - 4}" text-anchor="middle">${fmtTick(v)}</text>`;
-  }
-  let now = "";
-  if (price != null) {
-    const xp = x(price), label = `${t("rc_price")} ${price.toFixed(2)}`, cw = textW(label, 11, 600) + 16;
-    const cxp = Math.min(Math.max(xp, x0 + cw / 2), w - cw / 2);
-    now = `<line x1="${xp}" x2="${xp}" y1="${top - 8}" y2="${bottom}" stroke="var(--text)" stroke-width="1.5" opacity=".7"/>` +
-          `<rect x="${cxp - cw / 2}" y="2" width="${cw}" height="20" rx="10" fill="var(--text)"/>` +
-          `<text class="chip" x="${cxp}" y="16" text-anchor="middle">${esc(label)}</text>`;
-  }
-  el.innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" role="img" aria-label="${esc(t("rc_title"))}">
-    ${hits}${grid}<g class="marks">${rowsSvg}${now}</g></svg><div class="tip" hidden></div>`;
-
-  const tip = el.querySelector(".tip");
-  el.querySelectorAll(".hit").forEach(r => {
-    const s = rows[+r.dataset.i];
-    r.onpointermove = r.onpointerdown = e => {
-      const f = v => v == null ? "-" : v.toFixed(2);
-      tip.innerHTML = `<div class="tt">${esc(t("rc_" + s.kind))} · ${esc(rcWhen(s))}</div>` +
-        `<div>${esc(t("rc_low"))} <b>${f(s.low)}</b> · ${esc(t("rc_mid"))} <b>${f(s.mid)}</b> · ${esc(t("rc_high"))} <b>${f(s.high)}</b></div>` +
-        (s.low95 != null ? `<div>95%: <b>${f(s.low95)}</b> – <b>${f(s.high95)}</b></div>` : "") +
-        (s.mid != null && price && s.kind !== "volatility" ? `<div>${esc(t("rc_vs"))} ${signPct(s.mid / price - 1)}</div>` : "");
-      tip.hidden = false;
-      const b = el.getBoundingClientRect(), tw = tip.offsetWidth;
-      tip.style.left = Math.min(Math.max(0, e.clientX - b.left + 14), w - tw) + "px";
-      tip.style.top = (pos[+r.dataset.i] + RH + 4) + "px";
-    };
-    r.onpointerleave = () => { tip.hidden = true; };
-  });
-}
-
-// Fundamental score card (result.score from scripts/score.py): the total on the -2..+2 scale, each pillar's
-// weight, score and contribution, and per pillar a table of its indicators with their scoring bands.
-const LABEL_ORDER = ["Bearish", "Moderately bearish", "Neutral", "Moderately bullish", "Bullish"];
-const sgn = (v, d = 2) => {
-  if (v == null) return "n/a";
-  const a = Math.abs(v).toFixed(d);
-  return (+a === 0 ? "" : v > 0 ? "+" : "−") + a;  // no sign on a value that rounds to zero
-};
-const NAMED_BASES = new Set(["ebitda", "ocf"]);  // detail.basis values that name a row variant (score.py NAMED_BASES)
-const sgnCls = v => v > 0.004 ? "pos" : v < -0.004 ? "neg" : "";
-const intSc = v => v > 0 ? `+${v}` : v < 0 ? `−${-v}` : "0";
-const minus = x => String(x).replace("-", "−");
-// indicators scored from a condition (no interest, FCF < 0 ...) rather than a number: the value cell says which
-const VAL_NOTES = new Set(["negative_fcf", "no_interest", "ebitda_not_positive", "implied_below_range",
-  "implied_above_range", "dcf_negative"]);
-function fmtUnit(v, unit) {
-  if (v == null) return "n/a";
-  if (unit === "pct") return minus((v * 100).toFixed(1)) + "%";
-  if (unit === "pctile") return v <= 0 ? t("pctile_low") : v >= 1 ? t("pctile_high")
-    : t("pctile", Math.min(99, Math.max(1, Math.round(v * 100))));  // as the price-range section words it
-  if (unit === "pt") return sgn(v * 100, 1) + "pt";
-  if (unit === "pp") return (v * 100).toFixed(1) + "pt";
-  if (unit === "x") return minus(v.toFixed(2)) + "x";
-  return minus(+v.toFixed(2));
-}
-function cutTxt(c, unit, bare) {
-  const n = x => String(+x.toFixed(4)).replace("-", "−");
-  const suf = bare ? "" : unit === "pct" || unit === "pctile" ? "%" : unit === "pt" || unit === "pp" ? "pt" : unit === "x" ? "x" : "";
-  return n(["pct", "pctile", "pt", "pp"].includes(unit) ? c * 100 : c) + suf;
-}
-// Business quality (y) against price attractiveness (x), both -2..+2, with the stock's quadrant shaded.
-function viewsHtml(vw) {
-  const S = 136, X0 = 22, Y0 = 4, px = v => X0 + (Math.max(-2, Math.min(2, v)) + 2) / 4 * S;
-  const py = v => Y0 + (2 - Math.max(-2, Math.min(2, v))) / 4 * S;
-  const qx = vw.price >= 0 ? X0 + S / 2 : X0, qy = vw.business >= 0 ? Y0 : Y0 + S / 2;
-  const svg = `<svg width="${X0 + S + 4}" height="${Y0 + S + 18}" role="img" aria-label="${esc(t("q_" + vw.quadrant))}">
-    <rect class="qon" x="${qx}" y="${qy}" width="${S / 2}" height="${S / 2}"/>
-    <rect class="frame" x="${X0}" y="${Y0}" width="${S}" height="${S}"/>
-    <line class="axis" x1="${X0 + S / 2}" y1="${Y0}" x2="${X0 + S / 2}" y2="${Y0 + S}"/>
-    <line class="axis" x1="${X0}" y1="${Y0 + S / 2}" x2="${X0 + S}" y2="${Y0 + S / 2}"/>
-    <circle class="dot" cx="${px(vw.price)}" cy="${py(vw.business)}" r="5"/>
-    <text x="${X0 + S / 2}" y="${Y0 + S + 14}" text-anchor="middle">${esc(t("sc_price"))} →</text>
-    <text transform="translate(14 ${Y0 + S / 2}) rotate(-90)" text-anchor="middle">${esc(t("sc_business"))} →</text></svg>`;
-  return `<div class="views">${svg}<div class="vtext"><b>${esc(t("sc_views"))}</b>
-    <div>${esc(t("sc_business"))} <b class="${sgnCls(vw.business)}">${sgn(vw.business)}</b></div>
-    <div>${esc(t("sc_price"))} <b class="${sgnCls(vw.price)}">${sgn(vw.price)}</b></div>
-    <div class="qname">${esc(t("q_" + vw.quadrant))}</div><p class="sub">${esc(t("sc_views_note"))}</p></div></div>`;
-}
-// The scoring bands as chips; the band the value falls in is highlighted. Where a rule overrides the band's score
-// (growth-slowdown cap, current ratio offset), that chip is outlined and shows the final score.
-function bandsHtml(i) {
-  if (i.key === "altman") return `<span class="sub">${esc(t("altman_rule"))}</span>`;
-  if (!i.cuts) return "";
-  const k = i.cuts.length;
-  // EBITDA <= 0 with net cash scores 0 without falling in any band
-  const on = i.status !== "ok" || (i.note === "ebitda_not_positive" && i.score === 0) ? -1
-    : i.value != null && !VAL_NOTES.has(i.note) ? i.cuts.filter(c => c <= i.value).length : i.scores.indexOf(i.score);
-  const over = on >= 0 && i.scores[on] !== i.score;
-  const lab = j => j === 0 ? `<${cutTxt(i.cuts[0], i.unit)}` : j === k ? `≥${cutTxt(i.cuts[k - 1], i.unit)}`
-    : `${cutTxt(i.cuts[j - 1], i.unit, true)}~${cutTxt(i.cuts[j], i.unit)}`;
-  return `<div class="bands">${i.scores.map((s, j) => j !== on ? `<span>${esc(lab(j))} ${intSc(s)}</span>`
-    : `<span class="${over ? "over" : "on"}">${esc(lab(j))} ${intSc(s)}${over ? ` → ${intSc(i.score)}` : ""}</span>`).join("")}</div>`;
-}
-function indValue(i) {
-  if (i.status === "n/a") return t("sc_na");
-  if (i.status === "missing") return t("sc_missing");
-  if (VAL_NOTES.has(i.note)) return t("val_" + i.note);
-  if (i.key === "altman") {
-    const z = t("zone_" + (i.detail.z_zone || i.detail.z2_zone));
-    return LANG === "zh" ? `${fmtUnit(i.value, "num")}（${z}）` : `${fmtUnit(i.value, "num")} (${z})`;
-  }
-  if (i.key === "fcf_yield_spread") return `${fmtUnit(i.detail.yield, "pct")} − ${fmtUnit(i.detail.treasury, "pct")} = ${fmtUnit(i.value, i.unit)}`;
-  if (i.key === "piotroski") return i.detail.out_of === 9 ? `${i.detail.score} / 9`
-    : t("pio_scaled", i.detail.score, i.detail.out_of, fmtUnit(i.value, "num"));
-  return fmtUnit(i.value, i.unit);
-}
-function conflictText(c) {
-  const v = c.values, pct1 = x => minus((x * 100).toFixed(1)) + "%";
-  if (c.type === "adjusted_eps") return t("cf_adjusted_eps", Math.round(v.gap * 100) + "%");
-  if (c.type === "group_expensive") return t("cf_group_expensive", t("grp_" + (v.group || "industry")));
-  if (c.type === "cyclical_peak") return t("cf_cyclical_peak", pct1(v.margin), pct1(v.median), v.years, sgn(v.eps_growth_next * 100, 1) + "%");
-  if (c.type === "optimistic_estimates") return t("cf_optimistic_estimates", sgn(v.eps_growth_next * 100, 1) + "%",
-    sgn(v.eps_cagr * 100, 1) + "%", ((v.eps_growth_next - v.eps_cagr) * 100).toFixed(1) + (LANG === "zh" ? " 个百分点" : "pt"));
-  if (c.type === "currency") return t("cf_currency", v.statements, v.price);
-  return t("cf_" + c.type);
-}
-function scoreCard(s) {
-  const zh = LANG === "zh", colon = zh ? "：" : ": ";
-  const pct0 = v => Math.round(v * 100) + "%";
-  const pos = v => (v + 2) / 4 * 100;
-  const conf = s.confidence, li = LABEL_ORDER.indexOf(s.label);
-  let h = `<div class="card scorecard"><div class="shead"><h3>${esc(t("sc_title"))}</h3><span class="sub">${esc(t("sc_rules", s.version))}</span>
-    <div class="sbig"><span class="sval ${sgnCls(s.score)}">${sgn(s.score)}</span><span class="slabel ${sgnCls(s.score)}">${esc(t("lbl_" + s.label))}</span>
-    <span class="sub">${esc(t("sc_conf"))}${colon}${esc(t("conf_" + conf.level))}</span></div></div>`;
-  h += `<div class="scale">${LABEL_ORDER.map((l, j) => `<div class="${j === li ? "on" : ""}">${esc(t("lbl_" + l))}</div>`).join("")}
-    <div class="mark" style="left:clamp(1.5px, ${pos(s.score)}%, calc(100% - 1.5px))" title="${sgn(s.score)}"></div></div>
-    <div class="scaleticks"><span>−1.2</span><span>−0.4</span><span>+0.4</span><span>+1.2</span></div>`;
-  if (s.views) h += viewsHtml(s.views);
-  h += `<p class="sub">${esc(t("sc_formula"))}${zh ? "" : " "}${esc(t("sc_hint"))}</p>`;
-  h += `<div class="prow hdr"><span>${esc(t("sc_pillar"))}</span><span>${esc(t("sc_weight"))}</span><span></span><span>${esc(t("sc_score"))}</span>
-    <span><span class="lg">${esc(t("sc_contrib"))}</span><span class="sm">${esc(t("sc_icontrib_s"))}</span></span><span>${esc(t("sc_cov"))}</span></div>`;
-  for (const n of s.pillar_order) {
-    const p = s.pillars[n], v = p.score;
-    const fill = v >= 0 ? `left:50%;width:${v / 4 * 100}%` : `left:${50 + v / 4 * 100}%;width:${-v / 4 * 100}%`;
-    h += `<details class="pil"><summary><div class="prow"><span class="pname">${esc(t("p_" + n))}</span><span>${pct0(p.weight)}</span>
-      <span class="track"><span class="fill ${v >= 0 ? "pos" : "neg"}" style="${fill}"></span></span>
-      <span class="${sgnCls(v)}"><b>${sgn(v)}</b></span><span class="${sgnCls(p.contribution)}">${sgn(p.contribution)}</span><span>${pct0(p.coverage)}</span></div></summary>
-      <div class="itable"><table><thead><tr><th>${esc(t("sc_ind"))}</th><th>${esc(t("sc_value"))}</th><th class="l">${esc(t("sc_rule"))}</th>
-      <th>${esc(t("sc_score"))}</th><th>${esc(t("sc_weight"))}</th><th>${esc(t("sc_icontrib"))}</th></tr></thead><tbody>`;
-    const na = p.indicators.filter(i => i.status === "n/a");
-    for (const i of p.indicators.filter(i => i.status !== "n/a")) {
-      const notes = [i.note, i.detail && i.detail.base_note].filter(Boolean).map(x => t("note_" + x));
-      const note = notes.length ? `<span class="inote">${esc(notes.join(zh ? "；" : "; "))}</span>` : "";
-      const ok = i.status === "ok";
-      const name = t("ind_" + i.key + (i.detail && NAMED_BASES.has(i.detail.basis) ? "_" + i.detail.basis : ""));
-      h += `<tr><td class="l">${esc(name)}${note}</td><td>${esc(indValue(i))}</td>
-        <td class="l">${bandsHtml(i)}</td><td class="${ok ? sgnCls(i.score) : ""}"><b>${intSc(i.score)}</b></td>
-        <td data-l="${esc(t("sc_weight"))}">${pct0(i.weight_share)}</td><td data-l="${esc(t("sc_icontrib"))}">${sgn(i.contribution)}</td></tr>`;
-    }
-    for (const note of [...new Set(na.map(i => i.note))]) {
-      const names = na.filter(i => i.note === note).map(i => t("ind_" + i.key)).join(zh ? "、" : ", ");
-      h += `<tr class="na"><td class="l" colspan="6">${esc(t("sc_na_group", t("note_" + note)))}${colon}${esc(names)}</td></tr>`;
-    }
-    h += `</tbody></table></div></details>`;
-  }
-  if (s.caps.length) {
-    h += `<div class="ssec"><b>${esc(t("sc_caps"))}</b>${s.capped ? ` <span class="sub">${esc(t("sc_raw", sgn(s.raw_score), sgn(s.cap_limit, 1)))}</span>` : ""}
-      <ul class="slist">${s.caps.map(c => `<li>${esc(t("cap_" + c.type))}</li>`).join("")}</ul><p class="sub">${esc(t("cap_note"))}</p></div>`;
-  }
-  const cf = s.conflicts.filter(c => c.type !== "red_line");
-  if (cf.length) {
-    h += `<div class="ssec"><b>${esc(t("sc_conflicts"))}</b><ul class="slist">${cf.map(c => `<li>${esc(conflictText(c))}</li>`).join("")}</ul></div>`;
-  }
-  const rs = conf.reasons.map(x => x.value != null ? t("cr_" + x.code, pct0(x.value)) : t("cr_" + x.code));
-  h += `<p class="sub ssec">${esc(t("sc_conf"))} ${esc(t("conf_" + conf.level))}${colon}${esc(rs.join(zh ? "；" : "; "))}</p>`;
-  const vr = s.value_range;
-  if (vr) {
-    const d = Math.max(Math.abs(vr.low), Math.abs(vr.high)) >= 100 ? 0 : 2;  // one precision for the three numbers
-    h += `<p class="sub">${esc(t("sc_range"))}${zh ? "（" : " ("}${esc(t("sc_range_" + vr.basis))}${zh ? "）" : ")"}${colon}<b>${[vr.low, vr.mid, vr.high].map(x => x.toFixed(d)).join(" / ")}</b>` +
-      (vr.mid_vs_price != null ? `${zh ? "，" : ", "}${esc(t("sc_range_vs", sgn(vr.mid_vs_price * 100, 1) + "%"))}` : "") + `</p>`;
-  }
-  h += `<details><summary>${esc(t("sc_how"))}</summary><ul class="slist sub">${t("sc_how_items").map(x => `<li>${esc(x)}</li>`).join("")}</ul></details></div>`;
-  return h;
+function headCard(d, head) {
+  const c = d.company || {}, px = d.price || {};
+  const sector = (LANG === "zh" ? sectorZh(c.sector) : c.sector) || "n/a";
+  return `<div class="card"><div class="head"><div>
+      <div class="name">${esc(c.name || d.ticker)} <span class="sub">${esc(d.ticker)}</span></div>
+      <div class="sub">${esc(sector)} / ${esc(c.industry || "n/a")} · ${esc(c.exchange || "n/a")} ·
+        ${esc(t("as_of"))} ${esc(d.as_of || "n/a")}</div></div>
+      <div><div class="price">${perShare(px.value)} <span class="sub">${esc(px.currency)}</span></div>
+      <div class="sub pmeta">${esc(t("mcap"))} ${money(c.market_cap)}</div>
+      ${px.time ? `<div class="sub pmeta">${esc(t("px_time", px.time.slice(5)))}</div>` : ""}</div></div>
+    <div class="stats">${tiles(d)}</div>${head.trim() ? `<div class="rhead">${md(head)}</div>` : ""}</div>`;
 }
 
 function render(data) {
   lastData = data;
-  observers.forEach(o => o.disconnect());
-  observers = [];
-  const r = data.result, p = r.profile || {}, c = r.current || {}, dcf = r.dcf || {}, conn = r.meta.connection || {};
-  const last = r.years[r.years.length - 1] || {};
-  const chg = p.changePercentage;
-  const fwd = r.price_range?.forward || [];
-  // now (next-twelve-month EPS, a time-weighted blend of this fiscal year and the next), then the same P/E
-  // band on each of those two years' EPS alone
-  const ranges = [], pb = r.price_range?.pe_band;
-  const now = fwd.find(f => f.at === "now" && f.pe && f.pe.low != null && f.pe.high != null);
-  if (now) {
-    const w = now.weight == null ? null : Math.round(now.weight * 100);
-    ranges.push({ when: rcWhen(now), low: now.pe.low, high: now.pe.high, eps: now.uses.map((fy, i) => [fy, w == null ? null : i ? 100 - w : w]) });
+  const d = data.result || {}, contract = d.contract;
+  if (typeof contract !== "string" || !contract.startsWith("fa-2")) {
+    $("#out").innerHTML = `<div class="card error">${esc(t("err_contract", contract == null ? "" : String(contract)))}</div>`;
+    return;
   }
-  if (pb) for (const e of (r.analyst?.estimates || []).filter(e => !e.ended).slice(0, 2)) {
-    if (e.eps_avg > 0) ranges.push({ when: `FY${e.fy}`, low: e.eps_avg * pb.p25, high: e.eps_avg * pb.p75, eps: [[e.fy, null]] });
+  const report = data.report || "", open = !!$("#out details")?.open;
+  // the report's header block (the lines between its "# TICKER - Name" title and the first section), then one
+  // tab per "## " section
+  const parts = report.split(/\n(?=## )/);
+  const head = parts[0].startsWith("## ") ? "" : parts.shift().split("\n").filter(l => !l.startsWith("# ")).join("\n");
+  const sections = parts.filter(s => s.startsWith("## "));
+  if (curTab >= sections.length) curTab = 0;
+  let h = routeNotice(d.data_quality) + headCard(d, head);
+  if (sections.length) {
+    h += `<div class="tabs">` + sections.map((s, i) => `<button type="button" class="tab${i === curTab ? " on" : ""}" ` +
+      `data-i="${i}">${esc(tr(s.split("\n")[0].slice(3)))}</button>`).join("") + `</div>`;
+    h += sections.map((s, i) => `<div class="card section" data-i="${i}"${i === curTab ? "" : " hidden"}>${md(s)}</div>`)
+      .join("");
   }
-  let h = "";
-  if (!conn.route || conn.route.startsWith("third-party")) {
-    h += `<div class="notice">${t("notice_proxy", esc(conn.base))}` + (conn.tls_verify === false ? esc(t("notice_tls")) : "") + `</div>`;
-  }
-  const stat = (key, val, cls = "") => `<div class="stat"><div class="k">${esc(t(key))}</div><div class="v ${cls}">${val}</div></div>`;
-  h += `<div class="card"><div class="head"><div>
-      <div class="name">${esc(p.companyName || r.symbol)} <span class="sub">${esc(r.symbol)}</span></div>
-      <div class="sub">${esc(LANG === "zh" ? sectorZh(p.sector) : p.sector)} / ${esc(p.industry)} · ${esc(p.exchange)} · ${esc(t("as_of"))} ${esc(r.as_of)}</div></div>
-      <div><div class="price">${p.price != null ? p.price.toFixed(2) : "n/a"} <span class="sub">${esc(p.currency)}</span></div>
-      <div class="sub pmeta">${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> · ` : ""}${esc(t("mcap"))} ${fmtMoney(p.marketCap)}</div>
-      ${r.price_time ? `<div class="sub pmeta">${esc(t("px_time", r.price_time.slice(5)))}</div>` : ""}</div></div>
-    <div class="stats">
-      ${stat("s_pe", fmtX(c.pe))}
-      ${stat("s_ev", fmtX(c.ev_ebitda))}
-      ${stat("s_fcfy", fmtPct(c.fcf_yield))}
-      <div class="stat"><div class="k">${esc(t("s_roic"))} (${esc(last.label)})</div><div class="v">${fmtPct(last.roic)}</div></div>
-      ${stat("s_cagr", fmtPct(r.cagr.revenue))}
-      ${stat("s_pio", `${r.piotroski?.score ?? "n/a"} / ${r.piotroski?.out_of ?? 9}`)}
-      ${stat("s_dcf", dcf.value_per_share != null ? dcf.value_per_share.toFixed(2) : "n/a")}
-      ${stat("s_mos", dcf.margin_of_safety != null ? fmtPct(dcf.margin_of_safety) : "n/a", dcf.margin_of_safety >= 0 ? "pos" : "neg")}
-      ${ranges.map(x => `<div class="stat wide"><div class="k">${esc(t("s_range"))} · ${esc(x.when)}</div><div class="v">${fmtPx(x.low)} – ${fmtPx(x.high)}</div>
-        <div class="k">${esc(t("s_range_eps", x.eps))}</div></div>`).join("")}
-    </div></div>`;
-  const flagList = xs => (xs || []).map(x => `<li>${esc(tr(x))}</li>`).join("") || `<li>${esc(t("none"))}</li>`;
-  if (r.score) h += scoreCard(r.score);
-  h += priceCard(data);
-  h += `<div class="card"><h3>${esc(t("flags_title"))}</h3><div class="grid2 flags2">
-      <div><b class="pos">${esc(t("pos"))}</b><ul class="flags">${flagList(r.flags.green)}</ul></div>
-      <div><b class="neg">${esc(t("neg"))}</b><ul class="flags">${flagList(r.flags.red)}</ul></div></div></div>`;
-
-  // the score section is shown by the card above, so it gets no tab of its own
-  const parts = data.report.split(/\n(?=## )/).filter(s => s.startsWith("## ") && !s.startsWith("## Fundamental score"));
-  if (curTab >= parts.length) curTab = 0;
-  const tabName = s => tr(s.split("\n")[0].slice(3)).replace(/\s*[(（].*$/, "");
-  h += `<div class="tabs">` + parts.map((s, i) => `<button class="tab${i === curTab ? " on" : ""}" data-i="${i}">${esc(tabName(s))}</button>`).join("") + `</div>`;
-  const body = s => /^## \d+\. Price range/.test(s) ? md(s).replace("</h2>", "</h2>" + rangeChart(r.price_range)) : md(s);
-  h += parts.map((s, i) => `<div class="card section" data-i="${i}" ${i === curTab ? "" : "hidden"}>${body(s)}</div>`).join("");
-  h += `<details><summary>${esc(t("full_report"))}</summary><div class="card"><pre>${esc(data.report)}</pre></div></details>`;
+  h += report ? `<details${open ? " open" : ""}><summary>${esc(t("full_report"))}</summary>` +
+    `<div class="card"><pre>${esc(report)}</pre></div></details>` : `<div class="card sub">${esc(t("no_report"))}</div>`;
   $("#out").innerHTML = h;
-  const pc = $(".pricecard");
-  mount(pc.querySelector(".candles"), drawPrice);
-  pc.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
-    period = b.dataset.p;
-    try { localStorage.setItem("period", period); } catch (e) {}
-    pc.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
-    const el = pc.querySelector(".candles");
-    drawPrice(el, el._w);
-  });
-  const rc = $(".rangechart");
-  if (rc) mount(rc, drawRange);
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
     curTab = +b.dataset.i;
     document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === b));
