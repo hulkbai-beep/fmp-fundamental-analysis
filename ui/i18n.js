@@ -1,9 +1,9 @@
 // Chinese / English text for the local UI (ui/index.html).
 //
 // UI: labels of the page itself, by key, in both languages.
-// zh(): translates the English report produced by scripts/analyze.py into Chinese for display.
+// zh(): translates the English report (scripts/report.py, printed by analyze.py) into Chinese for display.
 // It only changes how the page reads; the numbers, the CLI report and the "full text report"
-// view stay as analyze.py wrote them. Text it does not recognise (FMP event names, company
+// view stay as report.py wrote them. Text it does not recognise (FMP event names, company
 // names, error details) is shown unchanged.
 
 const UI = {
@@ -250,27 +250,22 @@ Object.assign(UI.en, SCORE_UI.en);
 // Whole cells, labels and headings (matched after trimming).
 const ZH_EXACT = new Map(Object.entries({
   // section headings (the "N. " prefix is handled separately)
+  "Growth": "增长",
   "Profitability & returns": "盈利能力与回报",
   "Balance sheet & liquidity": "资产负债与流动性",
   "Cash flow quality & capital allocation": "现金流质量与资本配置",
+  "Valuation": "估值",
+  "Forward multiples": "前瞻倍数",
+  "Industry & sector P/E": "行业与板块 P/E",
   "Quality scores": "质量评分",
-  "DCF (FCF-based, 10 years + terminal)": "DCF（基于自由现金流，10 年 + 永续）",
   "Analyst consensus": "分析师预期",
-  "Price range (forward P/E and EV/EBITDA, DCF, analyst targets, volatility)": "股价区间（前瞻 P/E 与 EV/EBITDA、DCF、分析师目标价、波动）",
-  "Forward P/E (next-12-month EPS)": "前瞻 P/E（未来 12 个月 EPS）",
-  "Forward EV/EBITDA (next-12-month EBITDA)": "前瞻 EV/EBITDA（未来 12 个月 EBITDA）",
-  "Volatility range to each fiscal year end": "到各财年末的波动区间",
-  "Peer comparison (last fiscal year, same method for all)": "同行对比（统一用最近财年）",
-  "Sector & industry context": "行业与板块对比",
+  "Peer comparison": "同行对比",
   "Rates & macro backdrop": "利率与宏观背景",
-  "Automated flags (prompts for investigation, not conclusions)": "自动提示（需进一步核实，不是结论）",
-  "Insider trades (last 12 months, observation only)": "内部人交易（近 12 个月，仅供观察）",
   "Data notes": "数据说明",
   "Treasury yields": "国债收益率",
   "Policy rate, jobs and prices (economic-indicators, latest two readings)": "政策利率、就业与物价（经济指标，最近两期）",
   "Latest key US releases (economic calendar, last 60 days)": "美国关键数据最新公布值（经济日历，近 60 天）",
   "Next key US events (next 3 weeks)": "接下来的美国关键数据（未来 3 周）",
-  "**Positives**": "**优点**", "**Concerns**": "**风险**", "none triggered": "无",
   // table headers
   "Metric": "指标", "CAGR": "复合增速", "Multiple": "倍数", "Now": "当前", "Hist. median": "历史中位数",
   "Hist. range": "历史区间", "Now vs median": "当前 vs 中位数", "Measure": "项目", "Value": "数值",
@@ -281,12 +276,11 @@ const ZH_EXACT = new Map(Object.entries({
   "YTD": "年初至今", "Yield": "期限", "Indicator": "指标", "Latest": "最新", "Period": "期间", "Previous": "前值",
   "Change": "变化", "Release": "数据", "Event": "事件", "Released (UTC)": "公布时间（UTC）", "Actual": "实际值",
   "Consensus": "预期值", "When (UTC)": "时间（UTC）", "Impact": "影响",
-  "Method": "方法", "Low": "低", "Mid": "中值", "High": "高", "Basis": "依据", "Year ends": "财年结束日",
-  "Base": "基准", "Base vs price": "基准 vs 股价", "At today's P/E": "按当前 P/E", "At today's EV/EBITDA": "按当前 EV/EBITDA",
-  "When": "时点", "Now": "现在", "EPS used": "所用 EPS", "EBITDA used": "所用 EBITDA",
-  "To": "截至", "Date": "日期", "Years": "年数",
-  "68% range (+/-1 sd)": "68% 区间（±1 个标准差）", "95% range (+/-1.96 sd)": "95% 区间（±1.96 个标准差）",
+  "Based on": "依据", "Figure used": "所用数值", "EBITDA est.": "EBITDA 预期", "r \\ g": "折现率 \\ 增速",
+  "Item": "项目", "Analysts": "分析师", "Reported": "公布值", "Gap": "差距",
   // growth / profitability / balance sheet / cash flow rows
+  "Last column: compound annual growth (CAGR), which needs at least 2 fiscal years.":
+    "最后一列是复合增速（CAGR），至少需要 2 个财年的数据。",
   "Revenue": "营收", "Revenue YoY": "营收同比", "Gross profit": "毛利", "Operating income": "营业利润",
   "Net income": "净利润", "EPS (diluted)": "EPS（稀释）", "EPS YoY": "EPS 同比", "Free cash flow": "自由现金流",
   "Diluted shares": "稀释股数", "Gross margin": "毛利率", "Operating margin": "营业利润率", "Net margin": "净利率",
@@ -310,50 +304,47 @@ const ZH_EXACT = new Map(Object.entries({
   "Gross margin improved": "毛利率提升", "Asset turnover improved": "资产周转率提升",
   "pass": "通过", "fail": "未通过",
   "Piotroski F-score: needs at least 2 fiscal years.": "Piotroski F-score：至少需要 2 个财年的数据。",
-  "(Altman Z is not designed for banks/insurers; ignore it here.)": "（Altman Z 不适用于银行和保险公司，这里可以忽略。）",
+  "Altman Z: not available (needs working capital, retained earnings, EBIT, revenue, total assets and total liabilities).":
+    "Altman Z：无法计算（需要营运资本、留存收益、EBIT、营收、总资产和总负债）。",
+  "(Altman Z was built for industrial companies and is not meaningful for this type of company.)":
+    "（Altman Z 是为工业企业设计的，对这类公司没有意义。）",
   // DCF
+  "FCF-based, 10 years + terminal value.": "基于自由现金流，10 年 + 永续价值。",
   "Starting FCF": "起始 FCF", "Growth yrs 1-5": "第 1-5 年增速", "Growth yrs 6-10": "第 6-10 年增速",
   "Discount rate": "折现率", "Net debt deducted": "扣除的净债务", "Shares": "股数",
   "Value per share (rows = discount rate, columns = growth yrs 1-5):": "每股价值（行 = 折现率，列 = 第 1-5 年增速）：",
-  "Financial-sector company: FCF-based DCF is not meaningful (use P/B, ROE, P/E).": "金融类公司：基于自由现金流的 DCF 没有意义（请看 P/B、ROE、P/E）。",
+  "Financial-sector company: an FCF-based DCF is not meaningful, so none is computed.":
+    "金融类公司：基于自由现金流的 DCF 没有意义，所以不计算。",
+  "Starting FCF is not positive; DCF not applicable.": "起始 FCF 不是正数，DCF 不适用。",
   "DCF inputs invalid (discount rate must exceed terminal growth).": "DCF 参数无效（折现率必须高于永续增速）。",
-  // price range
-  "lowest / consensus / highest target": "最低 / 共识 / 最高目标价",
-  "No method had enough data for a range.": "数据不够，没有一种方法能算出区间。",
-  "The price history has a one-day fall of more than 50% or rise of more than 100% (possibly a stock split the prices do not reflect), so no forward multiple range is shown.":
-    "股价历史里有单日跌超过 50% 或涨超过 100% 的情况（可能是股价没有按拆股调整），所以不显示前瞻倍数区间。",
-  "Not enough positive-earnings price history for a P/E range (needs about 6 months).":
-    "盈利为正的历史股价数据不够（约需 6 个月），算不了 P/E 区间。",
-  "Not enough positive-earnings price history for a multiple range (needs about 6 months).":
-    "盈利为正的历史股价数据不够（约需 6 个月），算不了倍数区间。",
-  "The share counts in the statements do not match today's share basis (for example a stock split the statements do not reflect, an ADR ratio or several share classes), so the multiple history is not comparable and no forward multiple range is shown.":
-    "财报里的股数和现在的股本口径对不上（比如财报没有反映拆股、ADR 换股比例或多类股票），历史倍数没法比，所以不显示前瞻倍数区间。",
-  "Not available: no analyst EBITDA estimates, no net debt figure, or not enough positive-EBITDA price history.":
-    "无法计算：没有分析师 EBITDA 预期、缺少净债务数据，或 EBITDA 为正的历史股价数据不够。",
-  "Needs analyst estimates for the current and next fiscal years (not on this FMP plan or none published); forward multiple ranges not available.":
-    "需要本财年和下一财年的分析师预期（套餐不含或没有发布），算不了前瞻倍数区间。",
+  "DCF not available.": "无法计算 DCF。",
+  "Reverse DCF: the implied growth is below -50% a year, outside the range searched.":
+    "反向 DCF：隐含增速低于每年 -50%，超出了搜索范围。",
+  "Reverse DCF: the implied growth is above 100% a year, outside the range searched.":
+    "反向 DCF：隐含增速高于每年 100%，超出了搜索范围。",
+  "Reverse DCF: not computable.": "反向 DCF：无法计算。",
+  // forward multiples
+  "Needs analyst estimates for the current and next fiscal years (not on this FMP plan or none published); forward multiples not available.":
+    "需要本财年和下一财年的分析师预期（套餐不含或没有发布），算不了前瞻倍数。",
+  "Not enough positive-earnings price history for a distribution of the forward multiples (needs about 6 months).":
+    "盈利为正的历史股价数据不够（约需 6 个月），算不了前瞻倍数的分布。",
   "Forward P/E each day = close / next-12-month EPS: the fiscal year in progress and the one after it, weighted by the time left in the year (reported EPS once a year is reported, the analysts' average otherwise). This is how published forward P/E histories are built; a single fiscal year's EPS would make the multiple jump at every year end for a fast grower and skew the range.":
     "每天的前瞻 P/E = 当天收盘价 ÷ 未来 12 个月 EPS：当天所在财年和下一财年按该财年剩余时间加权（已公布的财年用实际数，其余用分析师平均预期）。市面上的前瞻 P/E 历史都是这么算的；如果只用单个财年的 EPS，高增长公司的倍数会在每个财年末跳一下，把区间拉偏。",
-  "Low / Base / High = EPS used x the 25th-percentile / median / 75th-percentile forward P/E. Now = a fair-value range for today. At a fiscal year end the next 12 months are exactly the following fiscal year, so those rows use that year's average estimate: a fair-value range for that date if the company earns it and trades at its usual multiple. Not a forecast.":
-    "低 / 基准 / 高 = 所用 EPS × 前瞻 P/E 的 25 分位 / 中位数 / 75 分位。「现在」= 今天的合理价格区间。到财年末那一天，未来 12 个月正好就是下一个财年，所以财年末那几行用的是下一财年的平均预期：意思是如果公司赚到这个数、市场给它惯常的倍数，那一天的合理价格区间。这不是预测。",
-  "At today's P/E = EPS used x today's forward P/E: where the price would be if the multiple stays where it is (earnings growth only, no re-rating).":
-    "按当前 P/E = 所用 EPS × 今天的前瞻 P/E：如果倍数保持不变，股价会在哪里（只算盈利增长，不算估值重估）。",
-  "n/a = zero or negative EPS in the period used, so a P/E-based price is not meaningful.":
-    "n/a = 所用期间里有为零或负的 EPS，用 P/E 算价格没有意义。",
-  "EV each day = price x shares + net debt + minority interest of the latest reported fiscal year; next-12-month EBITDA as for EPS above. Price = (multiple x EBITDA used - today's net debt and minority interest) / today's shares. Columns as in the P/E table. EV/EBITDA looks through leverage and tax, so it is a cross-check on the P/E rows.":
-    "每天的 EV = 股价 × 股数 + 净债务 + 少数股东权益（都用最近一个已公布财年的数）；未来 12 个月 EBITDA 的算法和上面的 EPS 一样。股价 = （倍数 × 所用 EBITDA - 现在的净债务和少数股东权益）÷ 现在的股数。各列含义同 P/E 表。EV/EBITDA 不受杠杆和税率影响，可以用来交叉验证 P/E 那几行。",
-  "n/a = no positive EBITDA estimate for that period.": "n/a = 这段期间没有为正的 EBITDA 预期。",
-  "REIT: net-income P/E understates cash earnings, so the P/E rows are a weak guide here.":
-    "REIT：按净利润算的 P/E 低估了现金收益，这里 P/E 那几行参考价值有限。",
-  "A statistical range around today's price (lognormal, no drift), not a valuation: about two in three outcomes at that date fall inside the 68% range if volatility holds. Real returns have fatter tails, so moves beyond the 95% range happen more often than 1 in 20. Options-implied volatility is the market's own forward estimate and usually beats the past year's; enter it with --iv (e.g. 0.45 for 45%).":
-    "这是以现价为中心的统计区间（对数正态、不假设涨跌趋势），不是估值：如果波动率不变，到那天的股价大约三分之二的可能落在 68% 区间里。真实股价的极端涨跌比正态分布多，所以超出 95% 区间的情况不止二十分之一。期权隐含波动率是市场自己对未来波动的估计，通常比过去一年的实际波动更准；可以在「隐含波动率 %」里填（命令行用 --iv 0.45 表示 45%）。",
+  "n/a = the EPS or EBITDA used is zero or negative (or missing), so there is no multiple.":
+    "n/a = 所用的 EPS 或 EBITDA 为零或负数（或缺失），所以没有倍数。",
+  "EV each day = price x shares + net debt + minority interest of the latest reported fiscal year; next-12-month EBITDA as for EPS above.":
+    "每天的 EV = 股价 × 股数 + 净债务 + 少数股东权益（都用最近一个已公布财年的数）；未来 12 个月 EBITDA 的算法和上面的 EPS 一样。",
   // analyst / peers
-  "Not available on this FMP plan.": "当前 FMP 套餐不包含这项数据。",
+  "No analyst estimates (not on this FMP plan, or none published).": "没有分析师预期（套餐不含，或没有发布）。",
+  "The analysts use another revenue basis (often net instead of gross revenue), so the first year's revenue growth above is measured from their figure.":
+    "分析师用的营收口径不同（通常是净额而不是总额），所以上表第一年的营收增速是从他们的数字算起的。",
+  "A gap in EPS or EBITDA usually means the estimates are on an adjusted (non-GAAP) basis, for example before stock-based compensation.":
+    "EPS 或 EBITDA 有差距，通常是因为预期用的是调整后（非 GAAP）口径，比如不扣股权激励。",
+  "Each company's last fiscal year, same method for all (* = this company).": "各公司都用最近一个财年，算法相同（* = 本公司）。",
   "Peer median": "同行中位数",
   "no data (plan restriction or unknown ticker)": "无数据（套餐限制或代码有误）",
-  "No peers (FMP stock-peers not available on this plan, or --peers none). Re-run with --peers TICKER1,TICKER2 to compare.":
-    "没有同行数据（套餐不含 stock-peers，或用了 --peers none）。可以用 --peers 代码1,代码2 重新运行。",
   // sector & industry
+  "No industry or sector data: market data was skipped (--no-market).": "没有行业和板块数据：跳过了市场数据（--no-market）。",
   "Industry (equal-weight)": "行业（等权）", "Sector (equal-weight)": "板块（等权）", "S&P 500 (SPY)": "标普 500（SPY）",
   // rates & macro
   "10Y-2Y spread": "10Y-2Y 利差", "10Y-3M spread": "10Y-3M 利差",
@@ -369,21 +360,11 @@ const ZH_EXACT = new Map(Object.entries({
   "Economic calendar not available (no US events returned).": "没有拿到经济日历（没有返回美国事件）。",
   "No key releases found in the last 60 days of the calendar.": "近 60 天的日历里没有找到关键数据。",
   "None of the tracked events is scheduled in the next 3 weeks.": "未来 3 周没有跟踪的关键数据。",
-  // flags
-  "Net cash balance sheet (cash exceeds debt)": "净现金状态（现金多于债务）",
-  "Negative shareholders' equity (check if caused by buybacks rather than losses)": "股东权益为负（核实是回购还是亏损造成的）",
   // data notes
   "Data route: official FMP API.": "数据来源：FMP 官方 API。",
-  "HTTPS certificate verification was OFF for this run.": "本次运行关闭了 HTTPS 证书验证。",
   "Treasury, sector and industry data skipped (--no-market).": "跳过了国债、板块和行业数据（--no-market）。",
   "Source: Financial Modeling Prep. Computed figures are approximations; verify against filings before acting.":
     "数据源：Financial Modeling Prep。计算结果是近似值，做决定前请对照财报核实。",
-  // insider trades
-  "Side": "方向", "Trades": "笔数", "Insiders": "人数", "Amount": "金额", "Purchases": "买入", "Sales": "卖出",
-  "Insider": "内部人", "Role": "职位", "Bought": "买入", "Sold": "卖出", "Last trade": "最近交易", "Price": "价格",
-  "Filing": "申报文件", "**By insider**": "**按人汇总**", "**Open-market purchases (latest first)**": "**公开市场买入（最新在前）**",
-  "No open-market purchases or sales in this period.": "这段时间没有公开市场买入或卖出。",
-  "Insider trades are not in your FMP plan (insider-trading/search).": "你的 FMP 套餐不包含内部人交易数据（insider-trading/search）。",
 }));
 
 const ZONE = { safe: "安全", grey: "灰色", distress: "危险" };
@@ -393,6 +374,22 @@ const SECTORS = {
   "Industrials": "工业", "Real Estate": "房地产", "Technology": "科技", "Utilities": "公用事业",
 };
 const sectorZh = s => SECTORS[s] ? `${SECTORS[s]}（${s}）` : s;
+// Company types other than "general" and the measures that do not apply to them, as report.py names them.
+const KIND_ZH = {
+  "Financial company (bank or insurer)": "金融公司（银行或保险公司）",
+  "Fee-based financial company (exchange, data provider or insurance broker), analysed like other companies; clearing margin and client money sit on its balance sheet":
+    "收费型金融公司（交易所、数据服务商或保险经纪），按普通公司分析；清算保证金和客户资金记在它的资产负债表上",
+  "REIT; net income is after property depreciation": "REIT；净利润已扣除物业折旧",
+  "Regulated utility, capital-heavy": "受监管的公用事业公司，资本密集",
+};
+const MEASURE_ZH = { "gross margin": "毛利率", "EV / sales": "EV / 营收", "free cash flow": "自由现金流", "current ratio": "流动比率" };
+// Why a multiple history is not comparable (report.py HISTORY_PROBLEMS).
+const HISTORY_ZH = {
+  "The share counts in the statements do not match today's share basis (for example a stock split the statements do not reflect, an ADR ratio or several share classes)":
+    "财报里的股数和现在的股本口径对不上（比如财报没有反映拆股、ADR 换股比例或多类股票）",
+  "The price history has a one-day fall of more than 50% or rise of more than 100% (possibly a stock split the prices do not reflect)":
+    "股价历史里有单日跌超过 50% 或涨超过 100% 的情况（可能是股价没有按拆股调整）",
+};
 // FMP economic-calendar event names (period suffix removed, lower-cased) for the key US releases.
 const EVENTS = {
   "fed interest rate decision": "美联储利率决议", "fomc minutes": "FOMC 会议纪要",
@@ -415,31 +412,29 @@ function eventZh(name) {
   const period = m[2] ? (MONTHS[m[2]] ? `${MONTHS[m[2]]} 月` : m[2]) : "";
   return period ? `${base}（${period}）` : base;
 }
-const MULT = "(P\\/E|P\\/B|EV\\/EBITDA)";
-
-// Price-range methods and horizons: the report's summary table uses the same English names as the
-// chart (RANGE_METHODS and _when() in analyze.py), so each English name maps to the chart's Chinese one.
-for (const k of ["rc_fwd_pe", "rc_fwd_ev", "rc_dcf", "rc_targets", "rc_week52", "rc_volatility", "rc_past", "rc_now", "rc_12m"]) {
-  ZH_EXACT.set(UI.en[k], UI.zh[k]);
-}
-
-// Insider roles as insider.py labels them ("Director, CEO").
-const ROLES = { "Director": "董事", "Officer": "高管", "10% owner": "10% 股东", "Other": "其他" };
-const roleZh = s => s.split(", ").map(x => ROLES[x] || x).join("、");
 
 // Sentence templates and fragments, applied in order to text not matched above.
 const ZH_RULES = [
-  // headings
-  [/^Growth \((\d+)-year CAGR in last column\)$/, "增长（最后一列是 $1 年复合增速）"],
-  [/^Valuation \(price (\S+), (\S+) fundamentals\)$/, "估值（股价 $1，基于 $2 财务数据）"],
-  // valuation, scores
-  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
-  [/^PEG \(P\/E \/ (\d+)y EPS CAGR\)$/, "PEG（P/E ÷ $1 年 EPS 复合增速）"],
-  [/^\*\*Piotroski F-score (\S+): (\d+) \/ (\d+)\*\* \(7-9 strong, 0-3 weak\)$/, "**Piotroski F-score $1：$2 / $3**（7-9 强，0-3 弱）"],
+  // header, growth, valuation
+  [/^(.+?) \/ (.+) \| ([^|]+) \| Price (\S+(?: [A-Z]{3})?) \| Market cap (\S+) \| Beta (\S+)$/,
+    (m, sector, industry, ex, px, cap, beta) => `${sectorZh(sector)} / ${industry} | ${ex} | 股价 ${px} | 市值 ${cap} | Beta ${beta}`],
+  [/^Data basis: annual (\S+)(?: in (\S+))?(?: \+ TTM to (\S+)| \(TTM unavailable: using last fiscal year\))\. Valuation uses (\S+) figures\. As of (\S+)\.$/,
+    (m, years, ccy, ttm, basis, asOf) => `数据口径：${years} 年报` + (ccy ? `，币种 ${ccy}` : "") +
+      (ttm ? `，另加截至 ${ttm} 的 TTM` : "（没有 TTM 数据，用最近一个财年）") + `。估值用 ${basis} 的数据。数据截至 ${asOf}。`],
+  [/^\*\*Company type:\*\* (.+?)\.(?: Not meaningful for this type of company: (.+)\.)?$/,
+    (m, kind, names) => `**公司类型：** ${KIND_ZH[kind] || kind}。` +
+      (names ? `对这类公司没有意义的指标：${names.split(", ").map(x => MEASURE_ZH[x] || x).join("、")}。` : "")],
+  [/^Last column: compound annual growth \(CAGR\) over (\d+) years?, (\S+) to (\S+)\.$/, "最后一列是 $2 至 $3 的 $1 年复合增速（CAGR）。"],
+  [/^Price (\S+(?: [A-Z]{3})?), (\S+) fundamentals\.$/, "股价 $1，基于 $2 的财务数据。"],
+  [/^(.+), so the (fiscal-year-end|multiple) history is not comparable( and no distribution is shown)?\.$/,
+    (m, why, which, none) => HISTORY_ZH[why] ? `${HISTORY_ZH[why]}，${which === "multiple" ? "" : "财年末的"}历史倍数没法比` +
+      (none ? "，所以不显示分布" : "") + "。" : m],
+  // quality scores
+  [/^\*\*Piotroski F-score (\S+): (\d+) \/ (\d+)\*\* \(tests passed \/ tests with data\)$/,
+    "**Piotroski F-score $1：$2 / $3**（通过的检验项 / 有数据的检验项）"],
   [/Altman Z ([-\d.]+) \((\w+); >2\.99 safe, <1\.81 distress\)/g, (m, z, zone) => `Altman Z ${z}（${ZONE[zone] || zone}；>2.99 安全，<1.81 危险）`],
   [/Z'' \(non-manufacturer\) ([-\d.]+) \((\w+); >2\.6 safe, <1\.1 distress\)/g, (m, z, zone) => `Z''（非制造业）${z}（${ZONE[zone] || zone}；>2.6 安全，<1.1 危险）`],
   // DCF
-  [/^Starting FCF \((.+)\) is not positive; DCF not applicable\.$/, "起始 FCF（$1）不是正数，DCF 不适用。"],
   [/ ?\(average FCF of last 3 fiscal years\)/g, "（近 3 个财年 FCF 平均）"],
   [/^(\S+) \((\S+) FCF\)$/, "$1（$2 FCF）"],
   [/ ?\(historical revenue CAGR, clamped to 0-15%\)/g, "（历史营收复合增速，限制在 0-15%）"],
@@ -452,54 +447,40 @@ const ZH_RULES = [
     (m, rf, d, b, erp, dflt, eq, raw, kept, range, rnd) =>
       `（CAPM：10 年期国债 ${rf}（${d}）+ Beta ${b} × 美国股权风险溢价 ${erp}` + (dflt ? "［缺少 Beta，按 1.0 计］" : "") +
       (eq ? ` = ${raw}` : "") + (kept ? `，限制在 ${range}` : "") + (rnd ? "，四舍五入" : "") + "）"],
-  [/^\*\*Base-case value (\S+) per share vs price (\S+) -> (\S+) (upside|downside)\.\*\* Reasonable range \(discount \+\/-1pt, growth \+\/-2pt\): (\S+) - (\S+)\. Terminal value is (\S+) of the total\.$/,
-    (m, v, p, mos, dir, lo, hi, tv) => `**基准情形每股价值 ${v}，股价 ${p}，${dir === "upside" ? "上涨空间" : "下跌空间"} ${mos}。** ` +
-      `合理区间（折现率 ±1 个百分点、增速 ±2 个百分点）：${lo} - ${hi}。永续价值占总价值的 ${tv}。`],
-  [/^\*\*Base-case value (\S+) per share is not positive: net debt exceeds the discounted cash flows, so it is not compared with the price\.\*\* Reasonable range \(discount \+\/-1pt, growth \+\/-2pt\): (\S+) - (\S+)\. Terminal value is (\S+) of the total\.$/,
-    "**基准情形每股价值 $1，不是正数：净债务超过了现金流折现值，所以不和股价比较。** 合理区间（折现率 ±1 个百分点、增速 ±2 个百分点）：$2 - $3。永续价值占总价值的 $4。"],
-  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
-  [/^\(At the previous fixed (\S+) discount rate the base case would be (\S+) per share\.\)$/, "（按原来固定的 $1 折现率，基准情形为每股 $2。）"],
+  [/^\*\*Base-case value (\S+) per share\.\*\* Range \(discount rate \+\/-1pt, growth \+\/-2pt\): (\S+) - (\S+)\. Terminal value is (\S+) of the total\.$/,
+    "**基准情形每股价值 $1。** 区间（折现率 ±1 个百分点、增速 ±2 个百分点）：$2 - $3。永续价值占总价值的 $4。"],
+  [/^\*\*Base-case value (\S+) per share is not positive: net debt exceeds the discounted cash flows\.\*\* Range \(discount rate \+\/-1pt, growth \+\/-2pt\): (\S+) - (\S+)\. Terminal value is (\S+) of the total\.$/,
+    "**基准情形每股价值 $1，不是正数：净债务超过了现金流折现值。** 区间（折现率 ±1 个百分点、增速 ±2 个百分点）：$2 - $3。永续价值占总价值的 $4。"],
   [/^\*\*Reverse DCF:\*\* today's price implies ~(\S+) FCF growth per year for 5 years \(then fading\), at a (\S+) discount rate\.$/,
     "**反向 DCF：** 按 $2 的折现率，当前股价隐含未来 5 年 FCF 每年增长约 $1（之后逐步回落）。"],
-  [/^Reverse DCF: implied growth (.+)\.$/, (m, note) => `反向 DCF：隐含增速${{
-    "not computable": "无法计算",
-    "below -50%/yr (price is below even a shrinking-FCF value)": "低于每年 -50%（股价甚至低于 FCF 萎缩情形下的价值）",
-    "above 100%/yr": "高于每年 100%"}[note] || " " + note}。`],
-  // analyst, price range
+  // analyst consensus, forward multiples
   [/^(\d{4}) \(ended, not yet reported\)$/, "$1（已结束，尚未公布）"],
-  [/^(EPS|EBITDA) (\S+) \((next 12 months|FY(\d{4}) est\.)\) x (P\/E|EV\/EBITDA) (\S+) \/ (\S+) \/ (\S+)(, less net debt)?$/,
-    (m, base, v, src, fy, k, a, b, c, nd) => `${base} ${v}（${fy ? `FY${fy} 预期` : "未来 12 个月"}）× ${k} ${a} / ${b} / ${c}` + (nd ? "，扣除净债务" : "")],
-  [/^discount rate (\S+) \+\/-1pt, growth (\S+) \+\/-2pt$/, "折现率 $1 ±1 个百分点，增速 $2 ±2 个百分点"],
-  [/^lowest \/ highest daily close, (\S+) to (\S+)$/, "最低 / 最高日收盘价，$1 至 $2"],
-  [/^(\S+) \((\d+)% FY(\d{4}) \+ (\d+)% FY(\d{4})\)$/, "$1（$2% FY$3 + $4% FY$5）"],
-  [/^(\S+) \(FY(\d{4}) est\.\)$/, "$1（FY$2 预期）"],
-  [/^The FY(\d{4}) end row rests on the FY(\d{4}) consensus(?: \((\d+) analysts\))?, which is further out and less reliable\.$/,
-    (m, a, b, n) => `FY${a} 末这一行用的是 FY${b} 的一致预期${n ? `（${n} 位分析师）` : ""}，时间更远，可靠性更低。`],
-  [/^No analyst estimate for the year after FY(\d{4}), so no range at the end of FY(\d{4})\.$/, "没有 FY$1 之后那一年的分析师预期，所以没有 FY$2 末的区间。"],
-  [/^FY(\d{4}) end$/, "FY$1 末"],
-  [/^price \+\/-1 sd at (\S+) a year \((realized|implied)\); 95%: (\S+) - (\S+)$/,
-    (m, v, src, lo, hi) => `现价 ±1 个标准差，年化波动率 ${v}（${src === "implied" ? "隐含" : "过去一年实际"}）；95%：${lo} - ${hi}`],
-  [/^Volatility (\S+) a year \(realized: standard deviation of the past year's daily moves, annualized\)\.$/,
-    "波动率：年化 $1（过去一年的实际波动：日涨跌幅的标准差，年化）。"],
-  [/^Volatility (\S+) a year \(implied volatility you entered\)\.$/, "波动率：年化 $1（你填入的隐含波动率）。"],
-  [/^Current price (\S+)\. Each row is the range one method gives; none of them is a forecast\.$/, "当前股价 $1。每一行是一种方法给出的区间，都不是预测。"],
+  [/^Analysts' figures for (\S+), the last reported year, against the reported ones:$/, "分析师对最近一个已公布财年 $1 的预期与公布值对比："],
+  [/^FY(\d{4}) EPS \(consensus\)$/, "FY$1 EPS（一致预期）"],
+  [/^next-12-month (EPS|EBITDA)(?: \((\d+)% FY(\d{4}) \+ (\d+)% FY(\d{4})\))?$/,
+    (m, k, a, fyA, b, fyB) => `未来 12 个月 ${k}` + (a ? `（${a}% FY${fyA} + ${b}% FY${fyB}）` : "")],
+  [/^No (\d+)-year distribution: it needs analyst estimates for the current and next fiscal years\.$/,
+    "没有过去 $1 年的分布：需要本财年和下一财年的分析师预期。"],
   [/^(\d+)-year forward (P\/E|EV\/EBITDA) on next-12-month (EPS|EBITDA): 25th percentile (\S+), median (\S+), 75th percentile (\S+) \(10th-90th (\S+) - (\S+); (\d+) trading days, (\S+) to (\S+)\)\.$/,
     "过去 $1 年按未来 12 个月 $3 算的前瞻 $2：25 分位 $4，中位数 $5，75 分位 $6（10-90 分位 $7 - $8；$9 个交易日，$10 至 $11）。"],
   [/^Today's forward (P\/E|EV\/EBITDA): (\S+), at the (\d+)(?:st|nd|rd|th) percentile of that history\.$/,
     "当前前瞻 $1：$2，处于这段历史的第 $3 百分位。"],
   [/^Today's forward (P\/E|EV\/EBITDA): (\S+), (below|above) every day of that history\.$/,
     (m, k, v, dir) => `当前前瞻 ${k}：${v}，${dir === "below" ? "低于" : "高于"}这段历史里的每一天。`],
-  [/^The forward (P\/E|EV\/EBITDA) history is wide \((\S+) - (\S+) between the 25th and 75th percentiles\), often after an earnings trough or a re-rating; lean on the Base column\.$/,
-    "历史前瞻 $1 分布很宽（25-75 分位 $2 - $3），通常是经历过盈利低谷或估值重估；以「基准」一列为主。"],
-  [/^Analysts' (\S+) EBITDA \((\S+)\) differs from reported EBITDA \((\S+)\) by (\S+): the estimates may be on an adjusted basis \(for example before stock-based compensation\), so the EV\/EBITDA prices may run (high|low)\.$/,
-    (m, fy, e, rp, gap, dir) => `分析师对 ${fy} 的 EBITDA（${e}）和公司公布的 EBITDA（${rp}）相差 ${gap}：预期可能是调整后口径（比如不扣股权激励），所以 EV/EBITDA 算出的价格可能偏${dir === "high" ? "高" : "低"}。`],
-  [/^Analysts' (\S+) EPS \((\S+)\) differs from reported diluted EPS \((\S+)\) by (\S+): the estimates may be on an adjusted \(non-GAAP\) basis, while the P\/E history uses reported EPS, so the forward P\/E prices may run (high|low)\.$/,
-    (m, fy, e, rp, gap, dir) => `分析师对 ${fy} 的 EPS（${e}）和公司公布的稀释 EPS（${rp}）相差 ${gap}：预期可能是调整后（非 GAAP）口径，而历史 P/E 用的是公布的 EPS，所以前瞻 P/E 算出的价格可能偏${dir === "high" ? "高" : "低"}。`],
-  [/^Statements are in (\S+) and the price in (\S+): the P\/E rows assume a steady exchange rate and analysts' EPS in (\S+) per share; check both before relying on them\.$/,
-    "财报币种是 $1，股价币种是 $2：P/E 这几行假设汇率不变、分析师 EPS 也是以 $3 计的每股数，参考前请先核实这两点。"],
-  [/^Price target consensus (\S+) \(median (\S+), range (\S+)\)\.$/, "目标价共识 $1（中位数 $2，区间 $3）。"],
-  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
-  [/^Price target consensus (\S+) \(median (\S+), range (\S+)\) -> (\S+) vs price\.$/, "目标价共识 $1（中位数 $2，区间 $3），相对股价 $4。"],
+  [/^Today's next-12-month (EPS|EBITDA) is not positive, so there is no forward (P\/E|EV\/EBITDA) for today\.$/,
+    "今天的未来 12 个月 $1 不是正数，所以今天没有前瞻 $2。"],
+  [/^No forward (P\/E|EV\/EBITDA) distribution: EV multiples do not apply to a financial company\.$/,
+    "没有前瞻 $1 分布：EV 类倍数不适用于金融公司。"],
+  [/^No forward (P\/E|EV\/EBITDA) distribution: no net debt or share count for the enterprise value\.$/,
+    "没有前瞻 $1 分布：缺少计算企业价值所需的净债务或股数。"],
+  [/^No forward (P\/E|EV\/EBITDA) distribution: next-12-month EBITDA is not positive\.$/,
+    "没有前瞻 $1 分布：未来 12 个月 EBITDA 不是正数。"],
+  [/^Not enough positive-(earnings|EBITDA) price history for a forward (P\/E|EV\/EBITDA) distribution \(needs about 6 months\)\.$/,
+    (m, base, k) => `${base === "earnings" ? "盈利" : "EBITDA "}为正的历史股价数据不够（约需 6 个月），算不了前瞻 ${k} 分布。`],
+  [/^Analysts' (\S+) EPS \((\S+)\) differs from reported diluted EPS \((\S+)\) by (\S+): the estimates may be on an adjusted \(non-GAAP\) basis, while the P\/E history uses reported EPS for reported years\.$/,
+    "分析师对 $1 的 EPS（$2）和公司公布的稀释 EPS（$3）相差 $4：预期可能是调整后（非 GAAP）口径，而历史 P/E 在已公布的财年用的是公布的 EPS。"],
+  [/^Analysts' (\S+) EBITDA \((\S+)\) differs from reported EBITDA \((\S+)\) by (\S+): the estimates may be on an adjusted basis \(for example before stock-based compensation\), while the EV\/EBITDA history uses reported EBITDA for reported years\.$/,
+    "分析师对 $1 的 EBITDA（$2）和公司公布的 EBITDA（$3）相差 $4：预期可能是调整后口径（比如不扣股权激励），而历史 EV/EBITDA 在已公布的财年用的是公布的 EBITDA。"],
   // sector & industry
   [/^(\S+) \(company\)$/, "$1（公司）"],
   [/^Industry: (.+)$/, "行业：$1"],
@@ -524,47 +505,6 @@ const ZH_RULES = [
   [/^([+-][\d.]+)pt$/, "$1 个百分点"],
   [/^([+-][\d.]+)% MoM$/, "环比 $1%"],
   [/^(\S+) \((\d{4}-\d{2}-\d{2})\)$/, "$1（$2）"],
-  // flags
-  [/^Revenue fell (\S+) in (\S+)$/, "$2 营收下降 $1"],
-  [/^Revenue CAGR (\S+) over (\d+) years$/, "近 $2 年营收复合增速 $1"],
-  [/^Revenue shrinking: CAGR (\S+) over (\d+) years$/, "营收在萎缩：近 $2 年复合增速 $1"],
-  [/^Operating margin expanded (\S+) -> (\S+) since (\S+)$/, "营业利润率自 $3 起从 $1 升到 $2"],
-  [/^Operating margin compressed (\S+) -> (\S+) since (\S+)$/, "营业利润率自 $3 起从 $1 降到 $2"],
-  [/^Median ROIC (\S+): high returns on capital$/, "ROIC 中位数 $1：资本回报高"],
-  [/^Median ROIC (\S+): below a typical cost of capital$/, "ROIC 中位数 $1：低于一般的资本成本"],
-  [/^FCF exceeds net income \(median conversion (\S+), last 3 yrs\)$/, "自由现金流高于净利润（近 3 年转化率中位数 $1）"],
-  [/^Earnings weakly backed by cash \(median FCF\/NI (\S+), last 3 yrs\)$/, "利润的现金支撑偏弱（近 3 年 FCF / 净利润中位数 $1）"],
-  [/^Negative free cash flow in (\S+)$/, "$1 自由现金流为负"],
-  [/^High leverage: net debt \/ EBITDA (\S+)$/, "杠杆偏高：净债务 / EBITDA $1"],
-  [/^Thin interest coverage: EBIT \/ interest (\S+)$/, "利息覆盖偏低：EBIT / 利息 $1"],
-  [/^Current ratio (\S+) \(<1\): check short-term liquidity$/, "流动比率 $1（<1）：注意短期流动性"],
-  [/^Share dilution ~(\S+) per year$/, "股本每年稀释约 $1"],
-  [/^Share count shrinking ~(\S+) per year \(buybacks\)$/, "股数每年减少约 $1（回购）"],
-  [/^Stock-based comp is (\S+) of revenue$/, "股权激励占营收 $1"],
-  [/^Piotroski F-score (\d+)\/(\d+) \(strong\)$/, "Piotroski F-score $1/$2（强）"],
-  [/^Piotroski F-score (\d+)\/(\d+) \(weak\)$/, "Piotroski F-score $1/$2（弱）"],
-  [/^Altman Z (\S+) in distress zone$/, "Altman Z $1，处于危险区"],
-  [new RegExp(`^${MULT} (\\S+) is above its (\\d+)-year range \\((\\S+)\\)$`), "$1 $2 高于过去 $3 年的区间（$4）"],
-  [new RegExp(`^${MULT} (\\S+) is below its (\\d+)-year range \\((\\S+)\\)$`), "$1 $2 低于过去 $3 年的区间（$4）"],
-  [new RegExp(`^${MULT} (\\S+) is (\\S+) below its (\\d+)-year median (\\S+)$`), "$1 $2 比过去 $4 年中位数 $5 低 $3"],
-  [/^Base-case DCF value (\S+) above price$/, "DCF 基准价值比股价高 $1"],
-  [/^Price is (\S+) above base-case DCF value$/, "股价比 DCF 基准价值高 $1"],
-  [/^Base-case DCF value is not positive: net debt exceeds the discounted cash flows$/, "DCF 基准价值不是正数：净债务超过了现金流折现值"],
-  [/^Price implies ~(\S+)\/yr FCF growth for 5 yrs vs (\S+) historical revenue CAGR$/, "股价隐含未来 5 年 FCF 每年增长约 $1，历史营收复合增速只有 $2"],
-  [/^Price implies only ~(\S+)\/yr FCF growth vs (\S+) historical revenue CAGR$/, "股价只隐含 FCF 每年增长约 $1，历史营收复合增速为 $2"],
-  // insider trades
-  [/^Form 4 filings, trades from (\S+) to (\S+)\. Only open-market purchases \(code P\) and sales \(code S\) count; (\d+) other transactions \(awards, option exercises, shares withheld for tax, gifts\) are left out\.$/,
-    "Form 4 申报，交易日期 $1 至 $2。只统计公开市场买入（代码 P）和卖出（代码 S），另有 $3 笔授予、期权行权、扣股缴税、赠与等不按市价成交的交易未计入。"],
-  [/^FMP returned only the latest (\d+) filings, so the totals start at (\S+)\.$/, "FMP 只返回了最近 $1 份申报，所以统计从 $2 开始。"],
-  [/^Sales were (\S+) of the market cap\.$/, "卖出金额占市值的 $1。"],
-  [/^(?:Director|CEO|CFO|Officer|10% owner|Other)(?:, (?:Director|CEO|CFO|Officer|10% owner|Other))*$/, roleZh],
-  [/^Observation only, not used in the score\. Sales are mostly diversification, taxes or pre-planned \(10b5-1\) sales and say little on their own\.$/,
-    "仅供观察，不计入评分。卖出大多是分散持仓、交税或预先安排的 10b5-1 计划，单看说明不了什么。"],
-  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
-  [/^Observation only, not used in the score\. Purchases with the insider's own money, especially by (\d+) or more insiders within (\d+) days, have historically come before better returns, mostly at small and mid-size companies\. Sales are mostly diversification, taxes or pre-planned \(10b5-1\) sales and say little on their own\.$/,
-    "仅供观察，不计入评分。内部人自己掏钱在公开市场买入，尤其是 $2 天内有 $1 位或更多内部人一起买，历史上之后的回报往往更好，在中小盘公司更明显。卖出大多是分散持仓、交税或预先安排的 10b5-1 计划，单看说明不了什么。"],
-  [/^Insider cluster buying: (\d+) insiders bought (\S+) on the open market between (\S+) and (\S+)$/, "内部人集体买入：$1 位内部人在 $3 至 $4 期间于公开市场买入 $2"],
-  [/^Insider buying: (.+) \(([^()]+)\) bought (\S+) on the open market on (\S+)$/, (m, name, role, v, d) => `内部人买入：${name}（${roleZh(role)}）于 ${d} 在公开市场买入 ${v}`],
   // data notes
   [/^Data route: third-party proxy at (\S+)\. Data is not served by FMP directly; spot-check key figures against company filings\.$/,
     "数据来源：第三方代理 $1，不是 FMP 官方服务器；重要数字请对照公司财报核实。"],
@@ -577,6 +517,8 @@ const ZH_RULES = [
     (m, what, dcf) => "缺少" + { "Treasury yields and US equity risk premium": "国债收益率和美国股权风险溢价",
       "Treasury yields": "国债收益率", "US equity risk premium": "美国股权风险溢价" }[what] +
       (dcf ? "：DCF 用了固定默认折现率。" : "。")],
+  [/^Statements are in (\S+) and the price in (\S+): the multiples and yields mix the two currencies, and the DCF value per share is in (\S+)\.$/,
+    "财报币种是 $1，股价币种是 $2：倍数和收益率混用了两种币种，DCF 的每股价值以 $3 计。"],
   [/^Skipped \(not in your FMP plan\): (.+)$/, "已跳过（套餐不含）：$1"],
   [/^Error: (.+)$/, "错误：$1"],
 ];

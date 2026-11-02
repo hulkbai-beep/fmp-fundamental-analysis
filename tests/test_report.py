@@ -6,8 +6,9 @@ Offline tests for scripts/report.py, the facts report of v2.0. No API key needed
 The report is rendered from the fa-2.0 documents of the synthetic companies in 19 cases (the 8 companies and the
 options that change the document). The tests check the sections and their order; that sections 1-4 and the peer
 table are the report of 8c5ceed byte for byte (tests/data holds those tables for 4 cases as that report printed
-them); that no judgement word appears; that the macro section and the API-call line appear only when given; that
-documents converted from results saved by v1.x render; and that the rarer status codes of fa-2.0 render in words.
+them); that no judgement word appears; that ui/i18n.js has a Chinese translation for every text; that the macro
+section and the API-call line appear only when given; that documents converted from results saved by v1.x render;
+and that the rarer status codes of fa-2.0 render in words.
 """
 from __future__ import annotations
 
@@ -152,6 +153,54 @@ def fy(offset=0):
     return f"FY{fake_fmp.LAST_FY + offset}"
 
 
+def js_string(s):
+    """The text of a JavaScript string literal's body (the keys in i18n.js use JSON's escapes)."""
+    try:
+        return json.loads(f'"{s}"')
+    except ValueError:
+        return s
+
+
+# The exact entries and the regex rules of zh() (ui/i18n.js), read as text: the tests need no JavaScript engine.
+I18N = (ROOT / "ui" / "i18n.js").read_text(encoding="utf-8")
+ZH_KEYS = {js_string(k) for k in re.findall(r'"((?:[^"\\]|\\.)+)":\s*"', I18N)}
+ZH_RULES = [re.compile(r) for r in re.findall(r"\[/((?:[^/\\\n]|\\.)+)/[gimsuy]*,", I18N)]
+
+
+def pieces(text):
+    """The texts the page passes to zh() one by one (ui/index.html md()): headings without their number, list
+    items, other lines and table cells. The '# TICKER - Name' line is not one of them."""
+    for line in text.splitlines():
+        if line.startswith("|"):
+            if not re.fullmatch(r"\|[\s|:-]+\|", line):
+                yield from (c.strip() for c in line.strip("|").split("|"))
+        elif line.startswith("## "):
+            yield re.sub(r"^\d+\.\s+", "", line[3:])
+        elif line.startswith("### "):
+            yield line[4:]
+        elif line.startswith("- "):
+            yield line[2:]
+        elif line.strip() and not line.startswith("# "):
+            yield line.strip()
+
+
+def untranslated(text, doc):
+    """The pieces of a report that ui/i18n.js has neither an exact entry nor a rule for (statically: a whole-text
+    rule that matches, or fragment rules that leave no English word), FMP's own texts excepted."""
+    out = []
+    for p in pieces(text):
+        if p in ZH_KEYS or any(r.pattern.startswith("^") and r.search(p) for r in ZH_RULES):
+            continue
+        rest = p
+        for r in ZH_RULES:
+            rest = r.sub(" ", rest)
+        for t in fmp_texts(doc):
+            rest = rest.replace(t, " ")
+        if re.search(r"[a-z]{3}", rest):
+            out.append(p)
+    return out
+
+
 class Report(unittest.TestCase):
     def test_standard_library_only(self):
         """The engine loads report.py by path, without the skill's folders on sys.path."""
@@ -220,6 +269,14 @@ class Report(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(judgements(text, DOCS[name]), [])
                 self.assertEqual([t for t in REMOVED if t in text], [])
+
+    def test_every_text_has_a_chinese_translation(self):
+        for name, text in REPORTS.items():
+            with self.subTest(name):
+                self.assertEqual(untranslated(text, DOCS[name]), [])
+        doc = DOCS["QUAL"]
+        self.assertEqual(untranslated(REPORTS["QUAL"] + "\nA sentence nobody translated.", doc),
+                         ["A sentence nobody translated."])
 
     def test_the_word_check_finds_planted_words(self):
         doc = copy.deepcopy(DOCS["QUAL"])
@@ -529,6 +586,7 @@ class StatusCodes(unittest.TestCase):
                 for part in expected:
                     self.assertIn(part, text)
                 self.assertEqual(judgements(text, doc), [])
+                self.assertEqual(untranslated(text, doc), [])
                 self.assertNotIn("None", text)
                 self.assertEqual(headings(text)[-1], "Data notes")
 
