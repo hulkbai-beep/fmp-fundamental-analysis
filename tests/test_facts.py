@@ -1,22 +1,20 @@
 """
-Offline tests for fa-2.0, the facts output (scripts/facts.py, contracts/fa-2.0.schema.json). No API key needed:
+Offline tests for fa-2.0, the facts document (scripts/facts.py, contracts/fa-2.0.schema.json). No API key needed:
 
     python -m unittest discover -s tests
 
-fa-2.0 holds facts only; the fundamental score belongs to the decision engine. The tests check that every
-synthetic company's document matches the schema and lines its columns up, that no judgement word creeps in,
-and that the score can be rebuilt from the document alone: score.py on fa2_score_input.to_score_input(document)
-gives the full result's score for 8 companies, 6 variations of 4 of them (24 cases) and a few rarer paths.
+fa-2.0 holds facts only; the fundamental score belongs to the decision engine, whose tests check that the score
+rebuilds from this document. Here: every synthetic company's document matches the schema and lines its columns
+up, no judgement word creeps in, missing values say why, and full results saved by v1.x still convert to the
+documents 8c5ceed's facts.py made from them (tests/data/saved_8c5ceed.json). A small JSON Schema checker lives
+here so the skill keeps to the standard library.
 """
 from __future__ import annotations
 
-import contextlib
 import copy
-import io
 import json
 import re
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -25,16 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
-import contract as C  # noqa: E402
 import facts as F  # noqa: E402
 import fake_fmp  # noqa: E402
-import score as S  # noqa: E402
-from fa2_score_input import to_score_input  # noqa: E402
-from test_contract import as_saved, validate  # noqa: E402
 
 SCHEMA = json.loads((ROOT / "contracts" / f"{F.FACTS}.schema.json").read_text(encoding="utf-8"))
+SAVED = json.loads((ROOT / "tests" / "data" / "saved_8c5ceed.json").read_text(encoding="utf-8"))["cases"]
 SCENARIOS = ("QUAL", "TRAP", "BANK", "EXCH", "UTIL", "QTRS", "ADJE", "REIT")
-FULL, DOCS = {}, {}
+FULL, DOCS = {}, {}   # analyze()'s internal results in their JSON form, and their fa-2.0 documents
 
 # No key, and no code, may hold one of these words (models.piotroski.score is the model's own name for its count).
 JUDGEMENT = {"score", "rating", "rated", "bull", "bullish", "bear", "bearish", "cheap", "expensive", "undervalued",
@@ -44,10 +39,59 @@ FREE_TEXT = {"company.name", "company.exchange", "company.sector", "company.indu
              "data_quality.restricted[]", "data_quality.errors[]", "data_quality.route"}
 CODES = {"status", "kind", "method", "reason", "id", "source", "basis", "as_of_basis", "fcf_start_basis",
          "growth_source", "beta_source", "history_basis", "z_zone", "z2_zone", "not_meaningful"}
+TYPES = {"null": lambda x: x is None, "boolean": lambda x: isinstance(x, bool),
+         "integer": lambda x: isinstance(x, int) and not isinstance(x, bool),
+         "number": lambda x: isinstance(x, (int, float)) and not isinstance(x, bool),
+         "string": lambda x: isinstance(x, str), "array": lambda x: isinstance(x, list),
+         "object": lambda x: isinstance(x, dict)}
+
+
+def validate(inst, schema=SCHEMA, root=SCHEMA, path="$"):
+    """Errors of inst against the JSON Schema subset the fa-2.0 schema uses."""
+    errs = []
+    if "$ref" in schema:
+        errs += validate(inst, root["$defs"][schema["$ref"].rsplit("/", 1)[-1]], root, path)
+    if "const" in schema and inst != schema["const"]:
+        errs.append(f"{path}: {inst!r} is not {schema['const']!r}")
+    if "enum" in schema and inst not in schema["enum"]:
+        errs.append(f"{path}: {inst!r} not in {schema['enum']}")
+    if "type" in schema:
+        types = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
+        if not any(TYPES[t](inst) for t in types):
+            return errs + [f"{path}: {type(inst).__name__} is not {types}"]
+    if isinstance(inst, dict):
+        props = schema.get("properties", {})
+        errs += [f"{path}: missing {k}" for k in schema.get("required", []) if k not in inst]
+        for k, v in inst.items():
+            extra = schema.get("additionalProperties", True)
+            if k in props:
+                errs += validate(v, props[k], root, f"{path}.{k}")
+            elif extra is False:
+                errs.append(f"{path}: unexpected {k}")
+            elif isinstance(extra, dict):
+                errs += validate(v, extra, root, f"{path}.{k}")
+    if isinstance(inst, list):
+        if len(inst) < schema.get("minItems", 0) or len(inst) > schema.get("maxItems", len(inst)):
+            errs.append(f"{path}: {len(inst)} items")
+        if "items" in schema:
+            for i, v in enumerate(inst):
+                errs += validate(v, schema["items"], root, f"{path}[{i}]")
+    return errs
 
 
 def jsonable(x):
     return json.loads(json.dumps(x, default=str))
+
+
+def text(doc):
+    """The document as comparable text: -0.0 vs 0.0 or True vs 1 differ here, not with ==."""
+    return json.dumps(doc, sort_keys=True, ensure_ascii=False)
+
+
+def at(doc, path):
+    for k in path.split("."):
+        doc = doc[k]
+    return doc
 
 
 def leaves(x, path=""):
@@ -73,19 +117,14 @@ def judgements(doc):
     return out
 
 
-def rebuilt(r):
-    """The score computed from the fa-2.0 document of r alone, as the decision engine will."""
-    return jsonable(S.score(to_score_input(jsonable(F.build(r)))))
-
-
 def setUpModule():
     import analyze as A
     with mock.patch.object(A, "FMPClient", fake_fmp.FakeClient):
-        FULL.update({s: as_saved(A.analyze(A.parse_args([s, "--peers", "none"]))) for s in SCENARIOS})
+        FULL.update({s: jsonable(A.analyze(A.parse_args([s, "--peers", "none"]))) for s in SCENARIOS})
     DOCS.update({s: F.build(r) for s, r in FULL.items()})
 
 
-# ---------------------------------------------------------------------------- variations of a full result
+# ---------------------------------------------------------------------------- variations of an internal result
 TTM_END = f"{fake_fmp.LAST_FY + 1}-06-30"
 
 
@@ -114,12 +153,8 @@ def other_currency(r):
 
 
 def share_basis(r):
-    """The share count changed basis inside the price history: no forward range and no trailing fallback."""
-    pr = r["price_range"]
-    pr.update(trailing_problem="share_basis", band_problem="share_basis", pe_band=None, ev_band=None,
-              band_note="share basis changed")
-    for pt in pr["forward"]:
-        pt["pe"] = pt["ev"] = None
+    """The share count changed basis inside the price history: no forward bands, no comparable history."""
+    r["forward_bands"].update(trailing_problem="share_basis", band_problem="share_basis", pe_band=None, ev_band=None)
     return r
 
 
@@ -132,11 +167,8 @@ def no_market(r):
 def no_estimates(r):
     """No analyst coverage."""
     r["analyst"]["estimates"] = []
-    r["price_range"].update(pe_band=None, ev_band=None, forward=[])
+    r["forward_bands"].update(pe_band=None, ev_band=None, forward=None)
     return r
-
-
-VARIATIONS = (with_ttm, adjusted_estimates, other_currency, share_basis, no_market, no_estimates)
 
 
 def revenue_basis(r):
@@ -158,7 +190,7 @@ def implied_above_range(r):
 
 
 def no_rates(r):
-    """Market data without Treasury yields; the industry P/E is still there."""
+    """Market data without Treasury yields; the risk premium and the industry P/E are still there."""
     r["market"]["rates"] = None
     return r
 
@@ -170,22 +202,33 @@ def no_industry_pe(r):
 
 
 def short_history(r):
-    """Estimates, but too little price history for a forward range, and no fiscal-year-end history either."""
-    share_basis(r)["price_range"].update(trailing_problem=None, band_problem=None,
-                                         band_note="Not enough positive-earnings price history")
+    """Estimates, but too little price history for a forward band, and no fiscal-year-end history either."""
+    r["forward_bands"].update(pe_band=None, ev_band=None)
     r["history_compare"] = {}
     return r
 
 
-def saved_before_trailing_problem(r):
-    """A file saved before price_range.trailing_problem existed: band_problem stood for both checks."""
-    share_basis(r)["price_range"].pop("trailing_problem")
-    r["price_range"]["band_problem"] = "price_jump"
-    return r
-
-
-RARER = (revenue_basis, implied_below_range, implied_above_range, no_rates, no_industry_pe, short_history,
-         saved_before_trailing_problem)
+# each variation and what its document must then say
+VARIATIONS = (
+    (with_ttm, {"periods.valuation_basis": "TTM", "ttm.period": "TTM", "statements_through": TTM_END}),
+    (adjusted_estimates, {"consensus.vs_reported.eps.gap": 0.22, "consensus.vs_reported.ebitda.gap": 0.15}),
+    (other_currency, {"company.statement_currency": "JPY",
+                      "data_quality.currency_mismatch": {"statements": "JPY", "price": "USD"}}),
+    (share_basis, {"valuation.forward_band.status": "share_basis", "valuation.forward_band.pe.status": "share_basis",
+                   "valuation.forward_band.ev_ebitda.status": "share_basis",
+                   "valuation.vs_own_history.status": "share_basis"}),
+    (no_market, {"rates": None, "valuation.vs_group": None}),
+    (no_estimates, {"valuation.forward_band.status": "no_estimates", "valuation.forward.ntm": None,
+                    "valuation.forward.pe_ntm": None, "valuation.forward.fy1": None, "consensus.estimates": []}),
+    (revenue_basis, {"consensus.vs_reported.revenue.gap": 0.2}),
+    (implied_below_range, {"models.reverse_dcf.status": "below_range", "models.reverse_dcf.implied_growth_1_5": None}),
+    (implied_above_range, {"models.reverse_dcf.status": "above_range"}),
+    (no_rates, {"rates.date": None, "rates.treasury_10y": None}),
+    (no_industry_pe, {"valuation.vs_group.industry.status": "unavailable", "valuation.vs_group.industry.premium": None,
+                      "valuation.vs_group.sector.status": "ok"}),
+    (short_history, {"valuation.forward_band.status": "short_history",
+                     "valuation.forward_band.pe.status": "short_history", "valuation.vs_own_history.pe": None}),
+)
 
 
 # ---------------------------------------------------------------------------- tests
@@ -193,6 +236,7 @@ class Schema(unittest.TestCase):
     def test_version_matches_the_module(self):
         self.assertEqual(SCHEMA["properties"]["contract"]["const"], F.FACTS)
         self.assertEqual(SCHEMA["$id"], F.FACTS)
+        self.assertEqual((F.FACTS, F.METHOD_VERSION), ("fa-2.0", "2.0.0"))
 
     def test_every_object_always_has_all_its_keys(self):
         def objects(node, path="$"):
@@ -213,7 +257,7 @@ class Schema(unittest.TestCase):
         f["models"]["dcf"]["status"] = "cheap"
         f["metrics"]["roic"][0] = "high"
         del f["valuation"]["forward"]["pe_ntm"]
-        errs = validate(f, SCHEMA, SCHEMA)
+        errs = validate(f)
         self.assertEqual(len(errs), 3, errs)
 
     def test_the_word_check_catches_judgements(self):
@@ -226,7 +270,7 @@ class Schema(unittest.TestCase):
 class Documents(unittest.TestCase):
     def test_every_company_matches_the_schema(self):
         for sym, f in DOCS.items():
-            self.assertEqual(validate(f, SCHEMA, SCHEMA), [], sym)
+            self.assertEqual(validate(f), [], sym)
             json.dumps(f, allow_nan=False)
 
     def test_no_judgement_words(self):
@@ -245,15 +289,16 @@ class Documents(unittest.TestCase):
                 self.assertEqual(len(sens["value_per_share"]), len(sens["discount_rates"]), sym)
                 self.assertEqual({len(row) for row in sens["value_per_share"]}, {len(sens["growth_1_5"])}, sym)
 
-    def test_numbers_are_the_full_results(self):
+    def test_numbers_are_the_internal_results(self):
         r, f = FULL["QUAL"], DOCS["QUAL"]
         self.assertEqual(f["statements"]["revenue"], [y["revenue"] for y in r["years"]])
         self.assertEqual(f["statements"]["eps_diluted"], [y["eps"] for y in r["years"]])
         self.assertEqual(f["metrics"]["roic"], [y["roic"] for y in r["years"]])
         self.assertEqual(f["price"]["value"], r["current"]["price"])
         self.assertEqual(f["valuation"]["now"]["pe"], r["current"]["pe"])
-        self.assertEqual(f["valuation"]["forward_band"]["pe"]["p25"], r["price_range"]["pe_band"]["p25"])
-        self.assertEqual(f["valuation"]["forward_band"]["pe"]["pctile"], r["price_range"]["pe_band"]["now_pct"])
+        self.assertEqual(f["valuation"]["forward_band"]["pe"]["p25"], r["forward_bands"]["pe_band"]["p25"])
+        self.assertEqual(f["valuation"]["forward_band"]["pe"]["pctile"], r["forward_bands"]["pe_band"]["now_pct"])
+        self.assertEqual(f["valuation"]["forward"]["ntm"]["eps"], r["forward_bands"]["forward"]["eps"])
         self.assertEqual(f["models"]["dcf"]["value_per_share"], r["dcf"]["value_per_share"])
         self.assertEqual(f["models"]["reverse_dcf"]["implied_growth_1_5"], r["dcf"]["implied_growth"])
         self.assertEqual(f["models"]["piotroski"]["score"], r["piotroski"]["score"])
@@ -283,11 +328,22 @@ class Documents(unittest.TestCase):
         self.assertIsNone(DOCS["QUAL"]["ttm"])
         self.assertGreater(adje["consensus"]["vs_reported"]["eps"]["gap"], 0.5)   # analysts forecast adjusted EPS
 
-    def test_dates_agree_with_the_contract(self):
+    def test_variations_say_why_values_are_missing(self):
+        for change, want in VARIATIONS:
+            for sym in ("QUAL", "TRAP"):
+                f = F.build(change(copy.deepcopy(FULL[sym])))
+                case = (sym, change.__name__)
+                self.assertEqual(validate(f), [], case)
+                self.assertEqual(judgements(f), [], case)
+                self.assertEqual({p: at(f, p) for p in want}, want, case)
+                self.assertNotEqual(text(f), text(DOCS[sym]), f"{case}: the variation changes nothing")
+
+    def test_dates(self):
         for sym, r in FULL.items():
-            c, f = C.build(r), DOCS[sym]
+            f = DOCS[sym]
+            self.assertEqual(r["last_close"], fake_fmp.SCENARIOS[sym]["prices"][-1][0], sym)
             self.assertEqual((f["as_of"], f["as_of_basis"], f["statements_through"]),
-                             (c["as_of"], c["as_of_basis"], c["statements_through"]), sym)
+                             (r["last_close"], "last_close", (r["ttm"] or r["years"][-1])["date"]), sym)
         r = copy.deepcopy(FULL["QUAL"])
         r["price_time"] = "2026-10-23 16:00"
         f = F.build(r)
@@ -295,72 +351,74 @@ class Documents(unittest.TestCase):
                          ("2026-10-23", "quote", "quote", "2026-10-23 16:00"))
         r["price_time"] = None
         self.assertEqual(F.build(r)["price"]["source"], "profile")
+        r["last_close"] = None   # fewer than two closes in the past year
+        self.assertEqual((F.build(r)["as_of"], F.build(r)["as_of_basis"]), (r["as_of"], "run_date"))
+
+    def test_what_v2_leaves_out(self):
+        for sym, r in FULL.items():
+            self.assertEqual(set(r) & {"score", "flags", "insider", "price_range", "price_series", "candles",
+                                       "candles_note", "self_snapshot", "sector_note"}, set(), sym)
+            self.assertNotIn("margin_of_safety", r["dcf"], sym)
+            self.assertNotIn("price_target", r["analyst"], sym)
+            self.assertEqual(set(r["forward_bands"]), {"lookback_years", "pe_band", "ev_band", "band_problem",
+                                                       "trailing_problem", "forward"}, sym)
+            self.assertEqual(set(r["forward_bands"]["forward"]), {"at", "fy", "date", "uses", "weight", "eps",
+                                                                  "eps_low", "eps_high", "ebitda"}, sym)
+            self.assertEqual(set(r["market"]), {"rates", "erp", "capm", "sector"}, sym)   # no --macro
+            self.assertNotIn("returns", r["market"]["sector"], sym)
+            self.assertNotIn("insider", DOCS[sym], sym)
+        self.assertNotIn("insider", SCHEMA["properties"])
+
+
+class SavedResults(unittest.TestCase):
+    """Full results saved by v1.x still convert: the decision engine converts old runs with this facts.py."""
+
+    def test_results_saved_at_8c5ceed_give_the_documents_it_made(self):
+        for case, c in SAVED.items():
+            want = dict(c["facts"], generated_at=c["full"]["generated_at"])
+            self.assertEqual(text(F.build(copy.deepcopy(c["full"]))), text(want), case)
+
+    def test_the_internal_result_and_a_saved_one_say_the_same(self):
+        """forward_bands and last_close of the internal result give the document that price_range gave."""
+        for case, c in SAVED.items():
+            r = copy.deepcopy(c["full"])
+            pr = r.pop("price_range")
+            now = next(p for p in pr["forward"] if p["at"] == "now")
+            r["last_close"] = pr["week52"]["to"]
+            r["forward_bands"] = dict({k: pr[k] for k in ("lookback_years", "pe_band", "ev_band", "band_problem",
+                                                          "trailing_problem")},
+                                      forward={k: now[k] for k in ("at", "fy", "date", "uses", "weight", "eps",
+                                                                   "eps_low", "eps_high", "ebitda")})
+            self.assertEqual(text(F.build(r)), text(F.build(c["full"])), case)
 
     def test_files_saved_by_earlier_versions_still_convert(self):
-        r = copy.deepcopy(FULL["QUAL"])
+        """v1.0 had no generated_at, market data, peers, TTM, quote time, connection or trailing_problem."""
+        r = copy.deepcopy(SAVED["QUAL"]["full"])
         for k in ("generated_at", "market", "peers", "ttm", "price_time"):
             r.pop(k, None)
         r["meta"].pop("connection")
         r["price_range"].pop("trailing_problem")
         f = F.build(r)
-        self.assertEqual(validate(f, SCHEMA, SCHEMA), [])
+        self.assertEqual(validate(f), [])
         self.assertEqual((f["rates"], f["valuation"]["vs_group"], f["data_quality"]["route"]), (None, None, None))
         self.assertEqual((f["generated_at"], f["price"]["source"]), (r["as_of"], "profile"))
+        self.assertEqual((f["as_of"], f["as_of_basis"]), (r["price_range"]["week52"]["to"], "last_close"))
+        self.assertEqual(f["valuation"]["vs_own_history"]["status"], "ok")
+        r["price_range"]["band_problem"] = "price_jump"   # before trailing_problem, band_problem stood for both checks
+        self.assertEqual(F.build(r)["valuation"]["vs_own_history"]["status"], "price_jump")
 
-    def test_insider_trades_are_left_out(self):
-        self.assertTrue(FULL["QUAL"]["insider"])               # the full result still has them, for the report
-        for f in DOCS.values():
-            self.assertNotIn("insider", f)
-        self.assertNotIn("insider", SCHEMA["properties"])
-
-
-class ScoreFromFacts(unittest.TestCase):
-    """The decision engine can rebuild the fundamental score from fa-2.0 alone."""
-
-    def test_every_company(self):
-        for sym, r in FULL.items():
-            self.assertEqual(rebuilt(r), jsonable(r["score"]), sym)
-
-    def test_variations(self):
-        for change in VARIATIONS:
-            changed = 0
-            for sym in ("QUAL", "TRAP", "BANK", "UTIL"):
-                r = change(copy.deepcopy(FULL[sym]))
-                want = jsonable(S.score(copy.deepcopy(r)))
-                self.assertEqual(rebuilt(r), want, (sym, change.__name__))
-                changed += want != jsonable(FULL[sym]["score"])
-            self.assertTrue(changed, f"{change.__name__} changes no score: it tests nothing")
-
-    def test_rarer_paths(self):
-        for change in RARER:
-            for sym in ("QUAL", "TRAP"):
-                r = change(copy.deepcopy(FULL[sym]))
-                self.assertEqual(rebuilt(r), jsonable(S.score(copy.deepcopy(r))), (sym, change.__name__))
-
-
-class Cli(unittest.TestCase):
-    def test_flag_and_file_give_the_same_document(self):
-        import analyze as A
-        out, err = io.StringIO(), io.StringIO()
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(A, "FMPClient", fake_fmp.FakeClient), \
-                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            full, direct, from_file = (str(Path(tmp) / n) for n in ("full.json", "direct.json", "file.json"))
-            self.assertEqual(A.main(["QTRS", "--peers", "none", "--json", full, "--facts", direct]), 0)
-            self.assertEqual(C.main([full, "--facts", "-o", from_file]), 0)
-            a, b = (json.loads(Path(p).read_text(encoding="utf-8")) for p in (direct, from_file))
-        self.assertEqual(a, b)
-        self.assertEqual((a["contract"], a["ticker"]), (F.FACTS, "QTRS"))
-        self.assertEqual(validate(a, SCHEMA, SCHEMA), [])
-        self.assertTrue(out.getvalue().startswith("# "))       # stdout is the report alone
-        self.assertIn(f"({F.FACTS} facts written to {direct})", err.getvalue())
-        self.assertIn(f"({F.FACTS} facts written to {from_file})", err.getvalue())
+    def test_a_document_that_is_already_fa_2_is_returned_as_it_is(self):
+        f = DOCS["QUAL"]
+        self.assertIs(F.build(f), f)
+        later = dict(f, contract="fa-2.3")
+        self.assertIs(F.build(later), later)
 
 
 class Docs(unittest.TestCase):
     def test_skill_and_readmes_mention_the_facts(self):
         for name in ("SKILL.md", "README.md", "README.en.md"):
-            text = (ROOT / name).read_text(encoding="utf-8")
-            self.assertTrue("--facts" in text and F.FACTS in text, name)
+            content = (ROOT / name).read_text(encoding="utf-8")
+            self.assertTrue("--facts" in content and F.FACTS in content, name)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-Fundamental analysis snapshot for one stock, built from FMP financial statements.
+Fundamental analysis of one stock from FMP financial statements: the facts and the standard models.
 
-All arithmetic happens here so the model only has to interpret the numbers.
-Ratios are computed from the raw income / balance-sheet / cash-flow statements,
-so the analysis works on FMP plans that only include annual fundamentals.
+All arithmetic happens here so the model only has to interpret the numbers. Ratios are computed from the raw
+income / balance-sheet / cash-flow statements, so the analysis works on FMP plans that only include annual
+fundamentals. The result is one document, fa-2.0 (facts.py, contracts/fa-2.0.schema.json): statements, ratios,
+multiples against their own history and the industry, the analysts' consensus and the standard models
+(Piotroski, Altman, DCF, reverse DCF). It holds no score, flag, price level or price target: decisions are left
+to the user or the decision engine.
 
 Usage:
   python analyze.py AAPL
@@ -21,19 +24,20 @@ Options:
   --terminal G       DCF terminal growth (default 0.025)
   --growth G         DCF growth for years 1-5 (default: historical revenue CAGR, clamped 0-15%)
   --fcf-base MODE    latest | avg3   starting FCF for the DCF (default latest)
-  --iv SIGMA         annual implied volatility for the volatility bands, e.g. 0.45 for 45%
-                     (default: the past year's realized volatility)
   --no-ttm           skip trailing-twelve-month data (saves 3 API calls)
-  --macro            add the rates & macro backdrop (Fed funds, CPI, jobs, key releases)
-  --no-market        skip Treasury / sector / industry data (fixed 9% discount, no sector section;
+  --macro            add the rates & macro backdrop (Treasury curve, Fed funds, CPI, jobs, key releases,
+                     and the stock's returns against its industry, sector and the S&P 500)
+  --no-market        skip Treasury / industry / sector data (fixed 9% discount, no industry and sector P/E;
                      cannot be combined with --macro)
-  --no-insider       skip the insider-trades section (saves 1-5 API calls; the score does not use it)
-  --json PATH        also write every computed number to a JSON file
-  --contract PATH    also write the fa-1.1 contract (the stable summary other tools read; see contract.py)
-  --facts PATH       also write the fa-2.0 facts: statements, ratios, multiples and the standard models,
-                     with no score or price levels (see facts.py)
+  --json PATH        also write the fa-2.0 document to a file
+  --facts PATH       the same (kept for tools that pass it)
   --refresh          ignore the local cache
 
+Kept for one version: --contract PATH writes the fa-2.0 document as well (the fa-1.1 contract was removed in
+v2.0); --iv and --no-insider are accepted and ignored. Each prints a note to stderr.
+
+stdout is the markdown report alone (report.py); notes go to stderr. Exit codes: 0 ok, 1 FMP error,
+2 API-key problem. `python facts.py saved.json [-o out.json]` converts a full result saved by `--json` of v1.x.
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
 """
 from __future__ import annotations
@@ -52,17 +56,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
-import contract as C  # noqa: E402
 import facts as F  # noqa: E402
-import insider as I  # noqa: E402
 import macro as M  # noqa: E402
-import score as S  # noqa: E402
+import report as R  # noqa: E402
 from symbols import normalize_symbol  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}
+REVENUE_BASIS_GAP = 0.05  # analysts' revenue for the last reported year this far off the reported figure: another basis
 # Fee-based financial industries (exchanges, data providers, insurance brokers) run on cash flow like other
 # companies, so they get the general analysis rather than the bank / insurer one.
-REVENUE_BASIS_GAP = 0.05  # analysts' revenue for the last reported year this far off the reported figure: another basis
 FEE_FINANCIAL_INDUSTRIES = ("data & stock exchanges", "financial data", "stock exchanges", "insurance brokers",
                             "insurance - brokers")
 
@@ -108,11 +110,6 @@ def cagr(first, last, years):
 def mean(vals):
     vals = [v for v in vals if v is not None]
     return sum(vals) / len(vals) if vals else None
-
-
-def median(vals):
-    vals = [v for v in vals if v is not None]
-    return statistics.median(vals) if vals else None
 
 
 def absval(v):
@@ -464,7 +461,6 @@ def run_dcf(years, basis, cur, args, rev_cagr, sector_kind, r, r_source):
         "discount_source": r_source,
         "net_debt": nd, "shares": shares,
         "value_per_share": base["per_share"], "terminal_value_share": base["tv_share"],
-        "margin_of_safety": base["per_share"] / price - 1 if price else None,
         "range_low": min(inner) if inner else None, "range_high": max(inner) if inner else None,
         "grid_rates": rs, "grid_growths": gs, "grid": grid,
         "implied_growth": implied, "implied_growth_note": implied_note,
@@ -537,12 +533,11 @@ def fetch_estimates(client, sym):
     return est
 
 
-def analyst_view(est, pt, last_fy, price, today):
-    """est: analyst-estimates rows, pt: price-target-consensus response (either may be None).
+def analyst_view(est, last_fy, price, today):
+    """est: analyst-estimates rows (or None).
 
     Keeps every fiscal year after the last reported one, up to two years after the one in progress:
-    normally the current fiscal year and the two after it (the price range needs those for next-12-month
-    figures at each fiscal year end), plus a year that has ended but is not reported yet."""
+    normally the current fiscal year and the two after it, plus a year that has ended but is not reported yet."""
     out = {}
     if isinstance(est, list):
         rows_by_date = sorted((e for e in est if isinstance(e, dict) and re.match(r"\d{4}-\d{2}-\d{2}", str(e.get("date")))),
@@ -596,17 +591,10 @@ def analyst_view(est, pt, last_fy, price, today):
         if est_ebitda and est_ebitda > 0 and last_fy.get("ebitda") and last_fy["ebitda"] > 0:
             out["ebitda_basis"] = {"fy": last_fy["label"], "estimate": est_ebitda, "reported": last_fy["ebitda"],
                                    "gap": est_ebitda / last_fy["ebitda"] - 1}
-    pt = pt[0] if isinstance(pt, list) and pt else (pt if isinstance(pt, dict) else None)
-    if pt:
-        cons = num(pt, "targetConsensus")
-        out["price_target"] = {
-            "consensus": cons, "median": num(pt, "targetMedian"),
-            "high": num(pt, "targetHigh"), "low": num(pt, "targetLow"),
-        }
     return out
 
 
-# ============================================================ price ranges
+# ============================================================ forward multiples
 def _ntm(fys):
     """fys: [(fiscal_year_end_iso, value)]. Returns day_iso -> next-twelve-month value: the fiscal year in
     progress and the one after it, weighted by the time left in the year in progress (the convention behind
@@ -678,697 +666,52 @@ def multiple_bands(years, window, eps_at, ebitda_at, now_pe, now_ev_ebitda):
             _band(ev, window, now_ev_ebitda) if len(ev) >= 120 else None)
 
 
-def volatility(series, today):
-    """Annualized standard deviation of the past year's daily log moves."""
-    start = (today - dt.timedelta(days=365)).isoformat()
-    closes = [px for d, px in series if d >= start and px]
-    moves = [math.log(b / a) for a, b in zip(closes, closes[1:])]
-    return statistics.stdev(moves) * math.sqrt(252) if len(moves) >= 120 else None
-
-
 def _blend(w, a, b):
     return None if a is None or b is None else w * a + (1 - w) * b
 
 
-def price_range(years, basis, series, analyst, dcf, price, today, cur_shares=None, iv=None, sector_kind="general",
-                lookback_years=3):
-    """Price ranges from several methods, for the report's price-range section and the UI chart.
+def forward_bands(years, basis, series, analyst, price, today, cur_shares=None, sector_kind="general",
+                  lookback_years=3):
+    """The distributions of the daily forward P/E and forward EV/EBITDA over the last `lookback_years` (statistics
+    only, never turned into prices), with today's value on them, and the checks of the multiple histories.
 
-    The forward-multiple ranges are given at three points: now (on next-twelve-month figures), the end of the
-    current fiscal year and the end of the next one (where the next twelve months are exactly the following
-    fiscal year). The volatility ranges use the same fiscal year ends."""
+    forward is today's point: next-twelve-month EPS and EBITDA, the fiscal year in progress and the one after it
+    weighted by the time left in the one in progress (None without estimates for both). band_problem says why
+    the forward history can't be trusted (no bands then), trailing_problem the same for every fiscal year's
+    history behind history_compare."""
     estimates = analyst.get("estimates") or []
-    cur, nxt, after = ([e for e in estimates if not e["ended"]] + [None, None, None])[:3]
-    out = {"price": price, "lookback_years": lookback_years, "pe_band": None, "ev_band": None, "band_note": None,
-           "band_problem": None, "trailing_problem": None, "forward": [], "summary": []}
+    cur, nxt = ([e for e in estimates if not e["ended"]] + [None, None])[:2]
+    out = {"lookback_years": lookback_years, "pe_band": None, "ev_band": None, "band_problem": None,
+           "trailing_problem": None, "forward": None}
     nd, mi = basis.get("net_debt"), basis.get("minority_interest") or 0.0
     ev_ok = sector_kind != "financial" and nd is not None and bool(cur_shares)
     today_iso = today.isoformat()
-    # checked with or without estimates: the fundamental score's trailing-multiple fallback relies on it
+    # both checked with or without estimates
     start = (today - dt.timedelta(days=round(365.25 * lookback_years))).isoformat()
     window = [(d, px) for d, px in series if d >= start and px]
-    out["band_problem"], problem_note = history_problem(years, window, start, cur_shares)
-    # the trailing multiples vs their fiscal-year-end median (history_compare) use every fiscal year
+    out["band_problem"] = history_problem(years, window, start, cur_shares)[0]
     first = min((y["date"] for y in years), default=start)
     out["trailing_problem"] = history_problem(years, [(d, px) for d, px in series if d >= first and px], first,
                                               cur_shares)[0]
+    if not (cur and nxt):
+        return out
 
     def ntm(rep_key, est_key):
         return _ntm([(y["date"], y[rep_key]) for y in years if y.get(rep_key) is not None] +
                     [(e["date"], e[est_key]) for e in estimates if e.get(est_key) is not None])
     eps_at, ebitda_at = ntm("eps", "eps_avg"), ntm("ebitda", "ebitda_avg")
-
-    if cur and nxt:
-        w = min(max((dt.date.fromisoformat(cur["date"]) - today).days, 0) / 365.25, 1.0)
-        points = [{"at": "now", "fy": None, "date": today_iso, "uses": [cur["fy"], nxt["fy"]], "weight": w,
-                   "eps": eps_at(today_iso), "eps_low": _blend(w, cur["eps_low"], nxt["eps_low"]),
-                   "eps_high": _blend(w, cur["eps_high"], nxt["eps_high"]), "ebitda": ebitda_at(today_iso)}]
-        for end, e in ((cur, nxt), (nxt, after)):
-            if e:
-                points.append({"at": "fy_end", "fy": end["fy"], "date": end["date"], "uses": [e["fy"]], "weight": None,
-                               "eps": e["eps_avg"], "eps_low": e["eps_low"], "eps_high": e["eps_high"],
-                               "ebitda": e.get("ebitda_avg"), "analysts": e["analysts"]})
-        now = points[0]
+    w = min(max((dt.date.fromisoformat(cur["date"]) - today).days, 0) / 365.25, 1.0)
+    now = {"at": "now", "fy": None, "date": today_iso, "uses": [cur["fy"], nxt["fy"]], "weight": w,
+           "eps": eps_at(today_iso), "eps_low": _blend(w, cur["eps_low"], nxt["eps_low"]),
+           "eps_high": _blend(w, cur["eps_high"], nxt["eps_high"]), "ebitda": ebitda_at(today_iso)}
+    out["forward"] = now
+    if not out["band_problem"]:
         now_pe = pos_div(price, now["eps"])
         now_ev = pos_div(price * cur_shares + nd + mi, now["ebitda"]) if ev_ok else None
-
-        out["band_note"] = problem_note
-        if not out["band_note"]:
-            out["pe_band"], out["ev_band"] = multiple_bands(years, window, eps_at, ebitda_at, now_pe, now_ev)
-            if not ev_ok or not (now["ebitda"] and now["ebitda"] > 0):
-                out["ev_band"] = None
-            if not out["pe_band"] and not out["ev_band"]:
-                out["band_note"] = "Not enough positive-earnings price history for a multiple range (needs about 6 months)."
-
-        pb, eb = out["pe_band"], out["ev_band"]
-        for pt in points:
-            pt["pe"] = pt["ev"] = None
-            if pb and pt["eps"] and pt["eps"] > 0:
-                pt["pe"] = {k: pt["eps"] * pb[q] for k, q in (("low", "p25"), ("base", "median"), ("high", "p75"))}
-                pt["pe"]["at_today"] = pt["eps"] * now_pe if now_pe else None
-            if eb and pt["ebitda"] and pt["ebitda"] > 0:
-                to_price = lambda m: (m * pt["ebitda"] - nd - mi) / cur_shares  # noqa: E731
-                pt["ev"] = {k: to_price(eb[q]) for k, q in (("low", "p25"), ("base", "median"), ("high", "p75"))}
-                pt["ev"]["at_today"] = to_price(now_ev) if now_ev else None
-            for m in ("pe", "ev"):
-                if pt[m]:
-                    pt[m]["base_vs_price"] = pt[m]["base"] / price - 1 if price else None
-        out["forward"] = points
-
-    # Summary: one row per method and horizon. "at" is the horizon: "past" (the last 52 weeks), "now",
-    # "12m" (12 months out) or "fy_end" (with "fy"); rows are sorted by the horizon's date, so they
-    # come grouped by horizon in time order.
-    in_12m = (today + dt.timedelta(days=365)).isoformat()
-
-    def multiple_rows(pt):
-        return [{"kind": k, "at": pt["at"], "fy": pt["fy"], "date": pt["date"], "low": pt[m]["low"],
-                 "mid": pt[m]["base"], "high": pt[m]["high"]} for k, m in (("fwd_pe", "pe"), ("fwd_ev", "ev")) if pt[m]]
-
-    s = []
-    year = [(d, px) for d, px in series if d >= (today - dt.timedelta(days=365)).isoformat() and px]
-    if len(year) >= 2:
-        closes = [px for _, px in year]
-        out["week52"] = {"low": min(closes), "high": max(closes), "from": year[0][0], "to": year[-1][0]}
-        s.append({"kind": "week52", "at": "past", "fy": None, "date": year[0][0], "low": out["week52"]["low"],
-                  "mid": None, "high": out["week52"]["high"]})
-    for pt in out["forward"][:1]:
-        s += multiple_rows(pt)
-    if dcf.get("range_low") is not None:
-        s.append({"kind": "dcf", "at": "now", "fy": None, "date": today_iso, "low": dcf["range_low"],
-                  "mid": dcf["value_per_share"], "high": dcf["range_high"]})
-    t = analyst.get("price_target")
-    if t and t.get("low") is not None and t.get("high") is not None:
-        s.append({"kind": "targets", "at": "12m", "fy": None, "date": in_12m, "low": t["low"], "mid": t["consensus"],
-                  "high": t["high"]})
-
-    # Volatility ranges to each fiscal year end (12 months out when there are no estimates): lognormal around
-    # today's price with no drift, +/-1 sd (about 68%) and +/-1.96 sd (about 95%).
-    sigma = iv if iv else volatility(series, today)
-    vol_rows = {}
-    if sigma and price:
-        horizons = [(e["fy"], dt.date.fromisoformat(e["date"])) for e in (cur, nxt) if e] or \
-                   [(None, today + dt.timedelta(days=365))]
-        out["volatility"] = {"sigma": sigma, "implied": bool(iv), "bands": []}
-        for fy, end in horizons:
-            T = max((end - today).days, 1) / 365.25
-            w1, w2 = sigma * math.sqrt(T), 1.96 * sigma * math.sqrt(T)
-            b = {"fy": fy, "end": end.isoformat(), "years": T,
-                 "low": price * math.exp(-w1), "high": price * math.exp(w1),
-                 "low95": price * math.exp(-w2), "high95": price * math.exp(w2)}
-            out["volatility"]["bands"].append(b)
-            vol_rows[fy] = {"kind": "volatility", "at": "fy_end" if fy else "12m", "fy": fy,
-                            "date": b["end"] if fy else in_12m, "low": b["low"], "mid": price, "high": b["high"],
-                            "low95": b["low95"], "high95": b["high95"]}
-    # each fiscal year end: forward multiples at that date and the volatility range to it
-    for pt in out["forward"][1:]:
-        s += multiple_rows(pt)
-        if pt["fy"] in vol_rows:
-            s.append(vol_rows.pop(pt["fy"]))
-    s += vol_rows.values()
-    out["summary"] = sorted(s, key=lambda r: r["date"])  # stable: keeps the method order within a horizon
+        pe, ev = multiple_bands(years, window, eps_at, ebitda_at, now_pe, now_ev)
+        out["pe_band"] = pe
+        out["ev_band"] = ev if ev_ok and now["ebitda"] and now["ebitda"] > 0 else None
     return out
-
-
-# ============================================================ flags
-def make_flags(years, cur, hist_cmp, pio, alt, dcf, rev_cagr, sector_kind):
-    red, green = [], []
-    L = years[-1]
-    n = len(years) - 1
-
-    if L["revenue_yoy"] is not None and L["revenue_yoy"] < 0:
-        red.append(f"Revenue fell {pct(L['revenue_yoy'])} in {L['label']}")
-    if rev_cagr is not None:
-        if rev_cagr >= 0.10:
-            green.append(f"Revenue CAGR {pct(rev_cagr)} over {n} years")
-        elif rev_cagr < 0:
-            red.append(f"Revenue shrinking: CAGR {pct(rev_cagr)} over {n} years")
-
-    base = years[max(0, len(years) - 4)]
-    if sector_kind != "financial" and L["operating_margin"] is not None and base["operating_margin"] is not None and base is not L:
-        d = L["operating_margin"] - base["operating_margin"]
-        if d >= 0.03:
-            green.append(f"Operating margin expanded {pct(base['operating_margin'])} -> {pct(L['operating_margin'])} since {base['label']}")
-        elif d <= -0.03:
-            red.append(f"Operating margin compressed {pct(base['operating_margin'])} -> {pct(L['operating_margin'])} since {base['label']}")
-
-    roic_med = median([y["roic"] for y in years])
-    if roic_med is not None and sector_kind != "financial":
-        if roic_med >= 0.15:
-            green.append(f"Median ROIC {pct(roic_med)}: high returns on capital")
-        elif roic_med < 0.06:
-            red.append(f"Median ROIC {pct(roic_med)}: below a typical cost of capital")
-
-    if sector_kind != "financial":
-        conv = median([y["fcf_conversion"] for y in years[-3:]])
-        if conv is not None:
-            if conv >= 1.0 and (L["fcf"] or 0) > 0:
-                green.append(f"FCF exceeds net income (median conversion {conv:.2f}x, last 3 yrs)")
-            elif conv < 0.7:
-                red.append(f"Earnings weakly backed by cash (median FCF/NI {conv:.2f}x, last 3 yrs)")
-        if L["fcf"] is not None and L["fcf"] < 0:
-            red.append(f"Negative free cash flow in {L['label']}")
-        if L["net_debt"] is not None and L["net_debt"] < 0:
-            green.append("Net cash balance sheet (cash exceeds debt)")
-        if L["net_debt_to_ebitda"] is not None and L["net_debt_to_ebitda"] > 3:
-            red.append(f"High leverage: net debt / EBITDA {L['net_debt_to_ebitda']:.1f}x")
-        if L["interest_coverage"] is not None and L["interest_coverage"] < 3:
-            red.append(f"Thin interest coverage: EBIT / interest {L['interest_coverage']:.1f}x")
-        if L["current_ratio"] is not None and L["current_ratio"] < 1:
-            red.append(f"Current ratio {L['current_ratio']:.2f} (<1): check short-term liquidity")
-
-    share_chg = mean([y["shares_yoy"] for y in years])
-    if share_chg is not None:
-        if share_chg > 0.02:
-            red.append(f"Share dilution ~{pct(share_chg)} per year")
-        elif share_chg < -0.01:
-            green.append(f"Share count shrinking ~{pct(-share_chg)} per year (buybacks)")
-    if L["sbc_pct"] is not None and L["sbc_pct"] > 0.10:
-        red.append(f"Stock-based comp is {pct(L['sbc_pct'])} of revenue")
-    if L["negative_equity"]:
-        red.append("Negative shareholders' equity (check if caused by buybacks rather than losses)")
-
-    if pio and pio["out_of"] >= 7:
-        if pio["score"] >= 7:
-            green.append(f"Piotroski F-score {pio['score']}/{pio['out_of']} (strong)")
-        elif pio["score"] <= 3:
-            red.append(f"Piotroski F-score {pio['score']}/{pio['out_of']} (weak)")
-    if alt and sector_kind not in ("financial", "fee_financial"):
-        if alt.get("z_zone") == "distress" and alt.get("z2_zone") in ("distress", None):
-            red.append(f"Altman Z {alt['z']:.2f} in distress zone")
-
-    val_keys = (("pe", "P/E"), ("pb", "P/B")) if sector_kind == "financial" else (("pe", "P/E"), ("ev_ebitda", "EV/EBITDA"))
-    for k, name in val_keys:
-        h = hist_cmp.get(k) or {}
-        c = h.get("current")
-        if c is None or not h.get("n") or c > 60:  # multiples above ~60x reflect thin earnings, not cheapness
-            continue
-        if h["n"] >= 3 and c > h["max"]:
-            red.append(f"{name} {c:.1f}x is above its {h['n']}-year range ({h['min']:.1f}-{h['max']:.1f}x)")
-        elif h["n"] >= 3 and c < h["min"]:
-            green.append(f"{name} {c:.1f}x is below its {h['n']}-year range ({h['min']:.1f}-{h['max']:.1f}x)")
-        elif h["vs_median"] is not None and h["vs_median"] <= -0.15:
-            green.append(f"{name} {c:.1f}x is {pct(-h['vs_median'])} below its {h['n']}-year median {h['median']:.1f}x")
-
-    if dcf and "skipped" not in dcf:
-        mos = dcf.get("margin_of_safety")
-        if dcf["value_per_share"] <= 0:
-            red.append("Base-case DCF value is not positive: net debt exceeds the discounted cash flows")
-        elif mos is not None and mos >= 0.20:
-            green.append(f"Base-case DCF value {pct(mos)} above price")
-        elif mos is not None and mos <= -0.30:
-            red.append(f"Price is {pct(-mos / (1 + mos))} above base-case DCF value")
-        ig = dcf.get("implied_growth")
-        if ig is not None and rev_cagr is not None:
-            if ig > rev_cagr + 0.05:
-                red.append(f"Price implies ~{pct(ig)}/yr FCF growth for 5 yrs vs {pct(rev_cagr)} historical revenue CAGR")
-            elif ig < rev_cagr - 0.03:
-                green.append(f"Price implies only ~{pct(ig)}/yr FCF growth vs {pct(rev_cagr)} historical revenue CAGR")
-    return red, green
-
-
-# ============================================================ formatting
-def money(v):
-    if v is None:
-        return "n/a"
-    a, s = abs(v), "-" if v < 0 else ""
-    for div_, suf in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
-        if a >= div_:
-            return f"{s}{a / div_:.2f}{suf}"
-    return f"{s}{a:.0f}"
-
-
-def pct(v):
-    if v is None:
-        return "n/a"
-    return "0.0%" if abs(v) < 0.0005 else f"{v * 100:.1f}%"
-
-
-def mult(v):
-    if v is None:
-        return "n/a"
-    return "0.0x" if abs(v) < 0.05 else f"{v:.1f}x"
-
-
-def ratio(v):
-    return "n/a" if v is None else f"{v:.2f}"
-
-
-def per_share(v):
-    return "n/a" if v is None else f"{v:,.2f}"
-
-
-def table(headers, rows):
-    lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
-    lines += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
-    return "\n".join(lines)
-
-
-def metric_rows(periods, spec):
-    """spec: [(label, key, formatter, cagr_value_or_None)]"""
-    rows = []
-    for label, key, f, extra in spec:
-        row = [label] + [f(p.get(key)) for p in periods]
-        if extra is not False:
-            row.append(extra if isinstance(extra, str) else "")
-        rows.append(row)
-    return rows
-
-
-def fy_label(e):
-    return f"{e['fy']} (ended, not yet reported)" if e.get("ended") else e["fy"]
-
-
-def _ordinal(n):
-    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
-
-
-def _band_lines(band, name, base, years):
-    """Percentile summary of a forward-multiple history. name: 'P/E' or 'EV/EBITDA'; base: 'EPS' or 'EBITDA'."""
-    out = [f"{years}-year forward {name} on next-12-month {base}: 25th percentile {mult(band['p25'])}, median "
-           f"{mult(band['median'])}, 75th percentile {mult(band['p75'])} (10th-90th {mult(band['p10'])} - "
-           f"{mult(band['p90'])}; {band['n']} trading days, {band['from']} to {band['to']})."]
-    if band["now"] is not None:
-        n = round(band["now_pct"] * 100)
-        where = ("below every day of that history" if band["now_pct"] == 0 else
-                 "above every day of that history" if band["now_pct"] == 1 else
-                 f"at the {_ordinal(min(max(n, 1), 99))} percentile of that history")
-        out.append(f"Today's forward {name}: {mult(band['now'])}, {where}.")
-    if band["p75"] > 1.6 * band["p25"]:
-        out.append(f"The forward {name} history is wide ({mult(band['p25'])} - {mult(band['p75'])} between the 25th and "
-                   f"75th percentiles), often after an earnings trough or a re-rating; lean on the Base column.")
-    return out
-
-
-# Price-range methods and horizons. The report's summary table and the UI chart use these same names,
-# always as Method + When ("Forward P/E" + "FY2027 end"); ui/i18n.js has the Chinese for each.
-RANGE_METHODS = {"fwd_pe": "Forward P/E", "fwd_ev": "Forward EV/EBITDA", "dcf": "DCF", "targets": "Analyst targets",
-                 "week52": "Trading range", "volatility": "Volatility"}
-
-
-def _when(pt):
-    """Horizon of a price-range row or forward point: Past 52 weeks, Now, In 12 months or FY<year> end."""
-    return {"past": "Past 52 weeks", "now": "Now", "12m": "In 12 months"}.get(pt["at"]) or f"FY{pt['fy']} end"
-
-
-def _uses(pt, fmt):
-    """The next-12-month figure a row uses, and where it comes from."""
-    if pt["at"] == "now":
-        w = round(pt["weight"] * 100)
-        return f"{fmt(pt['val'])} ({w}% FY{pt['uses'][0]} + {100 - w}% FY{pt['uses'][1]})"
-    return f"{fmt(pt['val'])} (FY{pt['uses'][0]} est.)"
-
-
-def _fwd_table(points, key, val_key, header, fmt, today_header):
-    rows = []
-    for pt in points:
-        m = pt[key] or {}
-        rows.append([_when(pt), pt["date"], _uses(dict(pt, val=pt[val_key]), fmt), per_share(m.get("low")),
-                     per_share(m.get("base")), per_share(m.get("high")), per_share(m.get("at_today")),
-                     pct(m.get("base_vs_price"))])
-    return table(["When", "Date", header, "Low", "Base", "High", today_header, "Base vs price"], rows)
-
-
-def render_price_range(r):
-    pr, a = r["price_range"], r["analyst"]
-    pb, eb, pts, yrs = pr["pe_band"], pr["ev_band"], pr["forward"], pr["lookback_years"]
-    vol = pr.get("volatility")
-    by_at = {(p["at"], p["fy"]): p for p in pts}
-    out = [f"Current price {per_share(pr['price'])}. Each row is the range one method gives; none of them is a forecast."]
-    d = r["dcf"]
-    rows = []
-    for s in pr["summary"]:
-        k = s["kind"]
-        if k in ("fwd_pe", "fwd_ev"):
-            pt = by_at[(s["at"], s["fy"])]
-            pe = k == "fwd_pe"
-            band, base = (pb, "EPS") if pe else (eb, "EBITDA")
-            val = pt["eps"] if pe else pt["ebitda"]
-            src = "next 12 months" if pt["at"] == "now" else f"FY{pt['uses'][0]} est."
-            basis = (f"{base} {per_share(val) if pe else money(val)} ({src}) x {'P/E' if pe else 'EV/EBITDA'} "
-                     f"{mult(band['p25'])} / {mult(band['median'])} / {mult(band['p75'])}" + ("" if pe else ", less net debt"))
-        elif k == "volatility":
-            basis = (f"price +/-1 sd at {pct(vol['sigma'])} a year ({'implied' if vol['implied'] else 'realized'}); "
-                     f"95%: {per_share(s['low95'])} - {per_share(s['high95'])}")
-        elif k == "dcf":
-            basis = f"discount rate {pct(d['discount_rate'])} +/-1pt, growth {pct(d['growth_1_5'])} +/-2pt"
-        elif k == "targets":
-            basis = "lowest / consensus / highest target"
-        else:
-            basis = f"lowest / highest daily close, {pr['week52']['from']} to {pr['week52']['to']}"
-        rows.append([RANGE_METHODS[k], _when(s), per_share(s["low"]), "-" if s["mid"] is None else per_share(s["mid"]),
-                     per_share(s["high"]), basis])
-    if rows:
-        out.append(table(["Method", "When", "Low", "Mid", "High", "Basis"], rows))
-    else:
-        out.append("No method had enough data for a range.")
-
-    out.append("\n### Forward P/E (next-12-month EPS)")
-    if not pts:
-        out.append("Needs analyst estimates for the current and next fiscal years (not on this FMP plan or none "
-                   "published); forward multiple ranges not available.")
-    elif pr["band_note"]:
-        out.append(pr["band_note"])
-    elif not pb:
-        out.append("Not enough positive-earnings price history for a P/E range (needs about 6 months).")
-    if pts and pb:
-        out += _band_lines(pb, "P/E", "EPS", yrs)
-        out.append(_fwd_table(pts, "pe", "eps", "EPS used", per_share, "At today's P/E"))
-        out.append("\nForward P/E each day = close / next-12-month EPS: the fiscal year in progress and the one after it, "
-                   "weighted by the time left in the year (reported EPS once a year is reported, the analysts' average "
-                   "otherwise). This is how published forward P/E histories are built; a single fiscal year's EPS would "
-                   "make the multiple jump at every year end for a fast grower and skew the range.")
-        out.append("Low / Base / High = EPS used x the 25th-percentile / median / 75th-percentile forward P/E. Now = a "
-                   "fair-value range for today. At a fiscal year end the next 12 months are exactly the following "
-                   "fiscal year, so those rows use that year's average estimate: a fair-value range for that date if "
-                   "the company earns it and trades at its usual multiple. Not a forecast.")
-        out.append("At today's P/E = EPS used x today's forward P/E: where the price would be if the multiple stays "
-                   "where it is (earnings growth only, no re-rating).")
-        last = pts[-1]
-        if last["at"] == "fy_end" and len(pts) == 3:
-            out.append(f"The FY{last['fy']} end row rests on the FY{last['uses'][0]} consensus"
-                       + (f" ({int(last['analysts'])} analysts)" if last.get("analysts") else "")
-                       + ", which is further out and less reliable.")
-        elif len(pts) == 2:
-            nfy = pts[-1]["uses"][0]
-            out.append(f"No analyst estimate for the year after FY{nfy}, so no range at the end of FY{nfy}.")
-        if any(p["pe"] is None for p in pts):
-            out.append("n/a = zero or negative EPS in the period used, so a P/E-based price is not meaningful.")
-        gap = a.get("eps_basis")
-        if gap and abs(gap["gap"]) > 0.05:
-            out.append(f"Analysts' {gap['fy']} EPS ({per_share(gap['estimate'])}) differs from reported diluted EPS "
-                       f"({per_share(gap['reported'])}) by {pct(gap['gap'])}: the estimates may be on an adjusted (non-GAAP) "
-                       f"basis, while the P/E history uses reported EPS, so the forward P/E prices may run "
-                       f"{'high' if gap['gap'] > 0 else 'low'}.")
-    if r["sector_kind"] == "reit":
-        out.append("REIT: net-income P/E understates cash earnings, so the P/E rows are a weak guide here.")
-    rep_ccy, px_ccy = r["years"][-1].get("currency"), r["profile"].get("currency")
-    if pts and (pb or eb) and rep_ccy and px_ccy and rep_ccy != px_ccy:
-        out.append(f"Statements are in {rep_ccy} and the price in {px_ccy}: the P/E rows assume a steady exchange "
-                   f"rate and analysts' EPS in {rep_ccy} per share; check both before relying on them.")
-
-    if pts and not pr["band_note"] and r["sector_kind"] != "financial":
-        out.append("\n### Forward EV/EBITDA (next-12-month EBITDA)")
-        if not eb:
-            out.append("Not available: no analyst EBITDA estimates, no net debt figure, or not enough positive-EBITDA "
-                       "price history.")
-        else:
-            out += _band_lines(eb, "EV/EBITDA", "EBITDA", yrs)
-            out.append(_fwd_table(pts, "ev", "ebitda", "EBITDA used", money, "At today's EV/EBITDA"))
-            out.append("\nEV each day = price x shares + net debt + minority interest of the latest reported fiscal year; "
-                       "next-12-month EBITDA as for EPS above. Price = (multiple x EBITDA used - today's net debt and "
-                       "minority interest) / today's shares. Columns as in the P/E table. EV/EBITDA looks through "
-                       "leverage and tax, so it is a cross-check on the P/E rows.")
-            if any(p["ev"] is None for p in pts):
-                out.append("n/a = no positive EBITDA estimate for that period.")
-            gap = a.get("ebitda_basis")
-            if gap and abs(gap["gap"]) > 0.10:
-                out.append(f"Analysts' {gap['fy']} EBITDA ({money(gap['estimate'])}) differs from reported EBITDA "
-                           f"({money(gap['reported'])}) by {pct(gap['gap'])}: the estimates may be on an adjusted basis "
-                           f"(for example before stock-based compensation), so the EV/EBITDA prices may run "
-                           f"{'high' if gap['gap'] > 0 else 'low'}.")
-
-    if vol:
-        out.append("\n### Volatility range to each fiscal year end")
-        src = ("implied volatility you entered" if vol["implied"] else
-               "realized: standard deviation of the past year's daily moves, annualized")
-        out.append(f"Volatility {pct(vol['sigma'])} a year ({src}).")
-        out.append(table(["To", "Date", "Years", "68% range (+/-1 sd)", "95% range (+/-1.96 sd)"],
-                         [[f"FY{b['fy']} end" if b["fy"] else "In 12 months", b["end"], f"{b['years']:.2f}",
-                           f"{per_share(b['low'])} - {per_share(b['high'])}",
-                           f"{per_share(b['low95'])} - {per_share(b['high95'])}"] for b in vol["bands"]]))
-        out.append("\nA statistical range around today's price (lognormal, no drift), not a valuation: about two in "
-                   "three outcomes at that date fall inside the 68% range if volatility holds. Real returns have fatter "
-                   "tails, so moves beyond the 95% range happen more often than 1 in 20. Options-implied volatility "
-                   "is the market's own forward estimate and usually beats the past year's; enter it with --iv "
-                   "(e.g. 0.45 for 45%).")
-    return "\n".join(out)
-
-
-def render(r):
-    out = []
-    pr, years, basis, cur = r["profile"], r["years"], r["basis"], r["current"]
-    periods = years + ([r["ttm"]] if r["ttm"] else [])
-    heads = [p["label"] for p in periods]
-    ccy = years[-1].get("currency") or pr.get("currency") or ""
-
-    out.append(f"# {r['symbol']} - {pr.get('companyName', '')}")
-    out.append(f"{pr.get('sector') or 'n/a'} / {pr.get('industry') or 'n/a'} | {pr.get('country') or ''} "
-               f"{pr.get('exchange') or pr.get('exchangeShortName') or ''} | Price {per_share(cur['price'])} {pr.get('currency') or ''} "
-               f"| Market cap {money(cur['market_cap'])} | Beta {ratio(num(pr, 'beta'))} "
-               f"| Employees {pr.get('fullTimeEmployees') or 'n/a'}")
-    ttm_txt = f" + TTM to {r['ttm']['date']}" if r["ttm"] else " (TTM unavailable: using last fiscal year)"
-    out.append(f"\nData basis: annual {years[0]['label']}-{years[-1]['label']} in {ccy}{ttm_txt}. "
-               f"Valuation uses {basis['label']} figures. As of {r['as_of']}.")
-    if r["sector_note"]:
-        out.append(f"\n**Sector note:** {r['sector_note']}")
-    desc = (pr.get("description") or "").strip()
-    if desc:
-        out.append("\n" + (desc[:600] + ("..." if len(desc) > 600 else "")))
-    if r.get("score"):
-        out.append(S.render(r["score"]))
-
-    cg = r["cagr"]
-    out.append(f"\n## 1. Growth ({len(years) - 1}-year CAGR in last column)")
-    out.append(table(["Metric"] + heads + ["CAGR"], metric_rows(periods, [
-        ("Revenue", "revenue", money, pct(cg["revenue"])),
-        ("Revenue YoY", "revenue_yoy", pct, ""),
-        ("Gross profit", "gross_profit", money, pct(cg["gross_profit"])),
-        ("Operating income", "operating_income", money, pct(cg["operating_income"])),
-        ("Net income", "net_income", money, pct(cg["net_income"])),
-        ("EPS (diluted)", "eps", per_share, pct(cg["eps"])),
-        ("EPS YoY", "eps_yoy", pct, ""),
-        ("Free cash flow", "fcf", money, pct(cg["fcf"])),
-        ("Diluted shares", "shares", money, pct(cg["shares"])),
-    ])))
-
-    out.append("\n## 2. Profitability & returns")
-    out.append(table(["Metric"] + heads, metric_rows(periods, [
-        ("Gross margin", "gross_margin", pct, False),
-        ("Operating margin", "operating_margin", pct, False),
-        ("Net margin", "net_margin", pct, False),
-        ("EBITDA margin", "ebitda_margin", pct, False),
-        ("FCF margin", "fcf_margin", pct, False),
-        ("R&D % revenue", "rnd_pct", pct, False),
-        ("ROE", "roe", pct, False),
-        ("ROA", "roa", pct, False),
-        ("ROIC (after tax)", "roic", pct, False),
-    ])))
-
-    out.append("\n## 3. Balance sheet & liquidity")
-    out.append(table(["Metric"] + heads, metric_rows(periods, [
-        ("Cash & ST investments", "cash", money, False),
-        ("Total debt", "debt", money, False),
-        ("Net debt (neg = net cash)", "net_debt", money, False),
-        ("Net debt / EBITDA", "net_debt_to_ebitda", mult, False),
-        ("Debt / equity", "debt_to_equity", ratio, False),
-        ("Current ratio", "current_ratio", ratio, False),
-        ("Quick ratio", "quick_ratio", ratio, False),
-        ("Interest coverage (EBIT/int.)", "interest_coverage", mult, False),
-        ("Shareholders' equity", "equity", money, False),
-        ("Goodwill & intangibles", "goodwill_intangibles", money, False),
-    ])))
-
-    out.append("\n## 4. Cash flow quality & capital allocation")
-    out.append(table(["Metric"] + heads, metric_rows(periods, [
-        ("Operating cash flow", "ocf", money, False),
-        ("Capex", "capex", money, False),
-        ("Capex % revenue", "capex_pct", pct, False),
-        ("FCF / net income", "fcf_conversion", ratio, False),
-        ("Stock comp % revenue", "sbc_pct", pct, False),
-        ("Buybacks", "buybacks", money, False),
-        ("Dividends", "dividends", money, False),
-        ("Share count YoY", "shares_yoy", pct, False),
-    ])))
-
-    out.append(f"\n## 5. Valuation (price {per_share(cur['price'])}, {basis['label']} fundamentals)")
-    hc = r["history_compare"]
-    rows = []
-    for k, name in (("pe", "P/E"), ("ev_ebitda", "EV/EBITDA"), ("ps", "P/S"), ("p_fcf", "P/FCF"), ("pb", "P/B")):
-        h = hc.get(k, {})
-        rng = f"{mult(h.get('min'))} - {mult(h.get('max'))}" if h.get("n") else "n/a"
-        rows.append([name, mult(cur.get(k)), mult(h.get("median")), rng, pct(h.get("vs_median"))])
-    out.append(table(["Multiple", "Now", "Hist. median", "Hist. range", "Now vs median"], rows))
-    out.append("\n(History = price on each fiscal-year-end date x that year's fundamentals.)")
-    out.append(table(["Measure", "Value"], [
-        ["Enterprise value", money(cur["enterprise_value"])],
-        ["EV / sales", mult(cur["ev_sales"])],
-        ["Earnings yield", pct(cur["earnings_yield"])],
-        ["FCF yield", pct(cur["fcf_yield"])],
-        ["Dividend yield (cash paid)", pct(cur["dividend_yield"])],
-        ["Shareholder yield (div + buyback - issuance)", pct(cur["shareholder_yield"])],
-    ]))
-
-    out.append("\n## 6. Quality scores")
-    pio = r["piotroski"]
-    if pio:
-        out.append(f"**Piotroski F-score {pio['year']}: {pio['score']} / {pio['out_of']}** (7-9 strong, 0-3 weak)")
-        out.append(table(["Test", "Result"], [[t["test"], {True: "pass", False: "fail", None: "n/a"}[t["pass"]]]
-                                              for t in pio["tests"]]))
-    else:
-        out.append("Piotroski F-score: needs at least 2 fiscal years.")
-    alt = r["altman"]
-    if alt:
-        parts = []
-        if "z" in alt:
-            parts.append(f"Altman Z {alt['z']:.2f} ({alt['z_zone']}; >2.99 safe, <1.81 distress)")
-        if "z_double_prime" in alt:
-            parts.append(f"Z'' (non-manufacturer) {alt['z_double_prime']:.2f} ({alt['z2_zone']}; >2.6 safe, <1.1 distress)")
-        out.append("\n" + " | ".join(parts))
-    if r["sector_kind"] == "financial":
-        out.append("(Altman Z is not designed for banks/insurers; ignore it here.)")
-
-    out.append("\n## 7. DCF (FCF-based, 10 years + terminal)")
-    d = r["dcf"]
-    if "skipped" in d:
-        out.append(d["skipped"])
-    else:
-        out.append(table(["Assumption", "Value"], [
-            ["Starting FCF", f"{money(d['fcf_start'])} ({d['fcf_start_basis']})"],
-            ["Growth yrs 1-5", f"{pct(d['growth_1_5'])} ({d['growth_source']})"],
-            ["Growth yrs 6-10", f"fades linearly to terminal {pct(d['terminal_growth'])}"],
-            ["Discount rate", f"{pct(d['discount_rate'])} ({d['discount_source']})"],
-            ["Net debt deducted", money(d["net_debt"])],
-            ["Shares", money(d["shares"])],
-        ]))
-        if d["value_per_share"] <= 0:
-            head = (f"Base-case value {per_share(d['value_per_share'])} per share is not positive: net debt exceeds "
-                    f"the discounted cash flows, so it is not compared with the price.")
-        else:
-            head = (f"Base-case value {per_share(d['value_per_share'])} per share vs price {per_share(cur['price'])} "
-                    f"-> {pct(d['margin_of_safety'])} {'upside' if (d['margin_of_safety'] or 0) >= 0 else 'downside'}.")
-        out.append(f"\n**{head}** "
-                   f"Reasonable range (discount +/-1pt, growth +/-2pt): {per_share(d['range_low'])} - {per_share(d['range_high'])}. "
-                   f"Terminal value is {pct(d['terminal_value_share'])} of the total.")
-        grid_rows = [[pct(rr)] + [per_share(v) for v in row] for rr, row in zip(d["grid_rates"], d["grid"])]
-        out.append("\nValue per share (rows = discount rate, columns = growth yrs 1-5):")
-        out.append(table(["r \\ g"] + [pct(g) for g in d["grid_growths"]], grid_rows))
-        if d["implied_growth"] is not None:
-            out.append(f"\n**Reverse DCF:** today's price implies ~{pct(d['implied_growth'])} FCF growth per year for "
-                       f"5 years (then fading), at a {pct(d['discount_rate'])} discount rate.")
-        else:
-            out.append(f"\nReverse DCF: implied growth {d['implied_growth_note']}.")
-
-    out.append("\n## 8. Analyst consensus")
-    a = r["analyst"]
-    if a.get("estimates"):
-        out.append(table(["FY", "EPS est. (low-high)", "Fwd P/E", "Revenue est.", "Rev. growth", "# analysts"],
-                         [[fy_label(e), f"{per_share(e['eps_avg'])} ({per_share(e['eps_low'])}-{per_share(e['eps_high'])})",
-                           mult(e["forward_pe"]), money(e["revenue_avg"]), pct(e["revenue_growth"]),
-                           "n/a" if e["analysts"] is None else int(e["analysts"])] for e in a["estimates"]]))
-        if a.get("revenue_basis"):
-            rb = a["revenue_basis"]
-            out.append(f"\nAnalysts' revenue for {rb['fy']} is {money(rb['estimate'])} against "
-                       f"{money(rb['reported'])} reported ({pct(rb['gap'])}), so they use another revenue basis "
-                       f"(often net instead of gross revenue); the first year's growth is measured from their figure.")
-    if a.get("price_target"):
-        pt = a["price_target"]
-        out.append(f"\nPrice target consensus {per_share(pt['consensus'])} (median {per_share(pt['median'])}, "
-                   f"range {per_share(pt['low'])}-{per_share(pt['high'])}).")
-    if not a:
-        out.append("Not available on this FMP plan.")
-
-    out.append("\n## 9. Price range (forward P/E and EV/EBITDA, DCF, analyst targets, volatility)")
-    out.append(render_price_range(r))
-
-    out.append("\n## 10. Peer comparison (last fiscal year, same method for all)")
-    if r["peers"]:
-        prow = []
-        for p in [r["self_snapshot"]] + r["peers"]:
-            if "error" in p:
-                prow.append([p["symbol"], p["error"]] + [""] * 9)
-                continue
-            prow.append([p["symbol"] + (" *" if p is r["self_snapshot"] else ""), money(p["market_cap"]),
-                         mult(p["pe"]), mult(p["ev_ebitda"]), mult(p["ps"]), mult(p["p_fcf"]),
-                         pct(p["revenue_yoy"]), pct(p["gross_margin"]), pct(p["operating_margin"]),
-                         pct(p["roic"]), mult(p["net_debt_to_ebitda"])])
-        ok = [p for p in r["peers"] if "error" not in p]
-        if ok:
-            prow.append(["Peer median", money(median([p["market_cap"] for p in ok]))] +
-                        [f(median([p[k] for p in ok])) for k, f in (
-                            ("pe", mult), ("ev_ebitda", mult), ("ps", mult), ("p_fcf", mult),
-                            ("revenue_yoy", pct), ("gross_margin", pct), ("operating_margin", pct),
-                            ("roic", pct), ("net_debt_to_ebitda", mult))])
-        out.append(table(["Ticker", "Mkt cap", "P/E", "EV/EBITDA", "P/S", "P/FCF", "Rev YoY",
-                          "Gross m.", "Op m.", "ROIC", "ND/EBITDA"], prow))
-    else:
-        out.append("No peers (FMP stock-peers not available on this plan, or --peers none). "
-                   "Re-run with --peers TICKER1,TICKER2 to compare.")
-
-    sec = 11
-    mk = r.get("market") or {}
-    if mk.get("sector"):
-        out.append(f"\n## {sec}. Sector & industry context")
-        out.append(M.render_sector_context(mk["sector"], r["symbol"]))
-        sec += 1
-    if mk.get("macro"):
-        out.append(f"\n## {sec}. Rates & macro backdrop")
-        out.append(M.render_macro(mk["macro"]))
-        sec += 1
-    if r.get("insider"):
-        out.append(f"\n## {sec}. Insider trades (last 12 months, observation only)")
-        out.append(I.render(r["insider"]))
-        sec += 1
-
-    out.append(f"\n## {sec}. Automated flags (prompts for investigation, not conclusions)")
-    out.append("**Positives**")
-    out += [f"- {g}" for g in r["flags"]["green"]] or ["- none triggered"]
-    out.append("\n**Concerns**")
-    out += [f"- {x}" for x in r["flags"]["red"]] or ["- none triggered"]
-
-    m = r["meta"]
-    out.append("\n## Data notes")
-    conn = m["connection"]
-    if conn["route"].startswith("official"):
-        out.append("- Data route: official FMP API.")
-    else:
-        out.append(f"- Data route: {conn['route']}. Data is not served by FMP directly; "
-                   f"spot-check key figures against company filings.")
-    if not conn["tls_verify"]:
-        out.append("- HTTPS certificate verification was OFF for this run.")
-    out.append(f"- API calls: {m['network_calls']} network, {m['cache_hits']} from cache.")
-    if r.get("price_time"):
-        out.append(f"- Price from the latest quote at {r['price_time']} New York time.")
-    elif r.get("price_time") == "":
-        out.append("- Price from the latest quote.")
-    else:
-        out.append("- Price from the company profile, which is cached for up to a day (no current quote).")
-    fixed = str((r.get("dcf") or {}).get("discount_source", "")).startswith("fixed default")
-    if not r.get("market"):
-        out.append("- Treasury, sector and industry data skipped (--no-market).")
-    elif mk.get("rates"):
-        out.append(f"- Treasury yields as of {mk['rates']['date']} (FMP treasury-rates).")
-        if mk.get("erp") is None:
-            out.append("- US equity risk premium unavailable" +
-                       (": DCF used the fixed default discount rate." if fixed else "."))
-    else:
-        missing = "Treasury yields" + (" and US equity risk premium" if mk.get("erp") is None else "")
-        out.append(f"- {missing} unavailable" + (": DCF used the fixed default discount rate." if fixed else "."))
-    if m["restricted"]:
-        out.append(f"- Skipped (not in your FMP plan): {', '.join(m['restricted'])}")
-    for e in dict.fromkeys(m["errors"]):
-        out.append(f"- Error: {e}")
-    out.append("- Source: Financial Modeling Prep. Computed figures are approximations; verify against filings before acting.")
-    return "\n".join(out)
 
 
 # ============================================================ main
@@ -1378,18 +721,6 @@ def fetch_prices(client, sym, start, end):
     except FMPError as e:
         client.add_error(f"price history: {e}")
         return []
-
-
-def fetch_candles(client, sym, start, end):
-    """Daily open/high/low/close bars for the UI's candlestick chart, and why they are missing (or None).
-    Only the UI asks for them, so a failure is not added to the report's data notes."""
-    try:
-        bars = client.ohlc(sym, start, end)
-    except InvalidKey:
-        raise
-    except FMPError as e:
-        return [], str(e)
-    return bars, None if bars else "historical-price-eod/full returned no rows"
 
 
 def fetch_quote(client, sym):
@@ -1429,35 +760,24 @@ def quote_price(profile, quote):
     return profile
 
 
-def apply_quote(profile, quote, series, candles):
+def apply_quote(profile, quote, series):
     """Use the latest quote for the price, day change and market cap, and for the latest day of the price
-    history, so each run shows the current price while the profile and the daily bars come from the cache.
-    Returns (profile, series, candles, quote time in New York as 'YYYY-MM-DD HH:MM'); the time is "" when the
-    quote has no timestamp, and None when the quote was not used because it is older than the price history."""
+    history, so each run shows the current price while the profile and the daily closes come from the cache.
+    Returns (profile, series, quote time in New York as 'YYYY-MM-DD HH:MM'); the time is "" when the quote has
+    no timestamp, and None when the quote was not used because it is older than the price history."""
     ts = num(quote, "timestamp")
     when = us_eastern(ts / 1000 if ts > 1e12 else ts) if ts and ts > 0 else None
     day = when.date().isoformat() if when else None
-    if day and any(h and h[-1][0] > day for h in (series, candles)):
-        return profile, series, candles, None  # the quote is older than the price history: keep the profile's price
+    if day and series and series[-1][0] > day:
+        return profile, series, None  # the quote is older than the price history: keep the profile's price
     profile = quote_price(profile, quote)
-    px = profile["price"]
     if not when:
-        return profile, series, candles, ""
-    # A bar for the quote's day exists once that session has opened (not on weekends or before 9:30).
+        return profile, series, ""
+    # A close for the quote's day exists once that session has opened (not on weekends or before 9:30).
     opened = when.weekday() < 5 and when.time() >= dt.time(9, 30)
     if series and (series[-1][0] == day or (series[-1][0] < day and opened)):
-        series = [p for p in series if p[0] != day] + [(day, px)]
-    if candles and (candles[-1][0] == day or (candles[-1][0] < day and opened)):
-        qo, qh, ql = (v if v and v > 0 else None for v in (num(quote, "open"), num(quote, "dayHigh"), num(quote, "dayLow")))
-        qv = num(quote, "volume")
-        if candles[-1][0] == day:
-            _, o, h, lo, _, v = candles[-1]
-            bar = (day, o, max(h, qh or px, px), min(lo, ql or px, px), px, max(v or 0, qv or 0) or None)
-            candles = candles[:-1] + [bar]
-        else:
-            o = qo or px
-            candles = candles + [(day, o, max(qh or px, px, o), min(ql or px, px, o), px, qv or None)]
-    return profile, series, candles, when.strftime("%Y-%m-%d %H:%M")
+        series = [p for p in series if p[0] != day] + [(day, profile["price"])]
+    return profile, series, when.strftime("%Y-%m-%d %H:%M")
 
 
 def max_workers():
@@ -1468,6 +788,8 @@ def max_workers():
 
 
 def analyze(args):
+    """One company's analysis: the internal result that facts.build() turns into the fa-2.0 document and run()
+    reports on. It is never written to disk (only fa-2.0 is)."""
     try:
         sym = normalize_symbol(args.symbol)  # BRK.B -> BRK-B; refuses foreign listings before any API call
     except ValueError as e:
@@ -1502,14 +824,13 @@ def analyze(args):
             submit(st, "cash-flow-statement", sym, "quarter", 4, optional=True),
             submit(st, "balance-sheet-statement", sym, "quarter", 1, optional=True))
         f_est = submit(fetch_estimates, client, sym)
-        f_pt = submit(client.try_get, "price-target-consensus", symbol=sym)
         f_quote = submit(fetch_quote, client, sym)
         f_peer_syms = submit(peer_symbols, client, sym, args.peers, args.max_peers)
-        f_ins = None if args.no_insider else submit(I.fetch, client, sym, today)
         market_reqs = {}
         if not args.no_market:
-            market_reqs.update(M.rates_requests(client, today))
-            market_reqs.update(M.sector_requests(client, profile, today))
+            # the Treasury curve 3M / 1Y ago and the returns are only shown in the --macro section
+            market_reqs.update(M.rates_requests(client, today, history=args.macro))
+            market_reqs.update(M.sector_requests(client, profile, today, returns=args.macro))
             if args.macro:
                 market_reqs.update(M.macro_requests(client, today))
         f_market = {k: submit(fn, *a, **kw) for k, (fn, a, kw) in market_reqs.items()}
@@ -1520,19 +841,15 @@ def analyze(args):
         # price history starts just before the oldest fiscal year, so it waits for the income statements
         start = (dt.date.fromisoformat(str(inc[0].get("date"))[:10]) - dt.timedelta(days=10)).isoformat()
         f_px = submit(fetch_prices, client, sym, start, today.isoformat())
-        f_bars = (submit(fetch_candles, client, sym, (today - dt.timedelta(days=366)).isoformat(), today.isoformat())
-                  if getattr(args, "candles", False) else None)
         f_peers = [(s, [submit(fn, *a, **kw) for fn, a, kw in peer_requests(client, s)])
                    for s in f_peer_syms.result()]
 
         years = build_years(inc, f_bs.result(), f_cf.result())
         ttm = build_ttm(*(f.result() for f in f_q)) if f_q else None
         series = f_px.result()
-        candles, candles_note = f_bars.result() if f_bars else (None, None)
-        est, pt, quote = f_est.result(), f_pt.result(), f_quote.result()
+        est, quote = f_est.result(), f_quote.result()
         peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
         market_res = {k: f.result() for k, f in f_market.items()}
-        ins_rows, ins_complete = f_ins.result() if f_ins else (None, True)
     except BaseException:
         for f in futures:
             f.cancel()
@@ -1542,35 +859,25 @@ def analyze(args):
 
     price_time = None
     if quote:
-        profile, series, candles, price_time = apply_quote(profile, quote, series, candles)
+        profile, series, price_time = apply_quote(profile, quote, series)
 
     if ttm and ttm["date"] <= years[-1]["date"]:
         ttm = None  # latest quarter is the fiscal year end; annual data is already current
     basis = ttm or years[-1]
 
+    # The company kind decides which standard measures apply (facts.NOT_MEANINGFUL lists the ones that do not).
     sector = (profile.get("sector") or "").strip().lower()
     industry = (profile.get("industry") or "").lower()
-    sector_kind, sector_note = "general", ""
+    sector_kind = "general"
     if any(w in industry for w in FEE_FINANCIAL_INDUSTRIES):
-        sector_kind = "fee_financial"
-        sector_note = ("Fee-based financial company (exchange, data provider or insurance broker): analysed like "
-                       "other companies, since its earnings and cash flow do not depend on a balance sheet of loans "
-                       "or policies. Clearing margin and client money on its balance sheet make Altman Z and the "
-                       "current ratio meaningless.")
+        sector_kind = "fee_financial"  # Altman Z and the current ratio mean little (clearing margin, client money)
     elif (sector in FINANCIAL_SECTORS or any(w in industry for w in ("bank", "insurance", "capital markets"))
-          or ("reit" in industry and "mortgage" in industry)):  # mortgage REITs lend: judged like banks
-        sector_kind = "financial"
-        sector_note = ("Financial company: gross margin, EV-based multiples, FCF, DCF and Altman Z are not "
-                       "meaningful. Focus on ROE, P/B, P/E, book-value growth and leverage.")
+          or ("reit" in industry and "mortgage" in industry)):  # mortgage REITs lend: treated like banks
+        sector_kind = "financial"  # gross margin, EV multiples, FCF, DCF and Altman Z mean little
     elif "reit" in industry:  # developers and real-estate services are analysed like other companies
-        sector_kind = "reit"
-        sector_note = ("REIT: net income understates cash earnings (depreciation). Use P/FCF or operating "
-                       "cash flow as an FFO proxy; leverage is structurally higher.")
+        sector_kind = "reit"  # net income understates cash earnings (depreciation)
     elif sector == "utilities" and "independent power" not in industry:
-        sector_kind = "utility"
-        sector_note = ("Utility: regulated and capital-heavy. Capex routinely exceeds operating cash flow and is "
-                       "funded with debt and new shares, so negative FCF, net debt of 5-6x EBITDA and a low Altman Z "
-                       "are normal; judge it on earnings growth, interest cover and leverage against other utilities.")
+        sector_kind = "utility"  # capex above operating cash flow, funded with debt and new shares, is normal
 
     price, mcap = num(profile, "price"), num(profile, "marketCap", "mktCap")
     current = multiples(price, mcap, basis)
@@ -1584,7 +891,7 @@ def analyze(args):
         erp = M.us_erp(market_res.get("erp"))
         capm = M.capm_rate(rates, erp, num(profile, "beta"))
         market = {"rates": rates, "erp": erp, "capm": capm,
-                  "sector": M.sector_context(market_res, profile, current["pe"], series, hist_cmp.get("pe"), today)}
+                  "sector": M.sector_context(market_res, profile, current["pe"], series, today=today)}
         if args.macro:
             now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
             market["macro"] = {
@@ -1604,37 +911,51 @@ def analyze(args):
     cg = {k: cagr(years[0][k], years[-1][k], n) for k in
           ("revenue", "gross_profit", "operating_income", "net_income", "eps", "fcf", "shares")}
 
-    pio = piotroski(years)
-    alt = altman(years[-1], mcap)
-    dcf = run_dcf(years, basis, current, args, cg["revenue"], sector_kind, rate, rate_src)
-    analyst = analyst_view(est, pt, years[-1], price, today.isoformat())
-    ranges = price_range(years, basis, series, analyst, dcf, price, today, div(mcap, price), iv=args.iv,
-                         sector_kind=sector_kind)
-    red, green = make_flags(years, current, hist_cmp, pio, alt, dcf, cg["revenue"], sector_kind)
-    insider = I.summarize(ins_rows, today, mcap, ins_complete) if f_ins else None
-
-    result = {
-        "symbol": sym, "as_of": today.isoformat(), "price_time": price_time, "profile": profile,
+    analyst = analyst_view(est, years[-1], price, today.isoformat())
+    # the date the price belongs to when there is no quote time: the last close of the past year
+    year = [d for d, px in series if d >= (today - dt.timedelta(days=365)).isoformat() and px]
+    return {
+        "symbol": sym, "as_of": today.isoformat(), "price_time": price_time,
+        "last_close": year[-1] if len(year) >= 2 else None, "profile": profile,
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-        "sector_kind": sector_kind, "sector_note": sector_note,
+        "sector_kind": sector_kind,
         "years": years, "ttm": ttm, "basis": basis, "current": current, "cagr": cg,
         "valuation_history": hist, "history_compare": hist_cmp,
-        "piotroski": pio, "altman": alt, "dcf": dcf, "analyst": analyst, "price_range": ranges,
-        "self_snapshot": lfy_snapshot(profile, years), "peers": peers,
-        "flags": {"red": red, "green": green},
-        "market": market, "insider": insider,
-        "price_series": series,  # daily closes used for valuation history (the UI charts the last year)
-        "candles": candles, "candles_note": candles_note,  # last year of daily bars, only when args.candles (UI)
+        "piotroski": piotroski(years), "altman": altman(years[-1], mcap),
+        "dcf": run_dcf(years, basis, current, args, cg["revenue"], sector_kind, rate, rate_src),
+        "analyst": analyst,
+        "forward_bands": forward_bands(years, basis, series, analyst, price, today, div(mcap, price),
+                                       sector_kind=sector_kind),
+        "peers": peers, "market": market,
         "meta": {"network_calls": client.stats["network_calls"], "cache_hits": client.stats["cache_hits"],
                  "restricted": sorted(client.restricted), "errors": sorted(client.errors),
                  "connection": client.describe()},
     }
-    result["score"] = S.score(result)
-    return result
+
+
+def run(args):
+    """One analysis as (fa-2.0 document, markdown report). main() and ui/server.py both call it, so the command
+    line and the page always agree."""
+    r = analyze(args)
+    doc = F.build(json.loads(json.dumps(r, default=str)))  # built from its JSON form, like a result saved by v1.x
+    mk = r["market"] or {}
+    macro_md = None
+    if mk.get("macro"):  # --macro: the dashboard, then the stock's returns against its industry, sector and SPY
+        macro_md = M.render_macro(mk["macro"]) + "\n\n" + M.render_returns(mk["sector"], r["symbol"])
+    calls = (r["meta"]["network_calls"], r["meta"]["cache_hits"])
+    return doc, R.render(doc, macro_md=macro_md, calls=calls)
+
+
+# accepted for one version, with a note on stderr
+DEPRECATED_NOTES = (
+    ("contract", "--contract is deprecated: fa-1.1 was removed in v2.0; it now writes fa-2.0, like --json"),
+    ("iv", "--iv is ignored: v2.0 has no volatility range"),
+    ("no_insider", "--no-insider is ignored: v2.0 fetches no insider trades"),
+)
 
 
 def parse_args(argv):
-    ap = argparse.ArgumentParser(description="FMP fundamental analysis snapshot")
+    ap = argparse.ArgumentParser(description="FMP fundamental analysis: the facts of one stock (fa-2.0)")
     ap.add_argument("symbol")
     ap.add_argument("--years", type=int, default=5)
     ap.add_argument("--peers", default=None)
@@ -1643,20 +964,18 @@ def parse_args(argv):
     ap.add_argument("--terminal", type=float, default=0.025)
     ap.add_argument("--growth", type=float, default=None)
     ap.add_argument("--fcf-base", choices=("latest", "avg3"), default="latest")
-    ap.add_argument("--iv", type=float, default=None)
     ap.add_argument("--no-ttm", action="store_true")
     ap.add_argument("--macro", action="store_true")
     ap.add_argument("--no-market", action="store_true")
-    ap.add_argument("--no-insider", action="store_true")
     ap.add_argument("--json", default=None)
-    ap.add_argument("--contract", default=None)
     ap.add_argument("--facts", default=None)
+    ap.add_argument("--contract", default=None)
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--iv", default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--no-insider", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     if a.macro and a.no_market:
         ap.error("--macro needs the market data that --no-market skips; use one or the other")
-    if a.iv is not None and not 0 < a.iv < 5:
-        ap.error("--iv is annual volatility as a decimal, e.g. 0.45 for 45%")
     return a
 
 
@@ -1664,27 +983,23 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    for key, note in DEPRECATED_NOTES:
+        if getattr(args, key):
+            print(f"({note})", file=sys.stderr)
     try:
-        result = analyze(args)
+        doc, report = run(args)
     except InvalidKey as e:
         print(f"API key problem: {e}", file=sys.stderr)
         return 2
     except FMPError as e:
         print(f"FMP error: {e}", file=sys.stderr)
         return 1
-    print(render(result))
-    out = {k: v for k, v in result.items() if k not in ("price_series", "candles", "candles_note")}
-    if args.json:
-        Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
-        print(f"(JSON written to {args.json})", file=sys.stderr)
-    # built from the JSON form, so they match `contract.py <json file> [--facts]` exactly
-    saved = json.loads(json.dumps(out, default=str)) if args.contract or args.facts else None
-    if args.contract:
-        Path(args.contract).write_text(C.dumps(C.build(saved)), encoding="utf-8")
-        print(f"({C.CONTRACT} contract written to {args.contract})", file=sys.stderr)
-    if args.facts:
-        Path(args.facts).write_text(F.dumps(F.build(saved)), encoding="utf-8")
-        print(f"({F.FACTS} facts written to {args.facts})", file=sys.stderr)
+    print(report)
+    text = F.dumps(doc)
+    for path in (args.json, args.facts, args.contract):  # one document, under each name a caller gives
+        if path:
+            Path(path).write_text(text, encoding="utf-8")
+            print(f"({F.FACTS} written to {path})", file=sys.stderr)
     return 0
 
 

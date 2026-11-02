@@ -40,7 +40,7 @@ class Normalise(unittest.TestCase):
 
 
 class EntryPoints(unittest.TestCase):
-    """Every way in normalises the same way: analyze(), --peers, score_batch, the UI."""
+    """Every way in normalises the same way: analyze(), --peers, the UI."""
 
     @classmethod
     def setUpClass(cls):
@@ -65,18 +65,12 @@ class EntryPoints(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "--peers"):
             self.A.peer_symbols(None, "QUAL", "SHOP.TO", 5)
 
-    def test_batch_reads_typed_forms(self):
-        import types
-        import score_batch as B
-        args = types.SimpleNamespace(symbols=["brk.b", "$qual", "QUAL", "shop.to"], file=None)
-        self.assertEqual(B.read_symbols(args), ["BRK-B", "QUAL", "SHOP.TO"])   # the foreign one fails in analyze()
-
     def test_ui_normalises_and_refuses(self):
         import server
         with mock.patch.object(server.A, "FMPClient", self.fake.FakeClient), \
                 mock.patch.dict("os.environ", {"FMP_API_KEY": "offline-test"}):
             code, body = server.run_analysis({"symbol": "$qual", "peers": "none"})
-            self.assertEqual((code, body["result"]["symbol"]), (200, "QUAL"))
+            self.assertEqual((code, body["result"]["ticker"]), (200, "QUAL"))
             code, body = server.run_analysis({"symbol": "SHOP.TO"})
             self.assertEqual(code, 400)
             self.assertIn("non-US listing", body["error"])

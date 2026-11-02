@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-fa-2.0: the facts of one analysis, for other tools to read (the decision engine first).
+fa-2.0: the facts of one analysis, the skill's one output (the report, the local page and the decision engine
+all read it).
 
-Built from analyze.py's full result: the in-memory dict, or a saved `analyze.py --json` file, including files
-saved by earlier versions, so old runs convert (`contract.py --facts saved.json` does the same):
+Built from analyze.py's internal result (analyze.run() passes its JSON form), or from a full result saved by
+`analyze.py --json` of v1.x, so old runs convert:
 
-  python facts.py saved.json               print the fa-2.0 document of a saved result
+  python facts.py saved.json               print the fa-2.0 document of a saved v1.x result
   python facts.py saved.json -o out.json   write it to a file instead
 
 A file that is already fa-2.x is written back as it is. The document holds the statements, standard ratios,
 multiples against their own history and the industry, the analysts' consensus as published, and the standard
 models (Piotroski, Altman, DCF and reverse DCF). It holds no score, label, flag, price level, price target or
-margin of safety: judgements belong to the decision engine. This module does not import score.py.
+margin of safety: judgements belong to the decision engine. Standard library only, and no import of the skill's
+other modules: the decision engine loads this file by path.
 
 Conventions:
   per-period data   column arrays aligned with "period", oldest first; `ttm` holds the same keys for one period
@@ -22,7 +24,7 @@ Conventions:
                     method_version moves when a formula or a data check changes
 
 contracts/fa-2.0.schema.json describes every field; tests/test_facts.py checks the shape, the absence of
-judgement words, and that the score can be rebuilt from this document alone.
+judgement words, and that results saved by earlier versions convert to the same documents as before.
 """
 from __future__ import annotations
 
