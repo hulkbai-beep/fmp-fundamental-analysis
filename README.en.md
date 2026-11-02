@@ -60,6 +60,7 @@ fmp-fundamental-analysis/
     ├── test_cli.py     # Tests of the command line, the converter, the API calls and the web page's answer
     ├── test_facts.py   # Tests of fa-2.0: the schema, no judgement words, results saved by earlier versions convert as before
     ├── test_facts_report.py  # Tests of the report: its sections, the tables as before, no judgement words, a Chinese translation for every text
+    ├── test_docs.py    # Tests of these docs against the code: options, file paths, report sections, the two READMEs
     ├── test_symbols.py # Tests of the ticker normalisation
     └── data/           # Results and report tables saved by earlier versions, for the tests
 ```

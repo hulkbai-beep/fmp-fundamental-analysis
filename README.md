@@ -60,6 +60,7 @@ fmp-fundamental-analysis/
     ├── test_cli.py     # 命令行、转换脚本、API 调用次数和网页接口的测试
     ├── test_facts.py   # fa-2.0 的测试：符合 schema、不含判断用词、旧版本保存的结果转换后和以前一致
     ├── test_facts_report.py  # 报告的测试：各节顺序、表格和以前一致、不含判断用词、每句都有中文翻译
+    ├── test_docs.py    # 文档和代码一致的测试：参数、文件路径、报告各节、两份 README
     ├── test_symbols.py # 股票代码规范化的测试
     └── data/           # 旧版本保存的结果和报告表格，测试用
 ```
