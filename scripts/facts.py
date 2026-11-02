@@ -3,11 +3,15 @@
 fa-2.0: the facts of one analysis, for other tools to read (the decision engine first).
 
 Built from analyze.py's full result: the in-memory dict, or a saved `analyze.py --json` file, including files
-saved by earlier versions, so `contract.py --facts saved.json` converts old runs. It holds the statements,
-standard ratios, multiples against their own history and the industry, the analysts' consensus as published,
-and the standard models (Piotroski, Altman, DCF and reverse DCF). It holds no score, label, flag, price level,
-price target or margin of safety: judgements belong to the decision engine. This module does not import
-score.py.
+saved by earlier versions, so old runs convert (`contract.py --facts saved.json` does the same):
+
+  python facts.py saved.json               print the fa-2.0 document of a saved result
+  python facts.py saved.json -o out.json   write it to a file instead
+
+A file that is already fa-2.x is written back as it is. The document holds the statements, standard ratios,
+multiples against their own history and the industry, the analysts' consensus as published, and the standard
+models (Piotroski, Altman, DCF and reverse DCF). It holds no score, label, flag, price level, price target or
+margin of safety: judgements belong to the decision engine. This module does not import score.py.
 
 Conventions:
   per-period data   column arrays aligned with "period", oldest first; `ttm` holds the same keys for one period
@@ -22,8 +26,11 @@ judgement words, and that the score can be rebuilt from this document alone.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import sys
+from pathlib import Path
 
 FACTS = "fa-2.0"
 METHOD_VERSION = "2.0.0"
@@ -111,12 +118,27 @@ def _pos_div(a, b):
     return a / b if a is not None and b is not None and b > 0 else None
 
 
+def _bands(r):
+    """The forward-multiple block: forward_bands, or price_range in a result saved by v1.x."""
+    return (r["forward_bands"] if "forward_bands" in r else r.get("price_range")) or {}
+
+
+def _now_point(r):
+    """Today's next-twelve-month figures: forward_bands.forward, or the "now" point among price_range.forward's
+    points (v1.x)."""
+    fwd = _bands(r).get("forward")
+    if isinstance(fwd, list):
+        return next((p for p in fwd if p.get("at") == "now"), None)
+    return fwd
+
+
 # ---------------------------------------------------------------------------- dates
 def as_of(r):
     """(date, basis): the quote's date, else the last close in the price history, else the run date."""
     if r.get("price_time"):
         return _day(r["price_time"]), "quote"
-    last = ((r.get("price_range") or {}).get("week52") or {}).get("to")
+    # the last close of the past year; a result saved by v1.x has it as the end of its 52-week range
+    last = r["last_close"] if "last_close" in r else ((r.get("price_range") or {}).get("week52") or {}).get("to")
     if last:
         return _day(last), "last_close"
     return _day(r.get("as_of")), "run_date"
@@ -180,9 +202,8 @@ def _forward(r):
     """Forward multiples now: on each of the next two fiscal years' consensus EPS, and on next-twelve-month EPS
     and EBITDA (the two fiscal years blended by the time left in the one in progress)."""
     cur, price = r.get("current") or {}, _num((r.get("current") or {}).get("price"))
-    pr = r.get("price_range") or {}
     est = _open_estimates(r)
-    now = next((p for p in pr.get("forward") or [] if p.get("at") == "now"), None)
+    now = _now_point(r)
     out = {"fy1": None, "pe_fy1": None, "fy2": None, "pe_fy2": None, "pe_ntm": None, "ev_ebitda_ntm": None,
            "ntm": None}
     for i, e in enumerate(est[:2], 1):
@@ -214,7 +235,7 @@ def _band(b, why_missing):
 
 
 def _forward_band(r):
-    pr = r.get("price_range") or {}
+    pr = _bands(r)
     pe, ev = pr.get("pe_band"), pr.get("ev_band")
     if len(_open_estimates(r)) < 2:
         status = "no_estimates"
@@ -240,7 +261,7 @@ def _forward_band(r):
 
 
 def _vs_own_history(r):
-    pr = r.get("price_range") or {}
+    pr = _bands(r)
     # files saved before trailing_problem existed: the forward band's check was the only one
     problem = pr["trailing_problem"] if "trailing_problem" in pr else pr.get("band_problem")
     hc = r.get("history_compare") or {}
@@ -404,8 +425,20 @@ def _data_quality(r):
 
 
 # ---------------------------------------------------------------------------- document
+def _is_facts(r):
+    return str(r.get("contract") or "").startswith("fa-2")
+
+
+def _is_result(r):
+    """A full result as analyze.py --json of v1.x saved it (or an internal result)."""
+    return isinstance(r.get("symbol"), str) and isinstance(r.get("years"), list) and bool(r["years"])
+
+
 def build(r):
-    """The fa-2.0 document of one analyze.py result (the in-memory dict or a loaded --json file)."""
+    """The fa-2.0 document of one analyze.py result (the internal result or a loaded v1.x --json file). A document
+    that is already fa-2.x is returned as it is."""
+    if _is_facts(r):
+        return r
     years = r.get("years") or []
     day, basis = as_of(r)
     cur, p = r.get("current") or {}, r.get("profile") or {}
@@ -439,3 +472,30 @@ def build(r):
 
 def dumps(f):
     return json.dumps(f, indent=2, ensure_ascii=False)
+
+
+def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    ap = argparse.ArgumentParser(description=f"Convert a full result saved by analyze.py --json (v1.x) to {FACTS}")
+    ap.add_argument("saved_json")
+    ap.add_argument("-o", "--out", default=None, help="write the document to this file instead of stdout")
+    a = ap.parse_args(argv)
+    try:
+        r = json.loads(Path(a.saved_json).read_text(encoding="utf-8"))
+        if not isinstance(r, dict) or not (_is_facts(r) or _is_result(r)):
+            raise ValueError(f"not a full result saved by analyze.py --json, nor an {FACTS} document")
+        text = dumps(build(r))
+    except (OSError, ValueError, LookupError, TypeError, AttributeError, ArithmeticError) as e:
+        print(f"Cannot convert {a.saved_json} to {FACTS}: {e}", file=sys.stderr)
+        return 1
+    if a.out:
+        Path(a.out).write_text(text, encoding="utf-8")
+        print(f"({FACTS} written to {a.out})", file=sys.stderr)
+    else:
+        print(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
