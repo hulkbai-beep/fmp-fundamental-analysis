@@ -36,8 +36,9 @@ Options:
 Kept for one version: --contract PATH writes the fa-2.0 document as well (the fa-1.1 contract was removed in
 v2.0); --iv and --no-insider are accepted and ignored. Each prints a note to stderr.
 
-stdout is the markdown report alone (facts_report.py); notes go to stderr. Exit codes: 0 ok, 1 FMP error,
-2 API-key problem. `python facts.py saved.json [-o out.json]` converts a full result saved by `--json` of v1.x.
+stdout is the markdown report alone (facts_report.py); notes go to stderr. Exit codes: 0 ok, 1 FMP error or an
+output file that could not be written, 2 API-key problem or invalid options. `python facts.py saved.json
+[-o out.json]` converts a full result saved by `--json` of v1.x.
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
 """
 from __future__ import annotations
@@ -995,12 +996,18 @@ def main(argv=None):
         print(f"FMP error: {e}", file=sys.stderr)
         return 1
     print(report)
-    text = F.dumps(doc)
+    text, failed = F.dumps(doc), False
     for path in (args.json, args.facts, args.contract):  # one document, under each name a caller gives
-        if path:
+        if not path:
+            continue
+        try:
             Path(path).write_text(text, encoding="utf-8")
-            print(f"({F.FACTS} written to {path})", file=sys.stderr)
-    return 0
+        except OSError as e:  # say so, and still write the other files
+            print(f"Cannot write {path}: {e}", file=sys.stderr)
+            failed = True
+            continue
+        print(f"({F.FACTS} written to {path})", file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

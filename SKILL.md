@@ -305,7 +305,7 @@ decision: the decision engine (`investment-final-plan`), if the user runs it, re
 
 `analyze.py` prints the report and, with `--json PATH` or `--facts PATH` (or the deprecated `--contract PATH`),
 writes **fa-2.0**, the one output other tools read; each file written prints `(fa-2.0 written to PATH)` to stderr.
-Exit codes: 0 ok, 1 FMP error (or a ticker the plan does not cover), 2 API-key problem.
+Exit codes: 0 ok; 1 FMP error, a ticker the plan does not cover, or an output file that could not be written; 2 API-key problem or invalid options.
 
 fa-2.0 holds the facts of the analysis with no judgement: the statements and standard ratios per fiscal year (and
 TTM), the multiples now, at each fiscal year end and against their own history, the forward multiples and the

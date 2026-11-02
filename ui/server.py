@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import math
 import os
 import sys
 import threading
@@ -82,22 +83,30 @@ def run_analysis(q):
     argv = [sym]
     peers = (q.get("peers") or "").strip()
     if peers:
-        argv += ["--peers", peers]
+        argv.append(f"--peers={peers}")  # attached, so a value starting with "-" is not read as an option
     for key, flag in (("discount", "--discount"), ("growth", "--growth"), ("terminal", "--terminal")):
         v = (q.get(key) or "").strip()
         if v:
             try:
                 x = float(v) / 100
             except ValueError:
+                x = math.nan
+            if not math.isfinite(x):
                 return 400, {"error": f"{key} must be a number (percent)."}
-            argv += [flag, str(x)]
+            argv.append(f"{flag}={x}")  # attached: str(-0.005 / 100) is "-5e-05"
     if q.get("fcf_base") in ("latest", "avg3"):
-        argv += ["--fcf-base", q["fcf_base"]]
+        argv.append(f"--fcf-base={q['fcf_base']}")
     if q.get("macro") == "1":
         argv.append("--macro")
     if q.get("refresh") == "1":
         argv.append("--refresh")
-    args = A.parse_args(argv)
+    usage = io.StringIO()
+    try:
+        with redirect_stderr(usage):
+            args = A.parse_args(argv)
+    except SystemExit:  # argparse refused an option and printed why; answer instead of dropping the connection
+        lines = usage.getvalue().strip().splitlines()
+        return 400, {"error": lines[-1] if lines else "Invalid options."}
 
     log = io.StringIO()
     with _lock, redirect_stderr(log):

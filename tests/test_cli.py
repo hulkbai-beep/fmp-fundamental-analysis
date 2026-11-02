@@ -110,6 +110,17 @@ class Outputs(unittest.TestCase):
         self.assertEqual(without_time(docs[1]), without_time(docs[0]))
         self.assertTrue(out.startswith("# "))
 
+    def test_a_file_that_cannot_be_written(self):
+        """The other files are still written, the run says which one failed, and it exits 1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad, good = Path(tmp) / "missing" / "doc.json", Path(tmp) / "doc.json"
+            code, out, err = run_main(A.main, ["QUAL", "--peers", "none", "--json", str(bad), "--facts", str(good)])
+            self.assertTrue(good.exists())
+        self.assertEqual(code, 1)
+        self.assertTrue(out.startswith("# QUAL - "))
+        self.assertIn(f"Cannot write {bad}: ", err)
+        self.assertIn(f"({F.FACTS} written to {good})", err)
+
     def test_help_hides_the_ignored_options(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as cm:
@@ -209,6 +220,13 @@ class Converter(unittest.TestCase):
         self.assertEqual(run_main(F.main, [str(src), "-o", str(out)])[0], 0)
         self.assertEqual(out.read_text(encoding="utf-8"), src.read_text(encoding="utf-8"))
 
+    def test_an_output_that_cannot_be_written(self):
+        out = self.dir / "missing" / "out.json"
+        code, stdout, err = run_main(F.main, [str(self.dir / "saved.json"), "-o", str(out)])
+        self.assertEqual((code, stdout), (1, ""))
+        self.assertTrue(err.startswith(f"Cannot write {out}: "), err)
+        self.assertNotIn("Traceback", err)
+
     def test_unreadable_or_not_a_result(self):
         files = {"broken.json": "{not json", "list.json": "[1, 2]", "empty.json": "{}",
                  "contract.json": json.dumps({"contract": "fa-1.1", "ticker": "QUAL", "score": {"total": 1}})}
@@ -239,6 +257,27 @@ class Page(unittest.TestCase):
         self.assertEqual(without_time(body["result"]), without_time(cli_doc))
         self.assertEqual(validate(body["result"]), [])
         json.dumps(body, allow_nan=False)
+
+    def test_values_the_option_parser_would_refuse_get_an_answer(self):
+        """Values go to analyze.py attached (--growth=-5e-05), so one starting with "-" is not read as an option;
+        anything the parser still refuses is a 400 answer, not a dropped connection (SystemExit is no Exception)."""
+        import server
+        with mock.patch.object(server.A, "FMPClient", fake_fmp.FakeClient), \
+                mock.patch.object(A.R, "render", return_value=REPORT):
+            self.assertEqual(server.run_analysis({"symbol": "qual", "peers": "none", "growth": "-0.005"})[0], 200)
+            code, body = server.run_analysis({"symbol": "qual", "peers": "-x"})
+            self.assertEqual(code, 404)
+            self.assertIn("--peers", body["error"])
+            for bad in ("inf", "-inf", "nan", "abc"):
+                self.assertEqual(server.run_analysis({"symbol": "qual", "growth": bad}),
+                                 (400, {"error": "growth must be a number (percent)."}), bad)
+
+            def refuse(argv):
+                print("usage: analyze.py ...\nanalyze.py: error: argument --x: invalid", file=sys.stderr)
+                raise SystemExit(2)
+            with mock.patch.object(server.A, "parse_args", side_effect=refuse):
+                self.assertEqual(server.run_analysis({"symbol": "qual"}),
+                                 (400, {"error": "analyze.py: error: argument --x: invalid"}))
 
 
 if __name__ == "__main__":

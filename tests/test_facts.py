@@ -392,7 +392,8 @@ class SavedResults(unittest.TestCase):
             self.assertEqual(text(F.build(r)), text(F.build(c["full"])), case)
 
     def test_files_saved_by_earlier_versions_still_convert(self):
-        """v1.0 had no generated_at, market data, peers, TTM, quote time, connection or trailing_problem."""
+        """A saved result without the keys added while v1.0 was being built (generated_at, market data, peers, TTM,
+        quote time, connection, trailing_problem) still converts."""
         r = copy.deepcopy(SAVED["QUAL"]["full"])
         for k in ("generated_at", "market", "peers", "ttm", "price_time"):
             r.pop(k, None)

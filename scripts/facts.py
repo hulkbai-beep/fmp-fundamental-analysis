@@ -69,7 +69,8 @@ HISTORY_PROBLEMS = ("share_basis", "price_jump")
 PEER_FIELDS = ("market_cap", "pe", "ev_ebitda", "ps", "p_fcf", "revenue_yoy", "gross_margin", "operating_margin",
                "roe", "roic", "net_debt_to_ebitda")
 
-# Metrics that mean little for a company type, as in analyze.py's sector notes; their values are still given.
+# Metrics that mean little for each company kind (analyze.py sets company.kind; facts_report.py names these in its
+# "Company type" note); their values are still given.
 NOT_MEANINGFUL = {
     "financial": ["gross_margin", "ev_ebitda", "ev_sales", "fcf", "dcf", "altman"],
     "fee_financial": ["altman", "current_ratio"],
@@ -492,7 +493,11 @@ def main(argv=None):
         print(f"Cannot convert {a.saved_json} to {FACTS}: {e}", file=sys.stderr)
         return 1
     if a.out:
-        Path(a.out).write_text(text, encoding="utf-8")
+        try:
+            Path(a.out).write_text(text, encoding="utf-8")
+        except OSError as e:
+            print(f"Cannot write {a.out}: {e}", file=sys.stderr)
+            return 1
         print(f"({FACTS} written to {a.out})", file=sys.stderr)
     else:
         print(text)
