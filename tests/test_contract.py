@@ -9,7 +9,9 @@ JSON Schema checker lives here so the skill keeps to the standard library.
 """
 from __future__ import annotations
 
+import contextlib
 import copy
+import io
 import json
 import sys
 import tempfile
@@ -224,12 +226,17 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(validate(x, SCHEMA), [])
 
     def test_flag_and_file_give_the_same_contract(self):
-        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout"):
+        out, err = io.StringIO(), io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             full, direct, from_file = (str(Path(tmp) / n) for n in ("full.json", "direct.json", "file.json"))
             self.assertEqual(self.A.main(["QUAL", "--peers", "none", "--json", full, "--contract", direct]), 0)
             self.assertEqual(C.main([full, "-o", from_file]), 0)
             a, b = (json.loads(Path(p).read_text(encoding="utf-8")) for p in (direct, from_file))
         self.assertEqual(a, b)
+        # stdout is the report alone (callers save it as is); the "written to" notes go to stderr
+        self.assertTrue(out.getvalue().startswith("# "))
+        self.assertNotIn("written to", out.getvalue())
+        self.assertEqual(err.getvalue().count("written to"), 3)
         self.assertRegex(a["generated_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d")
         self.assertEqual(validate(a, SCHEMA), [])
 

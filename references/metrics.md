@@ -89,12 +89,10 @@ inventory growing much faster than revenue; repeated "one-off" charges.
 | EV | market cap + total debt - cash & ST investments + minority interest |
 | EV/EBITDA, EV/Sales | EV / item |
 | P/FCF, FCF yield | market cap / FCF, FCF / market cap |
-| PEG | P/E / (EPS CAGR x 100) |
 
 - "Now" uses TTM fundamentals when quarterly data is available, otherwise the last fiscal year.
 - "History" values use the closing price on each fiscal-year-end date with that year's numbers;
   with 5 years of data this is a coarse range, not a precise percentile.
-- PEG ~1 is the classic "fair" heuristic; it breaks down for cyclical or very slow growers.
 - FCF yield vs the 10-year Treasury yield is a useful sanity check for mature companies.
 - Multiples above ~60x usually reflect depressed earnings; use P/S or EV/Sales instead.
 
@@ -277,10 +275,9 @@ margin pressure for companies that cannot pass costs on; check the gross-margin 
 - Only open-market purchases (code P) and sales (code S) count. Awards (A), option exercises (M, X),
   shares withheld for tax (F), gifts (G) and other codes are compensation or paperwork, not a view on
   the stock; Form 3 (holdings on joining) is skipped; an amended Form 4 that repeats a row counts once.
-- Purchases with the insider's own money are the informative side, most of all when 3 or more
-  insiders buy within 90 days (flagged as cluster buying) or the CEO or CFO buys at least $100K
-  (flagged when there is no cluster). The evidence (Lakonishok & Lee 2001; Cohen, Malloy & Pomorski
-  2012) is strongest at small and mid-size companies; at mega-caps insiders rarely buy at all.
+- The JSON records the largest cluster (3 or more insiders buying within 90 days) and the largest
+  CEO or CFO purchase of at least $100K; neither raises an automated flag, and the report lists
+  every purchase. At mega-caps insiders rarely buy at all.
 - Sales say little on their own: diversification, taxes and pre-planned 10b5-1 sales dominate, and
   FMP does not mark which sales were pre-planned. Sales are shown against the market cap for scale
   and never raise a flag.

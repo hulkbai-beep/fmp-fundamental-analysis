@@ -433,6 +433,7 @@ const ZH_RULES = [
   [/^Growth \((\d+)-year CAGR in last column\)$/, "增长（最后一列是 $1 年复合增速）"],
   [/^Valuation \(price (\S+), (\S+) fundamentals\)$/, "估值（股价 $1，基于 $2 财务数据）"],
   // valuation, scores
+  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
   [/^PEG \(P\/E \/ (\d+)y EPS CAGR\)$/, "PEG（P/E ÷ $1 年 EPS 复合增速）"],
   [/^\*\*Piotroski F-score (\S+): (\d+) \/ (\d+)\*\* \(7-9 strong, 0-3 weak\)$/, "**Piotroski F-score $1：$2 / $3**（7-9 强，0-3 弱）"],
   [/Altman Z ([-\d.]+) \((\w+); >2\.99 safe, <1\.81 distress\)/g, (m, z, zone) => `Altman Z ${z}（${ZONE[zone] || zone}；>2.99 安全，<1.81 危险）`],
@@ -454,6 +455,9 @@ const ZH_RULES = [
   [/^\*\*Base-case value (\S+) per share vs price (\S+) -> (\S+) (upside|downside)\.\*\* Reasonable range \(discount \+\/-1pt, growth \+\/-2pt\): (\S+) - (\S+)\. Terminal value is (\S+) of the total\.$/,
     (m, v, p, mos, dir, lo, hi, tv) => `**基准情形每股价值 ${v}，股价 ${p}，${dir === "upside" ? "上涨空间" : "下跌空间"} ${mos}。** ` +
       `合理区间（折现率 ±1 个百分点、增速 ±2 个百分点）：${lo} - ${hi}。永续价值占总价值的 ${tv}。`],
+  [/^\*\*Base-case value (\S+) per share is not positive: net debt exceeds the discounted cash flows, so it is not compared with the price\.\*\* Reasonable range \(discount \+\/-1pt, growth \+\/-2pt\): (\S+) - (\S+)\. Terminal value is (\S+) of the total\.$/,
+    "**基准情形每股价值 $1，不是正数：净债务超过了现金流折现值，所以不和股价比较。** 合理区间（折现率 ±1 个百分点、增速 ±2 个百分点）：$2 - $3。永续价值占总价值的 $4。"],
+  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
   [/^\(At the previous fixed (\S+) discount rate the base case would be (\S+) per share\.\)$/, "（按原来固定的 $1 折现率，基准情形为每股 $2。）"],
   [/^\*\*Reverse DCF:\*\* today's price implies ~(\S+) FCF growth per year for 5 years \(then fading\), at a (\S+) discount rate\.$/,
     "**反向 DCF：** 按 $2 的折现率，当前股价隐含未来 5 年 FCF 每年增长约 $1（之后逐步回落）。"],
@@ -493,6 +497,8 @@ const ZH_RULES = [
     (m, fy, e, rp, gap, dir) => `分析师对 ${fy} 的 EPS（${e}）和公司公布的稀释 EPS（${rp}）相差 ${gap}：预期可能是调整后（非 GAAP）口径，而历史 P/E 用的是公布的 EPS，所以前瞻 P/E 算出的价格可能偏${dir === "high" ? "高" : "低"}。`],
   [/^Statements are in (\S+) and the price in (\S+): the P\/E rows assume a steady exchange rate and analysts' EPS in (\S+) per share; check both before relying on them\.$/,
     "财报币种是 $1，股价币种是 $2：P/E 这几行假设汇率不变、分析师 EPS 也是以 $3 计的每股数，参考前请先核实这两点。"],
+  [/^Price target consensus (\S+) \(median (\S+), range (\S+)\)\.$/, "目标价共识 $1（中位数 $2，区间 $3）。"],
+  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
   [/^Price target consensus (\S+) \(median (\S+), range (\S+)\) -> (\S+) vs price\.$/, "目标价共识 $1（中位数 $2，区间 $3），相对股价 $4。"],
   // sector & industry
   [/^(\S+) \(company\)$/, "$1（公司）"],
@@ -543,6 +549,7 @@ const ZH_RULES = [
   [new RegExp(`^${MULT} (\\S+) is (\\S+) below its (\\d+)-year median (\\S+)$`), "$1 $2 比过去 $4 年中位数 $5 低 $3"],
   [/^Base-case DCF value (\S+) above price$/, "DCF 基准价值比股价高 $1"],
   [/^Price is (\S+) above base-case DCF value$/, "股价比 DCF 基准价值高 $1"],
+  [/^Base-case DCF value is not positive: net debt exceeds the discounted cash flows$/, "DCF 基准价值不是正数：净债务超过了现金流折现值"],
   [/^Price implies ~(\S+)\/yr FCF growth for 5 yrs vs (\S+) historical revenue CAGR$/, "股价隐含未来 5 年 FCF 每年增长约 $1，历史营收复合增速只有 $2"],
   [/^Price implies only ~(\S+)\/yr FCF growth vs (\S+) historical revenue CAGR$/, "股价只隐含 FCF 每年增长约 $1，历史营收复合增速为 $2"],
   // insider trades
@@ -550,11 +557,14 @@ const ZH_RULES = [
     "Form 4 申报，交易日期 $1 至 $2。只统计公开市场买入（代码 P）和卖出（代码 S），另有 $3 笔授予、期权行权、扣股缴税、赠与等不按市价成交的交易未计入。"],
   [/^FMP returned only the latest (\d+) filings, so the totals start at (\S+)\.$/, "FMP 只返回了最近 $1 份申报，所以统计从 $2 开始。"],
   [/^Sales were (\S+) of the market cap\.$/, "卖出金额占市值的 $1。"],
+  [/^(?:Director|CEO|CFO|Officer|10% owner|Other)(?:, (?:Director|CEO|CFO|Officer|10% owner|Other))*$/, roleZh],
+  [/^Observation only, not used in the score\. Sales are mostly diversification, taxes or pre-planned \(10b5-1\) sales and say little on their own\.$/,
+    "仅供观察，不计入评分。卖出大多是分散持仓、交税或预先安排的 10b5-1 计划，单看说明不了什么。"],
+  // reports saved by earlier versions (the decision engine's FA tab shows saved reports)
   [/^Observation only, not used in the score\. Purchases with the insider's own money, especially by (\d+) or more insiders within (\d+) days, have historically come before better returns, mostly at small and mid-size companies\. Sales are mostly diversification, taxes or pre-planned \(10b5-1\) sales and say little on their own\.$/,
     "仅供观察，不计入评分。内部人自己掏钱在公开市场买入，尤其是 $2 天内有 $1 位或更多内部人一起买，历史上之后的回报往往更好，在中小盘公司更明显。卖出大多是分散持仓、交税或预先安排的 10b5-1 计划，单看说明不了什么。"],
   [/^Insider cluster buying: (\d+) insiders bought (\S+) on the open market between (\S+) and (\S+)$/, "内部人集体买入：$1 位内部人在 $3 至 $4 期间于公开市场买入 $2"],
   [/^Insider buying: (.+) \(([^()]+)\) bought (\S+) on the open market on (\S+)$/, (m, name, role, v, d) => `内部人买入：${name}（${roleZh(role)}）于 ${d} 在公开市场买入 ${v}`],
-  [/^(?:Director|CEO|CFO|Officer|10% owner|Other)(?:, (?:Director|CEO|CFO|Officer|10% owner|Other))*$/, roleZh],
   // data notes
   [/^Data route: third-party proxy at (\S+)\. Data is not served by FMP directly; spot-check key figures against company filings\.$/,
     "数据来源：第三方代理 $1，不是 FMP 官方服务器；重要数字请对照公司财报核实。"],
