@@ -1,5 +1,5 @@
 """
-Offline tests for scripts/report.py, the facts report of v2.0. No API key needed:
+Offline tests for scripts/facts_report.py, the facts report of v2.0. No API key needed:
 
     python -m unittest discover -s tests
 
@@ -32,8 +32,9 @@ import fake_fmp  # noqa: E402
 
 
 def load_report():
-    """scripts/report.py loaded from its file, as the decision engine loads it to render the runs it converted."""
-    spec = importlib.util.spec_from_file_location("fa_report_under_test", ROOT / "scripts" / "report.py")
+    """scripts/facts_report.py loaded from its file, as the decision engine loads it to render the runs it
+    converted."""
+    spec = importlib.util.spec_from_file_location("fa_report_under_test", ROOT / "scripts" / "facts_report.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -203,8 +204,8 @@ def untranslated(text, doc):
 
 class Report(unittest.TestCase):
     def test_standard_library_only(self):
-        """The engine loads report.py by path, without the skill's folders on sys.path."""
-        tree = ast.parse((ROOT / "scripts" / "report.py").read_text(encoding="utf-8"))
+        """The engine loads facts_report.py by path, without the skill's folders on sys.path."""
+        tree = ast.parse((ROOT / "scripts" / "facts_report.py").read_text(encoding="utf-8"))
         names = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
         names |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
         self.assertTrue(names)
@@ -277,6 +278,7 @@ class Report(unittest.TestCase):
         doc = DOCS["QUAL"]
         self.assertEqual(untranslated(REPORTS["QUAL"] + "\nA sentence nobody translated.", doc),
                          ["A sentence nobody translated."])
+
 
     def test_the_word_check_finds_planted_words(self):
         doc = copy.deepcopy(DOCS["QUAL"])

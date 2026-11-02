@@ -1,9 +1,9 @@
 // Chinese / English text for the local UI (ui/index.html).
 //
 // UI: labels of the page itself, by key, in both languages.
-// zh(): translates the English report (scripts/report.py, printed by analyze.py) into Chinese for display.
+// zh(): translates the English report (scripts/facts_report.py, printed by analyze.py) into Chinese for display.
 // It only changes how the page reads; the numbers, the CLI report and the "full text report"
-// view stay as report.py wrote them. Text it does not recognise (FMP event names, company
+// view stay as facts_report.py wrote them. Text it does not recognise (FMP event names, company
 // names, error details) is shown unchanged.
 
 const UI = {
@@ -374,7 +374,7 @@ const SECTORS = {
   "Industrials": "工业", "Real Estate": "房地产", "Technology": "科技", "Utilities": "公用事业",
 };
 const sectorZh = s => SECTORS[s] ? `${SECTORS[s]}（${s}）` : s;
-// Company types other than "general" and the measures that do not apply to them, as report.py names them.
+// Company types other than "general" and the measures that do not apply to them, as facts_report.py names them.
 const KIND_ZH = {
   "Financial company (bank or insurer)": "金融公司（银行或保险公司）",
   "Fee-based financial company (exchange, data provider or insurance broker), analysed like other companies; clearing margin and client money sit on its balance sheet":
@@ -383,7 +383,7 @@ const KIND_ZH = {
   "Regulated utility, capital-heavy": "受监管的公用事业公司，资本密集",
 };
 const MEASURE_ZH = { "gross margin": "毛利率", "EV / sales": "EV / 营收", "free cash flow": "自由现金流", "current ratio": "流动比率" };
-// Why a multiple history is not comparable (report.py HISTORY_PROBLEMS).
+// Why a multiple history is not comparable (facts_report.py HISTORY_PROBLEMS).
 const HISTORY_ZH = {
   "The share counts in the statements do not match today's share basis (for example a stock split the statements do not reflect, an ADR ratio or several share classes)":
     "财报里的股数和现在的股本口径对不上（比如财报没有反映拆股、ADR 换股比例或多类股票）",

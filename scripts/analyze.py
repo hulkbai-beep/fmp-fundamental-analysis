@@ -36,7 +36,7 @@ Options:
 Kept for one version: --contract PATH writes the fa-2.0 document as well (the fa-1.1 contract was removed in
 v2.0); --iv and --no-insider are accepted and ignored. Each prints a note to stderr.
 
-stdout is the markdown report alone (report.py); notes go to stderr. Exit codes: 0 ok, 1 FMP error,
+stdout is the markdown report alone (facts_report.py); notes go to stderr. Exit codes: 0 ok, 1 FMP error,
 2 API-key problem. `python facts.py saved.json [-o out.json]` converts a full result saved by `--json` of v1.x.
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
 """
@@ -58,7 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
 import facts as F  # noqa: E402
 import macro as M  # noqa: E402
-import report as R  # noqa: E402
+import facts_report as R  # noqa: E402
 from symbols import normalize_symbol  # noqa: E402
 
 FINANCIAL_SECTORS = {"financial services", "financials", "financial"}

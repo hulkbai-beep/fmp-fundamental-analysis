@@ -5,8 +5,9 @@ Offline tests of the command line (scripts/analyze.py and the scripts/facts.py c
     python -m unittest discover -s tests
 
 v2.0 writes one document, fa-2.0: --json, --facts and the deprecated --contract all write it, stdout is the
-report alone (report.py, tested in test_report.py) and notes go to stderr. Without --macro an analysis makes 14
-API calls; --macro also fetches the returns and the Treasury curve 3M and 1Y ago for its section.
+report alone (facts_report.py, tested in test_facts_report.py) and notes go to stderr. Without --macro an
+analysis makes 14 API calls; --macro also fetches the returns and the Treasury curve 3M and 1Y ago for its
+section.
 """
 from __future__ import annotations
 
