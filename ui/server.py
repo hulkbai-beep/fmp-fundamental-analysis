@@ -100,16 +100,13 @@ def run_analysis(q):
         argv.append("--macro")
     if q.get("refresh") == "1":
         argv.append("--refresh")
-    usage = io.StringIO()
-    try:
-        with redirect_stderr(usage):
-            args = A.parse_args(argv)
-    except SystemExit:  # argparse refused an option and printed why; answer instead of dropping the connection
-        lines = usage.getvalue().strip().splitlines()
-        return 400, {"error": lines[-1] if lines else "Invalid options."}
-
     log = io.StringIO()
-    with _lock, redirect_stderr(log):
+    with _lock, redirect_stderr(log):  # sys.stderr is process-wide: swap it only under the lock
+        try:
+            args = A.parse_args(argv)
+        except SystemExit:  # argparse refused an option and printed why; answer instead of dropping the connection
+            lines = log.getvalue().strip().splitlines()
+            return 400, {"error": lines[-1] if lines else "Invalid options."}
         try:
             doc, report = A.run(args)
         except InvalidKey as e:

@@ -8,10 +8,12 @@ It shows the statements, ratios, multiples and standard models the document hold
 label, flag, price level, price target or margin of safety, and the distributions of the forward multiples are
 statistics only, never turned into prices.
 
-  render(f, macro_md=None, calls=None) -> str
-    f         a fa-2.x document
-    macro_md  the body of the rates & macro section (analyze.py --macro); None: no such section
-    calls     (network calls, cache hits) for the data notes; None: no such line
+  render(f, macro_md=None, calls=None, tls_verify=None) -> str
+    f           a fa-2.x document
+    macro_md    the body of the rates & macro section (analyze.py --macro); None: no such section
+    calls       (network calls, cache hits) for the data notes; None: no such line
+    tls_verify  False: the data notes say HTTPS certificate verification was off (fa-2.0 does not record it);
+                None or True: no such line
 """
 from __future__ import annotations
 
@@ -318,7 +320,7 @@ def forward_section(f):
     if ntm:
         fys, w = ntm.get("fys") or [], ntm.get("weight")
         blend = ""
-        if len(fys) == 2 and w is not None:
+        if len(fys) == 2 and None not in fys and w is not None:
             w = round(w * 100)
             blend = f" ({w}% FY{fys[0]} + {100 - w}% FY{fys[1]})"
         rows.append(["P/E", f"next-12-month EPS{blend}", per_share(ntm.get("eps")), mult(fw.get("pe_ntm"))])
@@ -620,7 +622,8 @@ def data_notes(f, calls, tls_verify=None):
 
 
 def render(f, macro_md=None, calls=None, tls_verify=None):
-    """The report of a fa-2.x document. macro_md: the rates & macro section's body; calls: (network, cache)."""
+    """The report of a fa-2.x document. macro_md: the rates & macro section's body; calls: (network, cache);
+    tls_verify: False adds the data note that HTTPS certificate verification was off."""
     if not str(f.get("contract") or "").startswith("fa-2"):
         raise ValueError(f"not a fa-2.x document (contract {f.get('contract')!r})")
     out = header(f) + statement_sections(f) + valuation_section(f) + forward_section(f) + group_section(f) + \

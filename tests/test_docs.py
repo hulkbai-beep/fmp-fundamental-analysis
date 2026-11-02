@@ -169,7 +169,7 @@ def listed_sections(name):
     while j + 1 < len(lines) and lines[j + 1].startswith("- "):
         j += 1
     spans = re.findall(rf"`(## [^`]+|{re.escape(MACRO)})`", "\n".join(lines[i:j + 1]))
-    return [s.removeprefix("## ") for s in spans]
+    return [s[3:] if s.startswith("## ") else s for s in spans]
 
 
 # Words for what v2.0 removed. Outside "What changed in v2.0" a sentence may hold one only to say it is gone (a
@@ -178,8 +178,10 @@ REMOVED_WORDS = re.compile(r"fundamental score|基本面(?:打分|评分)|price 
                            r"target prices?\b|目标价|\binsider|内部人|margin of safety|安全边际|--iv\b|--no-insider\b|"
                            r"volatility range|implied volatility|隐含波动率|波动区间|K-line|candlestick|K ?线|"
                            r"\bfa-1\.1\b|automated flags|\bverdicts?\b", re.I)
-SAYS_GONE = re.compile(r"\b(?:no|not|never|none|nor|neither|without|removed|deleted|dropped|ignored|gone|instead)\b|"
-                       r"n't|不|没有|无|删|去掉|移除|忽略|别", re.I)
+# A negation, looked for in the sentence without its code spans and option names: the "no" of `--no-insider` or the
+# "none" of `--peers none` says nothing is gone, nor do 不 in 不同 / 不仅, 别 in 分别 or "not only ... but also".
+SAYS_GONE = re.compile(r"\b(?:no|not(?! only)|never|none|nor|neither|without|removed|deleted|dropped|ignored|ignores|"
+                       r"gone)\b|n't|不再|不给|不会|不起作用|不用|不要|不能|不是|没有|无需|删除|删掉|去掉|移除|忽略|别用", re.I)
 ELSEWHERE = re.compile(r"investment-final-plan|decision engine|决策引擎|fundamental_view|before v2\.0|v2\.0 之前", re.I)
 
 
@@ -192,7 +194,8 @@ def presented_as_present(text):
     out = []
     for block in re.split(r"\n\s*\n|\n(?=\s*[-*] |\s*\d+\. |\|)", text):
         for s in re.split(r"(?<=[.!?;])\s+|(?<=[。；])", " ".join(block.split())):
-            if REMOVED_WORDS.search(s) and not SAYS_GONE.search(s) and not ELSEWHERE.search(s):
+            prose = OPTION.sub(" ", re.sub(r"`[^`]*`", " ", s))
+            if REMOVED_WORDS.search(s) and not SAYS_GONE.search(prose) and not ELSEWHERE.search(s):
                 out.append(s)
     return out
 
@@ -257,7 +260,7 @@ class Paths(unittest.TestCase):
         for name in ("README.md", "README.en.md"):
             listed = tree_paths(TEXT[name])
             self.assertEqual([p for p in listed if not (ROOT / p).exists()], [], name)
-            files = sorted(str(p.relative_to(ROOT)) for d in ("scripts", "contracts", "references", "ui")
+            files = sorted(p.relative_to(ROOT).as_posix() for d in ("scripts", "contracts", "references", "ui")
                            for p in (ROOT / d).rglob("*") if p.is_file() and "__pycache__" not in p.parts)
             self.assertEqual([f for f in files if f not in listed], [], f"{name} leaves out files")
 
@@ -302,8 +305,15 @@ class Removed(unittest.TestCase):
     def test_the_check_finds_planted_sentences(self):
         planted = ["Use `--iv 0.45` to add the volatility range of the price.",
                    "- **Fundamental score.** The report opens with the fundamental score; quote it first.",
-                   "报告最后有「价格区间」一节，给出目标价和 52 周区间。"]
-        kept = ["v2.0 has no price targets.", "不给目标价。", "The score lives in the decision engine."]
+                   "报告最后有「价格区间」一节，给出目标价和 52 周区间。",
+                   "Use `--no-insider` to skip the insider trades (saves 1 to 5 API calls).",
+                   "With `--no-market` the report still prints the price targets.",
+                   "Run it with `--peers none` and the report still prints the price targets.",
+                   "The report shows not only the fundamental score but also the price range.",
+                   "Quote the price target instead of the DCF value.",
+                   "报告分别给出目标价和价格区间。", "报告不仅给出目标价，还给出价格区间。"]
+        kept = ["v2.0 has no price targets.", "不给目标价。", "The score lives in the decision engine.",
+                "`--iv` and `--no-insider` are accepted and ignored.", "`--no-insider` 不起作用。"]
         for s in planted:
             self.assertTrue(presented_as_present(f"# Doc\n\nSome text.\n\n{s}\n"), s)
         for s in kept:

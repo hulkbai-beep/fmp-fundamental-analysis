@@ -209,7 +209,10 @@ class Report(unittest.TestCase):
         names = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
         names |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
         self.assertTrue(names)
-        self.assertEqual(sorted(names - set(sys.stdlib_module_names)), [])
+        # sys.stdlib_module_names came with Python 3.10; on 3.8 and 3.9, the standard modules a report may need
+        stdlib = set(getattr(sys, "stdlib_module_names", ())) or {"__future__", "datetime", "json", "math", "re",
+                                                                   "statistics"}
+        self.assertEqual(sorted(names - stdlib), [])
         self.assertFalse([n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level])
 
     def test_every_case_renders_its_sections_in_order(self):
@@ -353,6 +356,20 @@ class Report(unittest.TestCase):
         self.assertIn("\n- Error: HTTP 404 on quote: Not Found The requested URL was not found\n"
                       "- Error: line separator\n", text)
 
+    def test_calendar_event_names_stay_on_one_line(self):
+        """The rates & macro section's tables print FMP's economic-calendar event names."""
+        import datetime as dt
+        import macro as M
+        rows = [{"date": "2026-10-15 12:30:00", "country": "US", "event": "CPI\nYoY (Sep)", "actual": 3.0,
+                 "estimate": 2.8, "previous": 2.9, "unit": "%", "impact": "High"},
+                {"date": "2026-11-06 13:30:00", "country": "US", "event": "Nonfarm\r Payrolls (Oct)",
+                 "estimate": 120, "previous": 100, "unit": "K", "impact": "High"}]
+        macro_md = M.render_macro({"calendar": M.calendar_view(rows, dt.datetime(2026, 11, 2))})
+        text = R.render(DOCS["QUAL"], macro_md=macro_md)
+        self.assertEqual(text.splitlines(), text.split("\n"))
+        self.assertIn("\n| CPI YoY | CPI YoY (Sep) | 2026-10-15 12:30 | 3% | 2.8% | 2.9% |\n", text)
+        self.assertIn("\n| Nonfarm Payrolls (Oct) | 2026-11-06 13:30 | 120 K | 100 K |", text)
+
     def test_nullable_texts_render_as_na(self):
         for name in ("QUAL", "QUAL_peers", "ADJE", "QTRS"):
             doc = copy.deepcopy(DOCS[name])
@@ -366,6 +383,8 @@ class Report(unittest.TestCase):
             doc["models"]["altman"].update(z_zone=None, z2_zone=None)
             doc["models"]["dcf"]["inputs"]["discount_rate"].update(rf_date=None, beta_source=None)
             doc["rates"]["date"] = None
+            if doc["valuation"]["forward"].get("ntm"):
+                doc["valuation"]["forward"]["ntm"]["fys"][1] = None
             fb = doc["valuation"]["forward_band"]
             fb["from"] = fb["to"] = None
             for k in ("pe", "ev_ebitda"):
@@ -380,7 +399,7 @@ class Report(unittest.TestCase):
                 p["symbol"] = None
             with self.subTest(name):
                 text = R.render(doc)
-                self.assertNotRegex(text, r"\bNone\b")
+                self.assertNotIn("None", text)                 # also inside a word, such as FYNone
                 self.assertNotIn("[beta defaulted to 1.0]", text)
 
     def test_documents_converted_from_old_results(self):
@@ -396,7 +415,7 @@ class Report(unittest.TestCase):
                 doc = F.build(r)
                 text = R.render(doc)
                 self.assertTrue(text.startswith("# QUAL - QUAL Test Corp\n"))
-                self.assertNotRegex(text, r"\bNone\b")
+                self.assertNotIn("None", text)
                 self.assertEqual(headings(text), SECTIONS + ["Data notes"])
                 self.assertEqual(judgements(text, doc), [])
                 self.assertEqual([t for t in REMOVED if t in text], [])

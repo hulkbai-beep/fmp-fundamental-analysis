@@ -139,8 +139,10 @@ def mult(v):
 
 
 def table(headers, rows):
+    """A markdown table. Each cell is put on one line: a line break inside a text from FMP (an event name, a sector)
+    would split its row."""
     lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
-    lines += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    lines += ["| " + " | ".join(" ".join(str(c).split()) for c in r) + " |" for r in rows]
     return "\n".join(lines)
 
 

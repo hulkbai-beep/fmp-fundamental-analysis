@@ -15,6 +15,7 @@ import collections
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,16 @@ DEFAULT_CALLS = {"profile": 1, "quote": 1, "income-statement": 2, "balance-sheet
 MACRO_CALLS = dict(DEFAULT_CALLS, **{"treasury-rates": 3, "historical-price-eod/light": 2,
                                      "historical-sector-performance": 1, "historical-industry-performance": 1,
                                      "economic-indicators": 3, "economic-calendar": 3})
+
+
+def setUpModule():
+    """The offline client must not pick up this machine's connection settings, such as FMP_TLS_VERIFY=0 set for one
+    terminal session: these tests check what a run on the official API writes."""
+    env = mock.patch.dict(os.environ)
+    env.start()
+    unittest.addModuleCleanup(env.stop)
+    for name in ("FMP_BASE_URL", "FMP_PATH_PREFIX", "FMP_AUTH_STYLE", "FMP_TLS_VERIFY"):
+        os.environ.pop(name, None)
 
 
 def recording_client():
@@ -151,6 +162,11 @@ class Outputs(unittest.TestCase):
             self.assertIsInstance(cm.exception.code, str)
             self.assertIn("--peers: 'SHOP.TO' looks like a non-US listing", cm.exception.code)
             self.assertFalse(path.exists())
+            # a peer without data only gets a row that says so
+            code, out, err = run_main(A.main, ["QUAL", "--peers", "NOPE", "--json", str(path)])
+            self.assertEqual(code, 0)
+            self.assertIn("\n| NOPE | no data (plan restriction or unknown ticker) |", out)
+            self.assertTrue(path.exists())
         # usage errors exit with 2
         for argv in (["QUAL", "--macro", "--no-market"], ["QUAL", "--nope"], ["QUAL", "--years", "five"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit) as cm:
@@ -286,6 +302,47 @@ class Page(unittest.TestCase):
             with mock.patch.object(server.A, "parse_args", side_effect=refuse):
                 self.assertEqual(server.run_analysis({"symbol": "qual"}),
                                  (400, {"error": "analyze.py: error: argument --x: invalid"}))
+
+    def test_overlapping_requests_leave_stderr_alone(self):
+        """sys.stderr is process-wide and the server answers each request on its own thread: a request that parses
+        its options while another analysis ends must not leave sys.stderr on either request's buffer."""
+        import threading
+        import server
+        saved = sys.stderr
+        first_in_run, second_parsing, first_done = threading.Event(), threading.Event(), threading.Event()
+        real_parse, real_run = server.A.parse_args, server.A.run
+
+        def parse_args(argv):
+            if threading.current_thread().name == "second":
+                second_parsing.set()
+                first_done.wait(0.5)        # the first analysis ends while this request parses
+            return real_parse(argv)
+
+        def run(args):
+            if threading.current_thread().name == "first":
+                first_in_run.set()
+                second_parsing.wait(0.5)
+            return real_run(args)
+
+        def first():
+            server.run_analysis({"symbol": "qual", "peers": "none"})
+            first_done.set()
+
+        with mock.patch.object(server.A, "FMPClient", fake_fmp.FakeClient), \
+                mock.patch.object(A.R, "render", return_value=REPORT), \
+                mock.patch.object(server.A, "parse_args", parse_args), mock.patch.object(server.A, "run", run):
+            t1 = threading.Thread(target=first, name="first")
+            t1.start()
+            first_in_run.wait(1)
+            t2 = threading.Thread(target=server.run_analysis, args=({"symbol": "qual", "peers": "none"},),
+                                  name="second")
+            t2.start()
+            t1.join()
+            t2.join()
+        try:
+            self.assertIs(sys.stderr, saved)
+        finally:
+            sys.stderr = saved
 
 
 if __name__ == "__main__":
