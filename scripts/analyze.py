@@ -30,6 +30,8 @@ Options:
   --no-insider       skip the insider-trades section (saves 1-5 API calls; the score does not use it)
   --json PATH        also write every computed number to a JSON file
   --contract PATH    also write the fa-1.1 contract (the stable summary other tools read; see contract.py)
+  --facts PATH       also write the fa-2.0 facts: statements, ratios, multiples and the standard models,
+                     with no score or price levels (see facts.py)
   --refresh          ignore the local cache
 
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
@@ -51,6 +53,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp_client import FMPClient, FMPError, InvalidKey, RestrictedEndpoint  # noqa: E402
 import contract as C  # noqa: E402
+import facts as F  # noqa: E402
 import insider as I  # noqa: E402
 import macro as M  # noqa: E402
 import score as S  # noqa: E402
@@ -271,7 +274,7 @@ def build_ttm(qi, qc, qb):
     inc_sum.pop("weightedAverageShsOut", None)
     t = extract(inc_sum, qb[-1], summed(qc))
     t["date"] = str(qi[-1].get("date", ""))[:10]
-    t["fy"], t["label"] = "TTM", "TTM"
+    t["fy"], t["label"], t["currency"] = "TTM", "TTM", qi[-1].get("reportedCurrency")
     return derive(t, None)
 
 
@@ -1647,6 +1650,7 @@ def parse_args(argv):
     ap.add_argument("--no-insider", action="store_true")
     ap.add_argument("--json", default=None)
     ap.add_argument("--contract", default=None)
+    ap.add_argument("--facts", default=None)
     ap.add_argument("--refresh", action="store_true")
     a = ap.parse_args(argv)
     if a.macro and a.no_market:
@@ -1673,11 +1677,14 @@ def main(argv=None):
     if args.json:
         Path(args.json).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
         print(f"(JSON written to {args.json})", file=sys.stderr)
+    # built from the JSON form, so they match `contract.py <json file> [--facts]` exactly
+    saved = json.loads(json.dumps(out, default=str)) if args.contract or args.facts else None
     if args.contract:
-        # built from the JSON form, so it matches `contract.py <json file>` exactly
-        c = C.build(json.loads(json.dumps(out, default=str)))
-        Path(args.contract).write_text(C.dumps(c), encoding="utf-8")
+        Path(args.contract).write_text(C.dumps(C.build(saved)), encoding="utf-8")
         print(f"({C.CONTRACT} contract written to {args.contract})", file=sys.stderr)
+    if args.facts:
+        Path(args.facts).write_text(F.dumps(F.build(saved)), encoding="utf-8")
+        print(f"({F.FACTS} facts written to {args.facts})", file=sys.stderr)
     return 0
 
 

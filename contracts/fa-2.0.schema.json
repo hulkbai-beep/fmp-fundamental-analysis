@@ -1,0 +1,710 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fa-2.0",
+  "title": "Fundamental analysis facts fa-2.0",
+  "description": "The facts of one analysis by scripts/analyze.py, built by scripts/facts.py: statements, standard ratios, multiples against their own history and the industry, the analysts' consensus as published, and the standard models. No score, label, flag, price level, price target or margin of safety. Per-period data are column arrays lined up with their `period` array, oldest first. Fractions are decimals (0.25 = 25%); numbers keep full precision; money is in the statement currency, per-share values and prices in the price currency. Every object always has all its keys; a value that is missing or does not apply is null, and the block's status code says why. 2.x versions only add fields; renaming or removing one means fa-3.0.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "num": {"type": ["number", "null"]},
+    "int": {"type": ["integer", "null"]},
+    "str": {"type": ["string", "null"]},
+    "day": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
+    "column": {
+      "type": "array",
+      "items": {"type": ["number", "null"]},
+      "description": "one value per period, lined up with the block's period array"
+    },
+    "band": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "now", "pctile", "p10", "p25", "median", "p75", "p90", "n"],
+      "properties": {
+        "status": {
+          "description": "ok; now_not_positive: the distribution exists but today's next-twelve-month figure is not positive; short_history: under about 6 months of days with a positive multiple; not_applicable: no EV multiple (financials, or net debt or shares missing); ebitda_not_positive: next-twelve-month EBITDA is not positive; the others as forward_band.status",
+          "enum": ["ok", "now_not_positive", "no_estimates", "share_basis", "price_jump", "short_history", "not_applicable", "ebitda_not_positive"]
+        },
+        "now": {"description": "today's multiple on next-twelve-month figures", "$ref": "#/$defs/num"},
+        "pctile": {
+          "description": "share of the days in the window with a multiple at or below now (0..1)",
+          "$ref": "#/$defs/num"
+        },
+        "p10": {"$ref": "#/$defs/num"},
+        "p25": {"$ref": "#/$defs/num"},
+        "median": {"$ref": "#/$defs/num"},
+        "p75": {"$ref": "#/$defs/num"},
+        "p90": {"$ref": "#/$defs/num"},
+        "n": {"description": "days in the distribution", "$ref": "#/$defs/int"}
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "date", "pe", "latest_value", "pe_pctile", "median", "min", "max", "since", "n", "year_ago", "premium"],
+      "properties": {
+        "name": {"$ref": "#/$defs/str"},
+        "status": {
+          "description": "stale: the latest reading is over 10 days old; negative: the group's aggregate P/E is negative; unavailable: no data",
+          "enum": ["ok", "stale", "negative", "unavailable"]
+        },
+        "date": {"description": "date of the latest reading", "$ref": "#/$defs/day"},
+        "pe": {"description": "the latest P/E (null unless status ok)", "$ref": "#/$defs/num"},
+        "latest_value": {"description": "the latest reading whatever its status", "$ref": "#/$defs/num"},
+        "pe_pctile": {
+          "description": "where pe sits among the positive readings since `since` (0..1)",
+          "$ref": "#/$defs/num"
+        },
+        "median": {"$ref": "#/$defs/num"},
+        "min": {"$ref": "#/$defs/num"},
+        "max": {"$ref": "#/$defs/num"},
+        "since": {"$ref": "#/$defs/day"},
+        "n": {"$ref": "#/$defs/int"},
+        "year_ago": {"description": "P/E a year earlier", "$ref": "#/$defs/num"},
+        "premium": {"description": "company P/E / group P/E - 1", "$ref": "#/$defs/num"}
+      }
+    },
+    "vs_history": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["now", "median", "min", "max", "n", "vs_median"],
+      "properties": {
+        "now": {"description": "the multiple today", "$ref": "#/$defs/num"},
+        "median": {"$ref": "#/$defs/num"},
+        "min": {"$ref": "#/$defs/num"},
+        "max": {"$ref": "#/$defs/num"},
+        "n": {"description": "fiscal years with a value", "$ref": "#/$defs/int"},
+        "vs_median": {"description": "now / median - 1", "$ref": "#/$defs/num"}
+      }
+    },
+    "gap": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["estimate", "reported", "gap"],
+      "properties": {
+        "estimate": {"$ref": "#/$defs/num"},
+        "reported": {"$ref": "#/$defs/num"},
+        "gap": {"description": "estimate / reported - 1", "$ref": "#/$defs/num"}
+      }
+    }
+  },
+  "required": ["contract", "method_version", "ticker", "generated_at", "as_of", "as_of_basis", "statements_through", "price", "company", "periods", "statements", "metrics", "ttm", "growth", "valuation", "rates", "models", "consensus", "peers", "data_quality"],
+  "properties": {
+    "contract": {"description": "the version key (also used by fa-1.x)", "const": "fa-2.0"},
+    "method_version": {"description": "moves when a formula or a data check changes", "type": "string"},
+    "ticker": {"type": "string"},
+    "generated_at": {"description": "when the analysis ran (ISO 8601)", "type": "string"},
+    "as_of": {"description": "the trading day the price belongs to", "$ref": "#/$defs/day"},
+    "as_of_basis": {"enum": ["quote", "last_close", "run_date"]},
+    "statements_through": {
+      "description": "end of the latest period in the statements (the TTM quarter, else the latest fiscal year)",
+      "$ref": "#/$defs/day"
+    },
+    "price": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "currency", "source", "time"],
+      "properties": {
+        "value": {"$ref": "#/$defs/num"},
+        "currency": {"$ref": "#/$defs/str"},
+        "source": {"enum": ["quote", "profile"]},
+        "time": {
+          "description": "New York time of the quote (YYYY-MM-DD HH:MM); null when the quote has no time or the price is the profile's",
+          "$ref": "#/$defs/str"
+        }
+      }
+    },
+    "company": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "exchange", "sector", "industry", "kind", "not_meaningful", "statement_currency", "beta", "market_cap", "enterprise_value", "is_etf", "is_adr"],
+      "properties": {
+        "name": {"$ref": "#/$defs/str"},
+        "exchange": {"$ref": "#/$defs/str"},
+        "sector": {"$ref": "#/$defs/str"},
+        "industry": {"$ref": "#/$defs/str"},
+        "kind": {
+          "description": "financial: banks and insurers; fee_financial: exchanges, data providers and brokers, analysed like other companies",
+          "enum": ["general", "financial", "fee_financial", "reit", "utility"]
+        },
+        "not_meaningful": {
+          "description": "metrics that mean little for this kind of company; their values are still given",
+          "type": "array",
+          "items": {
+            "enum": ["altman", "current_ratio", "dcf", "ev_ebitda", "ev_sales", "fcf", "gross_margin", "pe"]
+          }
+        },
+        "statement_currency": {"$ref": "#/$defs/str"},
+        "beta": {"$ref": "#/$defs/num"},
+        "market_cap": {"$ref": "#/$defs/num"},
+        "enterprise_value": {"$ref": "#/$defs/num"},
+        "is_etf": {"type": "boolean"},
+        "is_adr": {"type": "boolean"}
+      }
+    },
+    "periods": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fiscal_years", "ttm_through", "valuation_basis"],
+      "properties": {
+        "fiscal_years": {"type": "array", "items": {"$ref": "#/$defs/str"}},
+        "ttm_through": {
+          "description": "end of the TTM quarter; null without quarterly statements",
+          "$ref": "#/$defs/day"
+        },
+        "valuation_basis": {
+          "description": "the period today's multiples, the DCF and net debt use: the TTM, else the latest fiscal year",
+          "$ref": "#/$defs/str"
+        }
+      }
+    },
+    "statements": {
+      "description": "line items per fiscal year as reported; flows for the year, balances at its end",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["period", "end", "currency", "revenue", "gross_profit", "operating_income", "ebitda", "ebit", "net_income", "eps_diluted", "shares_diluted", "interest_expense", "rnd", "cash", "debt", "net_debt", "equity", "total_assets", "total_liabilities", "current_assets", "current_liabilities", "goodwill_intangibles", "minority_interest", "ocf", "capex", "fcf", "sbc", "buybacks", "dividends", "stock_issued"],
+      "properties": {
+        "period": {
+          "description": "fiscal year labels, oldest first (FY2025); every column below lines up with it",
+          "type": "array",
+          "items": {"$ref": "#/$defs/str"}
+        },
+        "end": {"description": "period end dates", "type": "array", "items": {"$ref": "#/$defs/day"}},
+        "currency": {
+          "description": "statement currency of each period",
+          "type": "array",
+          "items": {"$ref": "#/$defs/str"}
+        },
+        "revenue": {"description": "revenue", "$ref": "#/$defs/column"},
+        "gross_profit": {"description": "gross profit", "$ref": "#/$defs/column"},
+        "operating_income": {"description": "operating income", "$ref": "#/$defs/column"},
+        "ebitda": {
+          "description": "EBITDA as FMP reports it (else operating income + D&A)",
+          "$ref": "#/$defs/column"
+        },
+        "ebit": {"description": "EBIT (else operating income)", "$ref": "#/$defs/column"},
+        "net_income": {"description": "net income", "$ref": "#/$defs/column"},
+        "eps_diluted": {"description": "diluted EPS", "$ref": "#/$defs/column"},
+        "shares_diluted": {"description": "weighted average diluted shares", "$ref": "#/$defs/column"},
+        "interest_expense": {"description": "interest expense", "$ref": "#/$defs/column"},
+        "rnd": {"description": "research and development expense", "$ref": "#/$defs/column"},
+        "cash": {"description": "cash and short-term investments (period end)", "$ref": "#/$defs/column"},
+        "debt": {"description": "total debt (period end)", "$ref": "#/$defs/column"},
+        "net_debt": {"description": "debt - cash; negative = net cash", "$ref": "#/$defs/column"},
+        "equity": {"description": "total stockholders' equity", "$ref": "#/$defs/column"},
+        "total_assets": {"description": "total assets", "$ref": "#/$defs/column"},
+        "total_liabilities": {"description": "total liabilities", "$ref": "#/$defs/column"},
+        "current_assets": {"description": "total current assets", "$ref": "#/$defs/column"},
+        "current_liabilities": {"description": "total current liabilities", "$ref": "#/$defs/column"},
+        "goodwill_intangibles": {"description": "goodwill and intangible assets", "$ref": "#/$defs/column"},
+        "minority_interest": {"description": "minority interest (0 when not reported)", "$ref": "#/$defs/column"},
+        "ocf": {"description": "operating cash flow", "$ref": "#/$defs/column"},
+        "capex": {"description": "capital expenditure, as a positive amount", "$ref": "#/$defs/column"},
+        "fcf": {"description": "free cash flow (operating cash flow - capex)", "$ref": "#/$defs/column"},
+        "sbc": {"description": "stock-based compensation", "$ref": "#/$defs/column"},
+        "buybacks": {"description": "common stock repurchased, as a positive amount", "$ref": "#/$defs/column"},
+        "dividends": {"description": "common dividends paid, as a positive amount", "$ref": "#/$defs/column"},
+        "stock_issued": {"description": "common stock issued, as a positive amount", "$ref": "#/$defs/column"}
+      }
+    },
+    "metrics": {
+      "description": "standard ratios per fiscal year, lined up with statements.period (formulas in references/metrics.md)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gross_margin", "operating_margin", "net_margin", "ebitda_margin", "fcf_margin", "rnd_pct", "roe", "roa", "roic", "current_ratio", "quick_ratio", "debt_to_equity", "net_debt_to_ebitda", "interest_coverage", "fcf_conversion", "sbc_pct", "capex_pct", "revenue_yoy", "eps_yoy", "shares_yoy"],
+      "properties": {
+        "gross_margin": {"description": "gross profit / revenue", "$ref": "#/$defs/column"},
+        "operating_margin": {"description": "operating income / revenue", "$ref": "#/$defs/column"},
+        "net_margin": {"description": "net income / revenue", "$ref": "#/$defs/column"},
+        "ebitda_margin": {"description": "EBITDA / revenue", "$ref": "#/$defs/column"},
+        "fcf_margin": {"description": "FCF / revenue", "$ref": "#/$defs/column"},
+        "rnd_pct": {"description": "R&D / revenue", "$ref": "#/$defs/column"},
+        "roe": {
+          "description": "net income / average equity (null when equity <= 0 or income <= 0)",
+          "$ref": "#/$defs/column"
+        },
+        "roa": {"description": "net income / average total assets", "$ref": "#/$defs/column"},
+        "roic": {"description": "NOPAT / average (debt + equity - cash)", "$ref": "#/$defs/column"},
+        "current_ratio": {"description": "current assets / current liabilities", "$ref": "#/$defs/column"},
+        "quick_ratio": {
+          "description": "(current assets - inventory) / current liabilities",
+          "$ref": "#/$defs/column"
+        },
+        "debt_to_equity": {"description": "debt / equity (null when equity <= 0)", "$ref": "#/$defs/column"},
+        "net_debt_to_ebitda": {"description": "net debt / EBITDA (null when EBITDA <= 0)", "$ref": "#/$defs/column"},
+        "interest_coverage": {
+          "description": "EBIT / interest expense (null when there is no interest expense)",
+          "$ref": "#/$defs/column"
+        },
+        "fcf_conversion": {"description": "FCF / net income (null when net income <= 0)", "$ref": "#/$defs/column"},
+        "sbc_pct": {"description": "SBC / revenue", "$ref": "#/$defs/column"},
+        "capex_pct": {"description": "capex / revenue", "$ref": "#/$defs/column"},
+        "revenue_yoy": {"description": "revenue growth on the prior fiscal year", "$ref": "#/$defs/column"},
+        "eps_yoy": {"description": "diluted EPS growth on the prior fiscal year", "$ref": "#/$defs/column"},
+        "shares_yoy": {
+          "description": "diluted share count change on the prior fiscal year",
+          "$ref": "#/$defs/column"
+        }
+      }
+    },
+    "ttm": {
+      "description": "the items of statements and metrics over the last four quarters (balances at the latest quarter end; the growth rates are null); null without quarterly statements",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["period", "end", "currency", "revenue", "gross_profit", "operating_income", "ebitda", "ebit", "net_income", "eps_diluted", "shares_diluted", "interest_expense", "rnd", "cash", "debt", "net_debt", "equity", "total_assets", "total_liabilities", "current_assets", "current_liabilities", "goodwill_intangibles", "minority_interest", "ocf", "capex", "fcf", "sbc", "buybacks", "dividends", "stock_issued", "gross_margin", "operating_margin", "net_margin", "ebitda_margin", "fcf_margin", "rnd_pct", "roe", "roa", "roic", "current_ratio", "quick_ratio", "debt_to_equity", "net_debt_to_ebitda", "interest_coverage", "fcf_conversion", "sbc_pct", "capex_pct", "revenue_yoy", "eps_yoy", "shares_yoy"],
+      "properties": {
+        "period": {"const": "TTM"},
+        "end": {"description": "end of the latest quarter", "$ref": "#/$defs/day"},
+        "currency": {"$ref": "#/$defs/str"},
+        "revenue": {"$ref": "#/$defs/num"},
+        "gross_profit": {"$ref": "#/$defs/num"},
+        "operating_income": {"$ref": "#/$defs/num"},
+        "ebitda": {"$ref": "#/$defs/num"},
+        "ebit": {"$ref": "#/$defs/num"},
+        "net_income": {"$ref": "#/$defs/num"},
+        "eps_diluted": {"$ref": "#/$defs/num"},
+        "shares_diluted": {"$ref": "#/$defs/num"},
+        "interest_expense": {"$ref": "#/$defs/num"},
+        "rnd": {"$ref": "#/$defs/num"},
+        "cash": {"$ref": "#/$defs/num"},
+        "debt": {"$ref": "#/$defs/num"},
+        "net_debt": {"$ref": "#/$defs/num"},
+        "equity": {"$ref": "#/$defs/num"},
+        "total_assets": {"$ref": "#/$defs/num"},
+        "total_liabilities": {"$ref": "#/$defs/num"},
+        "current_assets": {"$ref": "#/$defs/num"},
+        "current_liabilities": {"$ref": "#/$defs/num"},
+        "goodwill_intangibles": {"$ref": "#/$defs/num"},
+        "minority_interest": {"$ref": "#/$defs/num"},
+        "ocf": {"$ref": "#/$defs/num"},
+        "capex": {"$ref": "#/$defs/num"},
+        "fcf": {"$ref": "#/$defs/num"},
+        "sbc": {"$ref": "#/$defs/num"},
+        "buybacks": {"$ref": "#/$defs/num"},
+        "dividends": {"$ref": "#/$defs/num"},
+        "stock_issued": {"$ref": "#/$defs/num"},
+        "gross_margin": {"$ref": "#/$defs/num"},
+        "operating_margin": {"$ref": "#/$defs/num"},
+        "net_margin": {"$ref": "#/$defs/num"},
+        "ebitda_margin": {"$ref": "#/$defs/num"},
+        "fcf_margin": {"$ref": "#/$defs/num"},
+        "rnd_pct": {"$ref": "#/$defs/num"},
+        "roe": {"$ref": "#/$defs/num"},
+        "roa": {"$ref": "#/$defs/num"},
+        "roic": {"$ref": "#/$defs/num"},
+        "current_ratio": {"$ref": "#/$defs/num"},
+        "quick_ratio": {"$ref": "#/$defs/num"},
+        "debt_to_equity": {"$ref": "#/$defs/num"},
+        "net_debt_to_ebitda": {"$ref": "#/$defs/num"},
+        "interest_coverage": {"$ref": "#/$defs/num"},
+        "fcf_conversion": {"$ref": "#/$defs/num"},
+        "sbc_pct": {"$ref": "#/$defs/num"},
+        "capex_pct": {"$ref": "#/$defs/num"},
+        "revenue_yoy": {"$ref": "#/$defs/num"},
+        "eps_yoy": {"$ref": "#/$defs/num"},
+        "shares_yoy": {"$ref": "#/$defs/num"}
+      }
+    },
+    "growth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "years", "cagr"],
+      "properties": {
+        "from": {"$ref": "#/$defs/str"},
+        "to": {"$ref": "#/$defs/str"},
+        "years": {"$ref": "#/$defs/int"},
+        "cagr": {
+          "description": "compound annual growth from `from` to `to` (null when either end is not positive)",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revenue", "gross_profit", "operating_income", "net_income", "eps", "fcf", "shares"],
+          "properties": {
+            "revenue": {"$ref": "#/$defs/num"},
+            "gross_profit": {"$ref": "#/$defs/num"},
+            "operating_income": {"$ref": "#/$defs/num"},
+            "net_income": {"$ref": "#/$defs/num"},
+            "eps": {"$ref": "#/$defs/num"},
+            "fcf": {"$ref": "#/$defs/num"},
+            "shares": {"$ref": "#/$defs/num"}
+          }
+        }
+      }
+    },
+    "valuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["now", "history", "vs_own_history", "forward", "forward_band", "vs_group"],
+      "properties": {
+        "now": {
+          "description": "multiples today: today's price and market cap on the valuation basis period",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pe", "ps", "pb", "ev_ebitda", "ev_sales", "p_fcf", "earnings_yield", "fcf_yield", "dividend_yield", "shareholder_yield"],
+          "properties": {
+            "pe": {"description": "price / diluted EPS", "$ref": "#/$defs/num"},
+            "ps": {"description": "market cap / revenue", "$ref": "#/$defs/num"},
+            "pb": {"description": "market cap / equity", "$ref": "#/$defs/num"},
+            "ev_ebitda": {"description": "enterprise value / EBITDA", "$ref": "#/$defs/num"},
+            "ev_sales": {"description": "enterprise value / revenue", "$ref": "#/$defs/num"},
+            "p_fcf": {"description": "market cap / FCF", "$ref": "#/$defs/num"},
+            "earnings_yield": {"description": "1 / P/E", "$ref": "#/$defs/num"},
+            "fcf_yield": {"description": "FCF / market cap", "$ref": "#/$defs/num"},
+            "dividend_yield": {"description": "dividends / market cap", "$ref": "#/$defs/num"},
+            "shareholder_yield": {"description": "(dividends + buybacks) / market cap", "$ref": "#/$defs/num"}
+          }
+        },
+        "history": {
+          "description": "the same multiples at each fiscal year end",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["period", "date", "price", "pe", "ps", "pb", "ev_ebitda", "ev_sales", "p_fcf", "fcf_yield"],
+          "properties": {
+            "period": {"description": "fiscal year labels", "type": "array", "items": {"$ref": "#/$defs/str"}},
+            "date": {"description": "fiscal year end", "type": "array", "items": {"$ref": "#/$defs/day"}},
+            "price": {"description": "close on the fiscal year end", "$ref": "#/$defs/column"},
+            "pe": {"description": "price / diluted EPS", "$ref": "#/$defs/column"},
+            "ps": {"description": "market cap / revenue", "$ref": "#/$defs/column"},
+            "pb": {"description": "market cap / equity", "$ref": "#/$defs/column"},
+            "ev_ebitda": {"description": "enterprise value / EBITDA", "$ref": "#/$defs/column"},
+            "ev_sales": {"description": "enterprise value / revenue", "$ref": "#/$defs/column"},
+            "p_fcf": {"description": "market cap / FCF", "$ref": "#/$defs/column"},
+            "fcf_yield": {"description": "FCF / market cap", "$ref": "#/$defs/column"}
+          }
+        },
+        "vs_own_history": {
+          "description": "each multiple today against its fiscal-year-end values",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "basis", "pe", "ev_ebitda", "ps", "p_fcf", "pb"],
+          "properties": {
+            "status": {
+              "description": "share_basis: the share count changed basis (a split or a big issue) inside the history; price_jump: the price history has a break. Either makes the history unreliable",
+              "enum": ["ok", "share_basis", "price_jump"]
+            },
+            "basis": {"const": "fiscal_year_end_close"},
+            "pe": {"$ref": "#/$defs/vs_history"},
+            "ev_ebitda": {"$ref": "#/$defs/vs_history"},
+            "ps": {"$ref": "#/$defs/vs_history"},
+            "p_fcf": {"$ref": "#/$defs/vs_history"},
+            "pb": {"$ref": "#/$defs/vs_history"}
+          }
+        },
+        "forward": {
+          "description": "forward multiples today",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fy1", "pe_fy1", "fy2", "pe_fy2", "pe_ntm", "ev_ebitda_ntm", "ntm"],
+          "properties": {
+            "fy1": {"description": "the fiscal year in progress", "$ref": "#/$defs/str"},
+            "pe_fy1": {"description": "price / its consensus EPS", "$ref": "#/$defs/num"},
+            "fy2": {"description": "the fiscal year after it", "$ref": "#/$defs/str"},
+            "pe_fy2": {"description": "price / its consensus EPS", "$ref": "#/$defs/num"},
+            "pe_ntm": {"description": "price / next-twelve-month EPS", "$ref": "#/$defs/num"},
+            "ev_ebitda_ntm": {"description": "enterprise value / next-twelve-month EBITDA", "$ref": "#/$defs/num"},
+            "ntm": {
+              "description": "next-twelve-month consensus figures; null without two open fiscal years of estimates",
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["eps", "eps_low", "eps_high", "ebitda", "fys", "weight"],
+              "properties": {
+                "eps": {"$ref": "#/$defs/num"},
+                "eps_low": {"$ref": "#/$defs/num"},
+                "eps_high": {"$ref": "#/$defs/num"},
+                "ebitda": {"$ref": "#/$defs/num"},
+                "fys": {
+                  "description": "the two fiscal years blended",
+                  "type": "array",
+                  "items": {"$ref": "#/$defs/str"}
+                },
+                "weight": {
+                  "description": "weight of the first of them (the share of it still ahead)",
+                  "$ref": "#/$defs/num"
+                }
+              }
+            }
+          }
+        },
+        "forward_band": {
+          "description": "the daily distribution of the next-twelve-month multiple over the lookback window: statistics only, never turned into prices",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "lookback_years", "from", "to", "history_basis", "pe", "ev_ebitda"],
+          "properties": {
+            "status": {
+              "description": "no_estimates: fewer than two open fiscal years of consensus",
+              "enum": ["ok", "no_estimates", "share_basis", "price_jump", "short_history"]
+            },
+            "lookback_years": {"$ref": "#/$defs/int"},
+            "from": {"$ref": "#/$defs/day"},
+            "to": {"$ref": "#/$defs/day"},
+            "history_basis": {
+              "description": "each past day's next-twelve-month figures use reported results where the year is reported, else today's consensus",
+              "const": "reported_then_consensus"
+            },
+            "pe": {"$ref": "#/$defs/band"},
+            "ev_ebitda": {"$ref": "#/$defs/band"}
+          }
+        },
+        "vs_group": {
+          "description": "FMP's aggregate P/E of the industry and sector (companies listed on one exchange); null when market data was skipped (--no-market)",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["exchange", "company_pe", "industry", "sector"],
+          "properties": {
+            "exchange": {"$ref": "#/$defs/str"},
+            "company_pe": {
+              "description": "market cap / net income of the valuation basis period",
+              "$ref": "#/$defs/num"
+            },
+            "industry": {"$ref": "#/$defs/group"},
+            "sector": {"$ref": "#/$defs/group"}
+          }
+        }
+      }
+    },
+    "rates": {
+      "description": "the inputs of the CAPM discount rate; null when market data was skipped",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["date", "treasury_10y", "equity_risk_premium"],
+      "properties": {
+        "date": {"$ref": "#/$defs/day"},
+        "treasury_10y": {"$ref": "#/$defs/num"},
+        "equity_risk_premium": {"description": "FMP's US total equity risk premium", "$ref": "#/$defs/num"}
+      }
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["piotroski", "altman", "dcf", "reverse_dcf"],
+      "properties": {
+        "piotroski": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["fy", "score", "out_of", "tests"],
+          "properties": {
+            "fy": {"$ref": "#/$defs/str"},
+            "score": {"description": "tests passed (the model's own name for it)", "$ref": "#/$defs/int"},
+            "out_of": {"description": "tests that could be computed", "$ref": "#/$defs/int"},
+            "tests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "pass"],
+                "properties": {
+                  "id": {
+                    "enum": ["roa_positive", "ocf_positive", "roa_improved", "ocf_above_net_income", "leverage_fell", "current_ratio_improved", "no_dilution", "gross_margin_improved", "asset_turnover_improved"]
+                  },
+                  "pass": {"type": ["boolean", "null"]}
+                }
+              }
+            }
+          }
+        },
+        "altman": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "fy", "z", "z_zone", "z2", "z2_zone"],
+          "properties": {
+            "status": {
+              "description": "not_meaningful: computed, but the model was built for industrial companies (financials, REITs, utilities)",
+              "enum": ["ok", "not_meaningful", "unavailable"]
+            },
+            "fy": {"$ref": "#/$defs/str"},
+            "z": {"description": "original Z (uses market cap)", "$ref": "#/$defs/num"},
+            "z_zone": {
+              "description": "Altman's published cut-offs 1.81 / 2.99",
+              "enum": ["safe", "grey", "distress", null]
+            },
+            "z2": {"description": "Z'' (no market cap, no revenue term)", "$ref": "#/$defs/num"},
+            "z2_zone": {"description": "cut-offs 1.1 / 2.6", "enum": ["safe", "grey", "distress", null]}
+          }
+        },
+        "dcf": {
+          "description": "two-stage FCF DCF: 5 years at growth_1_5, then terminal_growth",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "inputs", "value_per_share", "low", "high", "terminal_value_share", "sensitivity"],
+          "properties": {
+            "status": {
+              "description": "value_not_positive: net debt exceeds the discounted cash flows; skipped_financial: banks and insurers (FCF means little); fcf_not_positive: the starting FCF is not positive; invalid_inputs: the discount rate does not exceed terminal growth",
+              "enum": ["ok", "value_not_positive", "skipped_financial", "fcf_not_positive", "invalid_inputs", "unavailable"]
+            },
+            "inputs": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["fcf_start", "fcf_start_basis", "growth_1_5", "growth_source", "terminal_growth", "discount_rate", "net_debt", "shares"],
+              "properties": {
+                "fcf_start": {"description": "starting free cash flow", "$ref": "#/$defs/num"},
+                "fcf_start_basis": {
+                  "description": "valuation_basis: the FCF of the period in periods.valuation_basis; average_3y: --fcf-base avg3",
+                  "enum": ["valuation_basis", "average_3y"]
+                },
+                "growth_1_5": {"description": "FCF growth a year for years 1-5", "$ref": "#/$defs/num"},
+                "growth_source": {"enum": ["user", "revenue_cagr_clamped_0_15", "default_5pct"]},
+                "terminal_growth": {"$ref": "#/$defs/num"},
+                "discount_rate": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["value", "method", "reason", "rf", "rf_date", "beta", "beta_source", "erp", "raw", "clamped"],
+                  "properties": {
+                    "value": {"$ref": "#/$defs/num"},
+                    "method": {
+                      "description": "user: --discount; capm: 10Y Treasury + beta x US equity risk premium, kept within 7-13% and rounded to 0.1%; fixed_default: 9%",
+                      "enum": ["user", "capm", "fixed_default"]
+                    },
+                    "reason": {"description": "why fixed_default", "enum": ["no_market", "rates_unavailable", null]},
+                    "rf": {"$ref": "#/$defs/num"},
+                    "rf_date": {"$ref": "#/$defs/day"},
+                    "beta": {"$ref": "#/$defs/num"},
+                    "beta_source": {"enum": ["profile", "default_1", null]},
+                    "erp": {"$ref": "#/$defs/num"},
+                    "raw": {"description": "rf + beta x erp before the 7-13% limit", "$ref": "#/$defs/num"},
+                    "clamped": {"description": "the 7-13% limit applied", "type": ["boolean", "null"]}
+                  }
+                },
+                "net_debt": {"description": "net debt of the valuation basis period", "$ref": "#/$defs/num"},
+                "shares": {"description": "market cap / price", "$ref": "#/$defs/num"}
+              }
+            },
+            "value_per_share": {
+              "description": "base-case value per share, in the price currency",
+              "$ref": "#/$defs/num"
+            },
+            "low": {
+              "description": "lowest value with the discount rate within 1 point and growth within 2 points of the base",
+              "$ref": "#/$defs/num"
+            },
+            "high": {"description": "highest value on the same grid", "$ref": "#/$defs/num"},
+            "terminal_value_share": {
+              "description": "share of the base-case value from the terminal value (0..1)",
+              "$ref": "#/$defs/num"
+            },
+            "sensitivity": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["discount_rates", "growth_1_5", "value_per_share"],
+              "properties": {
+                "discount_rates": {"type": "array", "items": {"$ref": "#/$defs/num"}},
+                "growth_1_5": {"type": "array", "items": {"$ref": "#/$defs/num"}},
+                "value_per_share": {
+                  "description": "one row per discount rate, one column per growth rate",
+                  "type": "array",
+                  "items": {"type": "array", "items": {"$ref": "#/$defs/num"}}
+                }
+              }
+            }
+          }
+        },
+        "reverse_dcf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "implied_growth_1_5", "discount_rate"],
+          "properties": {
+            "status": {
+              "description": "below_range / above_range: the implied growth is outside -50%..+100% a year",
+              "enum": ["ok", "below_range", "above_range", "not_computable", "no_dcf"]
+            },
+            "implied_growth_1_5": {
+              "description": "years 1-5 FCF growth at which the DCF value equals today's price",
+              "$ref": "#/$defs/num"
+            },
+            "discount_rate": {"$ref": "#/$defs/num"}
+          }
+        }
+      }
+    },
+    "consensus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estimates", "vs_reported"],
+      "properties": {
+        "estimates": {
+          "description": "FMP's analyst consensus per fiscal year, as published (no price targets)",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fy", "date", "ended", "analysts", "eps_avg", "eps_low", "eps_high", "revenue_avg", "revenue_growth", "ebitda_avg", "pe_on_fy_eps"],
+            "properties": {
+              "fy": {"description": "the year of the fiscal year end (2026)", "$ref": "#/$defs/str"},
+              "date": {"description": "fiscal year end", "$ref": "#/$defs/day"},
+              "ended": {
+                "description": "the fiscal year has ended but is not reported yet",
+                "type": ["boolean", "null"]
+              },
+              "analysts": {"$ref": "#/$defs/int"},
+              "eps_avg": {"$ref": "#/$defs/num"},
+              "eps_low": {"$ref": "#/$defs/num"},
+              "eps_high": {"$ref": "#/$defs/num"},
+              "revenue_avg": {"$ref": "#/$defs/num"},
+              "revenue_growth": {
+                "description": "revenue_avg / the year before - 1; the year before is the reported revenue (the analysts' own figure for it when vs_reported.revenue is set), then the previous row",
+                "$ref": "#/$defs/num"
+              },
+              "ebitda_avg": {"$ref": "#/$defs/num"},
+              "pe_on_fy_eps": {"description": "today's price / eps_avg", "$ref": "#/$defs/num"}
+            }
+          }
+        },
+        "vs_reported": {
+          "description": "the consensus for the last reported year against the reported figure: a large gap means the analysts work on another basis (adjusted)",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fy", "eps", "ebitda", "revenue"],
+          "properties": {
+            "fy": {"description": "the last reported fiscal year", "$ref": "#/$defs/str"},
+            "eps": {"$ref": "#/$defs/gap"},
+            "ebitda": {"$ref": "#/$defs/gap"},
+            "revenue": {"$ref": "#/$defs/gap"}
+          }
+        }
+      }
+    },
+    "peers": {
+      "description": "each peer's latest fiscal year (--peers); null when there are none",
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "status", "name", "fy", "market_cap", "pe", "ev_ebitda", "ps", "p_fcf", "revenue_yoy", "gross_margin", "operating_margin", "roe", "roic", "net_debt_to_ebitda"],
+        "properties": {
+          "symbol": {"$ref": "#/$defs/str"},
+          "status": {"enum": ["ok", "no_data"]},
+          "name": {"$ref": "#/$defs/str"},
+          "fy": {"$ref": "#/$defs/str"},
+          "market_cap": {"$ref": "#/$defs/num"},
+          "pe": {"$ref": "#/$defs/num"},
+          "ev_ebitda": {"$ref": "#/$defs/num"},
+          "ps": {"$ref": "#/$defs/num"},
+          "p_fcf": {"$ref": "#/$defs/num"},
+          "revenue_yoy": {"$ref": "#/$defs/num"},
+          "gross_margin": {"$ref": "#/$defs/num"},
+          "operating_margin": {"$ref": "#/$defs/num"},
+          "roe": {"$ref": "#/$defs/num"},
+          "roic": {"$ref": "#/$defs/num"},
+          "net_debt_to_ebitda": {"$ref": "#/$defs/num"}
+        }
+      }
+    },
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fiscal_years", "ttm", "currency_mismatch", "restricted", "errors", "route"],
+      "properties": {
+        "fiscal_years": {"$ref": "#/$defs/int"},
+        "ttm": {"type": "boolean"},
+        "currency_mismatch": {
+          "description": "set when the statements and the price are in different currencies (ratios that mix them are then off by the exchange rate)",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["statements", "price"],
+          "properties": {"statements": {"$ref": "#/$defs/str"}, "price": {"$ref": "#/$defs/str"}}
+        },
+        "restricted": {"description": "FMP endpoints not in the plan", "type": "array", "items": {"type": "string"}},
+        "errors": {"description": "requests that failed", "type": "array", "items": {"type": "string"}},
+        "route": {"description": "how FMP was reached", "$ref": "#/$defs/str"}
+      }
+    }
+  }
+}

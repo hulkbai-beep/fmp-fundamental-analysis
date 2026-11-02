@@ -20,6 +20,7 @@
 - 自动提示：列出优点和风险，作为进一步核实的线索，不是结论
 - 基本面打分：估值 35%、质量 25%、成长 20%、财务健康 20% 四大项，每个指标按固定区间打 −2 到 +2 分，合成总分和「看多 / 偏多 / 中性 / 偏空 / 看空」标签（和技术面打分同一套刻度），附置信度；价值陷阱和资产负债表红线会把总分封顶在中性。规则固定、有版本号，详见 `references/metrics.md` 第 12 节
 - 给其他工具用的 fa-1.1 契约：`--contract` 导出一份精简、带版本号的 JSON 摘要，供决策引擎、选股脚本等读取（见「用法 2：命令行」）
+- fa-2.0 事实输出：`--facts` 只导出事实和标准模型，没有打分和价位，判断留给决策引擎（见「用法 2：命令行」）
 
 所有计算都由脚本完成，Claude 只负责解读。
 
@@ -43,20 +44,24 @@ fmp-fundamental-analysis/
 │   ├── score.py        # 基本面打分：四大项、打分区间、封顶规则和置信度
 │   ├── score_batch.py  # 批量打分：一串股票的分数写成 CSV，改规则前后可对比
 │   ├── insider.py      # 内部人交易：公开市场买入卖出的汇总
-│   ├── contract.py     # fa-1.1 契约：给其他工具读的精简摘要
+│   ├── contract.py     # fa-1.1 契约：给其他工具读的精简摘要；加 --facts 把保存的结果转成 fa-2.0
+│   ├── facts.py        # fa-2.0 事实输出：报表、比率、估值倍数和标准模型，不含打分
 │   ├── symbols.py      # 股票代码规范化：BRK.B → BRK-B，拒绝外国交易所代码
 │   └── macro.py        # 利率、宏观和板块数据：独立的宏观仪表盘，也供 analyze.py 调用
 ├── contracts/
-│   └── fa-1.1.schema.json  # 契约每个字段的定义（JSON Schema）
+│   ├── fa-1.1.schema.json  # 契约每个字段的定义（JSON Schema）
+│   └── fa-2.0.schema.json  # fa-2.0 每个字段的定义
 ├── ui/
 │   ├── server.py       # 本地网页服务器
 │   ├── index.html      # 网页界面
 │   └── i18n.js         # 网页的中英文切换和翻译表
 └── tests/              # 离线测试，不需要 API key：python -m unittest discover -s tests
-    ├── fake_fmp.py     # 离线的假 FMP 数据（五家虚构公司：QUAL、TRAP、BANK、EXCH、UTIL），测试和试网页用
+    ├── fake_fmp.py     # 离线的假 FMP 数据（八家虚构公司：QUAL、TRAP、BANK、EXCH、UTIL、QTRS、ADJE、REIT），测试和试网页用
     ├── test_score.py   # 打分的测试
     ├── test_insider.py # 内部人交易的测试
     ├── test_contract.py  # 契约的测试：输出必须符合 schema，数字必须和完整结果一致
+    ├── test_facts.py   # fa-2.0 的测试：符合 schema、不含判断用词、只靠 fa-2.0 能算出同样的打分
+    ├── fa2_score_input.py  # 从 fa-2.0 还原打分输入（决策引擎那一侧的转换，测试用）
     └── test_symbols.py   # 股票代码规范化的测试
 ```
 
@@ -264,6 +269,7 @@ Mac 上用 `python3 scripts/analyze.py AAPL`。如果用的是证书无法验证
 | `--no-insider` | 不拉内部人交易（没有这一节），省 1 到 5 次 API 调用；打分不受影响 | 不需要这一节，或接口出错 |
 | `--json out.json` | 把所有计算结果另存为 JSON | 需要原始数字 |
 | `--contract out.json` | 另存一份 fa-1.1 契约：给其他工具读的精简、带版本号的摘要（见下文） | 交给决策引擎、选股脚本等其他工具使用 |
+| `--facts out.json` | 另存一份 fa-2.0 事实：只有事实和标准模型，没有打分和价位（见下文） | 交给决策引擎，由它自己判断 |
 | `--refresh` | 忽略缓存，重新拉取数据 | 数据看起来过时，或公司刚发布财报 |
 
 示例：
@@ -289,7 +295,16 @@ python scripts/analyze.py NVDA --contract nvda_contract.json   # 分析时直接
 python scripts/contract.py nvda_full.json -o nvda_contract.json # 从已保存的 --json 文件转换
 ```
 
-`--json` 的完整结果是内部格式，以后可能会变；契约是对外接口，字段只增不改，改名或删除就升级为 fa-2.0。每个字段的含义见 `contracts/fa-1.1.schema.json`：打分、四大项和封顶、全部指标、估值分位和估值区间、分析师未来两年预期、内部人交易、数据日期（`as_of` 是价格所在的交易日，`statements_through` 是最新财报期的截止日）。1.1 新增 `valuation.availability`：前瞻 P/E 和 EV/EBITDA 分位、主估值区间、反向 DCF、DCF、FCF 收益率差、行业对比，每一项都标明是正常（`ok`）、用了替代口径（`fallback`，例如没有前瞻 P/E 区间时用历史倍数）还是没有（`unavailable`），并附上原因代码（如 `loss_making` 亏损、`financial` 金融类公司、`negative_fcf` 自由现金流为负）和一句说明。契约只整理事实，不做判断。
+`--json` 的完整结果是内部格式，以后可能会变；契约是对外接口，字段只增不改。每个字段的含义见 `contracts/fa-1.1.schema.json`：打分、四大项和封顶、全部指标、估值分位和估值区间、分析师未来两年预期、内部人交易、数据日期（`as_of` 是价格所在的交易日，`statements_through` 是最新财报期的截止日）。1.1 新增 `valuation.availability`：前瞻 P/E 和 EV/EBITDA 分位、主估值区间、反向 DCF、DCF、FCF 收益率差、行业对比，每一项都标明是正常（`ok`）、用了替代口径（`fallback`，例如没有前瞻 P/E 区间时用历史倍数）还是没有（`unavailable`），并附上原因代码（如 `loss_making` 亏损、`financial` 金融类公司、`negative_fcf` 自由现金流为负）和一句说明。契约里带着本 skill 算出的基本面打分；只要事实的话用下面的 fa-2.0。
+
+fa-2.0 事实输出（目前和 fa-1.1 并存）：
+
+```bash
+python scripts/analyze.py NVDA --facts nvda_facts.json                # 分析时直接导出
+python scripts/contract.py nvda_full.json --facts -o nvda_facts.json  # 从已保存的 --json 文件转换，旧版本存的也行
+```
+
+fa-2.0 只放事实：每个财年（和 TTM）的报表科目与标准比率，当前、历年末和对比自身历史的估值倍数，未来 12 个月倍数过去 3 年的分布，行业和板块 P/E，原样的分析师一致预期，以及 Piotroski、Altman、DCF（每个假设都是字段）和反向 DCF。没有打分、标签、提示、价位、目标价和安全边际，这些归做决策的工具。按期间的数据是列数组，和 `period` 对齐；缺失或不适用的值是 null，同一块里的 `status` 代码说明原因。每个字段的含义见 `contracts/fa-2.0.schema.json`。决策引擎先改读 fa-2.0，之后打分和 fa-1.1 再从本 skill 移除。
 
 股票代码：`BRK.B`、`BRK/B`、`brk b` 这些写法都会自动转成 FMP 用的 `BRK-B`（`scripts/symbols.py`），带外国交易所后缀的（如 `SHOP.TO`、`0700.HK`）会直接提示改用美股代码或 ADR。
 
