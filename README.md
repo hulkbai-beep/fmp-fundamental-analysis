@@ -302,7 +302,7 @@ python scripts/analyze.py NVDA --json nvda_facts.json      # 分析时直接导�
 python scripts/facts.py nvda_full.json -o nvda_facts.json  # 把 v1.x 用 --json 保存的完整结果转换成 fa-2.0
 ```
 
-fa-2.0 只放事实：每个财年（和 TTM）的报表科目与标准比率，当前、历年末和对比自身历史的估值倍数，前瞻倍数和未来 12 个月倍数过去 3 年的分布，行业和板块 P/E，原样的分析师一致预期，以及 Piotroski、Altman、DCF（每个假设都是字段）和反向 DCF。没有打分、标签、提示、价位、目标价和安全边际，这些归做决策的工具。按期间的数据是列数组，和 `period` 对齐；缺失或不适用的值是 null，同一块里的 `status` 代码说明原因。每个字段的含义见 `contracts/fa-2.0.schema.json`；2.x 版本只增加字段。每写一个文件，stderr 上会打印 `(fa-2.0 written to PATH)`。退出码：0 正常；1 FMP 出错、套餐不覆盖这只股票，或输出文件写不进去；2 API key 有问题或命令行参数无效。`facts.py` 遇到已经是 fa-2.x 的文件会原样写回，不加 `-o` 时把文档打印到屏幕，其他文件（例如 fa-1.x 契约）一律拒绝，退出码 1。
+fa-2.0 只放事实：每个财年（和 TTM）的报表科目与标准比率，当前、历年末和对比自身历史的估值倍数，前瞻倍数和未来 12 个月倍数过去 3 年的分布，行业和板块 P/E，原样的分析师一致预期，以及 Piotroski、Altman、DCF（每个假设都是字段）和反向 DCF。没有打分、标签、提示、价位、目标价和安全边际，这些归做决策的工具。按期间的数据是列数组，和 `period` 对齐；缺失或不适用的值是 null，同一块里的 `status` 代码说明原因。每个字段的含义见 `contracts/fa-2.0.schema.json`；2.x 版本只增加字段。每写一个文件，stderr 上会打印 `(fa-2.0 written to PATH)`。退出码：0 正常；1 FMP 出错、股票没法分析（不是美股代码、套餐不覆盖或没有数据，`--peers` 里的代码有误也算），或输出文件写不进去；2 API key 有问题或命令行用法错误（未知参数或取值、`--macro` 和 `--no-market` 同时用）。`facts.py` 遇到已经是 fa-2.x 的文件会原样写回，不加 `-o` 时把文档打印到屏幕，其他文件（例如 fa-1.x 契约）一律拒绝，退出码 1。
 
 股票代码：`BRK.B`、`BRK/B`、`brk b` 这些写法都会自动转成 FMP 用的 `BRK-B`（`scripts/symbols.py`），带外国交易所后缀的（如 `SHOP.TO`、`0700.HK`）会直接提示改用美股代码或 ADR。
 

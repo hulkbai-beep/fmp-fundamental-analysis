@@ -36,8 +36,9 @@ Options:
 Kept for one version: --contract PATH writes the fa-2.0 document as well (the fa-1.1 contract was removed in
 v2.0); --iv and --no-insider are accepted and ignored. Each prints a note to stderr.
 
-stdout is the markdown report alone (facts_report.py); notes go to stderr. Exit codes: 0 ok, 1 FMP error or an
-output file that could not be written, 2 API-key problem or invalid options. `python facts.py saved.json
+stdout is the markdown report alone (facts_report.py); notes go to stderr. Exit codes: 0 ok; 1 FMP error, a
+ticker that cannot be analysed (a bad --peers entry too) or an output file that could not be written; 2 API-key
+problem or a usage error (an unknown option or value, --macro with --no-market). `python facts.py saved.json
 [-o out.json]` converts a full result saved by `--json` of v1.x.
 Requests run in parallel (FMP_MAX_WORKERS, default 6; set 1 to fetch one at a time).
 """

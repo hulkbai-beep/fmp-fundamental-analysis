@@ -145,9 +145,17 @@ class Outputs(unittest.TestCase):
                 run_main(A.main, ["NOPE", "--peers", "none", "--json", str(path)])
             self.assertIn("does not cover NOPE", str(cm.exception.code))
             self.assertFalse(path.exists())
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as cm:
-            A.parse_args(["QUAL", "--macro", "--no-market"])
-        self.assertEqual(cm.exception.code, 2)
+            # so does a --peers entry that is not a US ticker
+            with self.assertRaises(SystemExit) as cm:
+                run_main(A.main, ["QUAL", "--peers", "SHOP.TO", "--json", str(path)])
+            self.assertIsInstance(cm.exception.code, str)
+            self.assertIn("--peers: 'SHOP.TO' looks like a non-US listing", cm.exception.code)
+            self.assertFalse(path.exists())
+        # usage errors exit with 2
+        for argv in (["QUAL", "--macro", "--no-market"], ["QUAL", "--nope"], ["QUAL", "--years", "five"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit) as cm:
+                run_main(A.main, argv)
+            self.assertEqual(cm.exception.code, 2)
 
 
 class Calls(unittest.TestCase):
