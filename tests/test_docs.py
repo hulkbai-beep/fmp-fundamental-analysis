@@ -10,8 +10,10 @@ No API key needed:
   of the script it runs.
 - Every file of the skill the docs name exists; only the "What changed in v2.0" section may name the removed files.
   The folder layout of the READMEs lists every file under scripts/, contracts/, references/ and ui/.
-- The report sections the docs list are the ones scripts/facts_report.py writes (an offline company with peers and
-  --macro), and metrics.md's contents list matches its sections.
+- The report sections the guides list are the ones scripts/facts_report.py writes, in its order (an offline
+  company with peers and --macro), and metrics.md's contents list matches its sections.
+- Outside "What changed in v2.0" the docs mention a removed output or option only to say it is gone or to point to
+  the decision engine.
 - README.md and README.en.md are parallel: the same heading levels, tables, commands, options, paths and links.
 """
 from __future__ import annotations
@@ -149,6 +151,52 @@ def report_of(argv):
         return A.run(A.parse_args(argv))[1]
 
 
+MACRO = "Rates & macro backdrop"   # listed without its number, which depends on the peers
+
+
+def listed_sections(name):
+    """The report's sections a guide lists, in its order. SKILL.md: the bold names of the bullets under "## The
+    report, section by section" (the title line and the company-type note are not sections). A README: the
+    `## N. ...` code spans and the macro entry of the list that holds `## 1. Growth`."""
+    text = TEXT[name]
+    if name == "SKILL.md":
+        names = re.findall(r"^- \*\*(.+?)\*\*", section(text, re.compile(r"^## The report, section by section")), re.M)
+        return [n for n in names if re.match(r"\d+\. ", n) or n in (MACRO, "Data notes")]
+    lines = text.splitlines()
+    i = j = next(k for k, line in enumerate(lines) if "`## 1. Growth`" in line)
+    while i > 0 and lines[i - 1].startswith("- "):
+        i -= 1
+    while j + 1 < len(lines) and lines[j + 1].startswith("- "):
+        j += 1
+    spans = re.findall(rf"`(## [^`]+|{re.escape(MACRO)})`", "\n".join(lines[i:j + 1]))
+    return [s.removeprefix("## ") for s in spans]
+
+
+# Words for what v2.0 removed. Outside "What changed in v2.0" a sentence may hold one only to say it is gone (a
+# negation), to tell what was there before v2.0, or to point to the decision engine that now has the score.
+REMOVED_WORDS = re.compile(r"fundamental score|基本面(?:打分|评分)|price ranges?\b|价格区间|price targets?\b|"
+                           r"target prices?\b|目标价|\binsider|内部人|margin of safety|安全边际|--iv\b|--no-insider\b|"
+                           r"volatility range|implied volatility|隐含波动率|波动区间|K-line|candlestick|K ?线|"
+                           r"\bfa-1\.1\b|automated flags|\bverdicts?\b", re.I)
+SAYS_GONE = re.compile(r"\b(?:no|not|never|none|nor|neither|without|removed|deleted|dropped|ignored|gone|instead)\b|"
+                       r"n't|不|没有|无|删|去掉|移除|忽略|别", re.I)
+ELSEWHERE = re.compile(r"investment-final-plan|decision engine|决策引擎|fundamental_view|before v2\.0|v2\.0 之前", re.I)
+
+
+def presented_as_present(text):
+    """The sentences of a doc (outside "What changed in v2.0", code blocks and SKILL.md's frontmatter) that name a
+    removed output or option without saying it is gone."""
+    if text.startswith("---\n"):
+        text = text.split("\n---\n", 1)[1]
+    text = without_code(section(text, CHANGES, inside=False))
+    out = []
+    for block in re.split(r"\n\s*\n|\n(?=\s*[-*] |\s*\d+\. |\|)", text):
+        for s in re.split(r"(?<=[.!?;])\s+|(?<=[。；])", " ".join(block.split())):
+            if REMOVED_WORDS.search(s) and not SAYS_GONE.search(s) and not ELSEWHERE.search(s):
+                out.append(s)
+    return out
+
+
 class Options(unittest.TestCase):
     def test_every_option_of_the_help_is_documented(self):
         shown = OPTIONS["analyze.py"] - {"--help"}
@@ -221,13 +269,11 @@ class Sections(unittest.TestCase):
         cls.headings = re.findall(r"^## (.+)$", cls.report, re.M)
 
     def test_the_report_sections_the_docs_list_are_the_ones_it_writes(self):
-        self.assertEqual(self.headings[-3:], ["11. Peer comparison", "12. Rates & macro backdrop", "Data notes"])
-        names = [re.sub(r"^\d+\. (?=Rates)", "", h) for h in self.headings]   # its number depends on the peers
+        """Each guide's list of the sections names every one the report writes, in the report's order."""
+        self.assertEqual(self.headings[-3:], ["11. Peer comparison", f"12. {MACRO}", "Data notes"])
+        want = [MACRO if h.endswith(MACRO) else h for h in self.headings]
         for name in GUIDES:
-            for h in names:
-                self.assertIn(h, TEXT[name], f"{name} does not list the section {h!r}")
-            listed = re.findall(r"`## ([^`]+)`", TEXT[name]) + re.findall(r"^- \*\*(\d+\. [^*]+)\*\*", TEXT[name], re.M)
-            self.assertEqual(sorted(set(listed) - set(self.headings)), [], name)
+            self.assertEqual(listed_sections(name), want, name)
 
     def test_the_header_parts_the_docs_name(self):
         bank = report_of(["BANK", "--peers", "none"])
@@ -246,6 +292,22 @@ class Sections(unittest.TestCase):
         self.assertEqual([n for n, _ in contents], [n for n, _ in found])
         for (_, entry), (_, title) in zip(contents, found):
             self.assertTrue(title.startswith(entry.split(" (")[0]), (entry, title))
+
+
+class Removed(unittest.TestCase):
+    def test_removed_outputs_and_options_are_not_described_as_present(self):
+        for name in DOCS:
+            self.assertEqual(presented_as_present(TEXT[name]), [], name)
+
+    def test_the_check_finds_planted_sentences(self):
+        planted = ["Use `--iv 0.45` to add the volatility range of the price.",
+                   "- **Fundamental score.** The report opens with the fundamental score; quote it first.",
+                   "报告最后有「价格区间」一节，给出目标价和 52 周区间。"]
+        kept = ["v2.0 has no price targets.", "不给目标价。", "The score lives in the decision engine."]
+        for s in planted:
+            self.assertTrue(presented_as_present(f"# Doc\n\nSome text.\n\n{s}\n"), s)
+        for s in kept:
+            self.assertEqual(presented_as_present(f"# Doc\n\n{s}\n"), [], s)
 
 
 class Content(unittest.TestCase):
