@@ -2,8 +2,8 @@
 """
 Local web UI for the fmp-fundamental-analysis skill.
 
-Runs the same analysis as scripts/analyze.py (same numbers, same report) and shows it in
-the browser. Standard library only.
+Runs the same analysis as scripts/analyze.py (analyze.run(): the same fa-2.0 document and the
+same report) and shows it in the browser. Standard library only.
 
 Usage:
   python ui/server.py              # then open http://127.0.0.1:8765
@@ -17,9 +17,9 @@ process only (see SKILL.md).
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import io
 import json
+import math
 import os
 import sys
 import threading
@@ -74,6 +74,8 @@ _lock = threading.Lock()  # FMPClient rate limiting and cache are per-process; r
 
 
 def run_analysis(q):
+    """(HTTP status, payload) for /api/analyze: {"result": the fa-2.0 document, "report": the markdown report,
+    "log": what the run wrote to stderr}, or {"error": ...}."""
     try:
         sym = normalize_symbol(q.get("symbol"))  # BRK.B -> BRK-B; refuses foreign listings
     except ValueError as e:
@@ -81,45 +83,39 @@ def run_analysis(q):
     argv = [sym]
     peers = (q.get("peers") or "").strip()
     if peers:
-        argv += ["--peers", peers]
-    for key, flag in (("discount", "--discount"), ("growth", "--growth"), ("terminal", "--terminal"), ("iv", "--iv")):
+        argv.append(f"--peers={peers}")  # attached, so a value starting with "-" is not read as an option
+    for key, flag in (("discount", "--discount"), ("growth", "--growth"), ("terminal", "--terminal")):
         v = (q.get(key) or "").strip()
         if v:
             try:
                 x = float(v) / 100
             except ValueError:
+                x = math.nan
+            if not math.isfinite(x):
                 return 400, {"error": f"{key} must be a number (percent)."}
-            if key == "iv" and not 0 < x < 5:
-                return 400, {"error": "Implied volatility must be a positive percent, e.g. 45."}
-            argv += [flag, str(x)]
+            argv.append(f"{flag}={x}")  # attached: str(-0.005 / 100) is "-5e-05"
     if q.get("fcf_base") in ("latest", "avg3"):
-        argv += ["--fcf-base", q["fcf_base"]]
+        argv.append(f"--fcf-base={q['fcf_base']}")
     if q.get("macro") == "1":
         argv.append("--macro")
     if q.get("refresh") == "1":
         argv.append("--refresh")
-    args = A.parse_args(argv)
-    args.candles = True  # also fetch the last year of daily bars for the candlestick chart
-
     log = io.StringIO()
-    with _lock, redirect_stderr(log):
+    with _lock, redirect_stderr(log):  # sys.stderr is process-wide: swap it only under the lock
         try:
-            result = A.analyze(args)
-            report = A.render(result)
+            args = A.parse_args(argv)
+        except SystemExit:  # argparse refused an option and printed why; answer instead of dropping the connection
+            lines = log.getvalue().strip().splitlines()
+            return 400, {"error": lines[-1] if lines else "Invalid options."}
+        try:
+            doc, report = A.run(args)
         except InvalidKey as e:
             return 401, {"error": f"API key problem: {e}", "log": log.getvalue()}
         except SystemExit as e:
             return 404, {"error": str(e), "log": log.getvalue()}
         except FMPError as e:
             return 502, {"error": f"FMP error: {e}", "log": log.getvalue()}
-
-    # The chart draws candles from the daily bars; when the data source has none, it falls back to a line of
-    # the daily closes the analysis already fetched (back to its oldest fiscal year), cut to the last year.
-    start = (dt.date.today() - dt.timedelta(days=366)).isoformat()
-    prices = [p for p in result.pop("price_series", []) if p[0] >= start]
-    candles, candles_note = result.pop("candles", None) or [], result.pop("candles_note", None)
-    return 200, {"result": result, "report": report, "prices": prices, "candles": candles,
-                 "candles_note": candles_note, "log": log.getvalue()}
+    return 200, {"result": doc, "report": report, "log": log.getvalue()}
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -2,62 +2,68 @@
 
 [中文](README.md) | **English**
 
-Fundamental analysis of US stocks using Financial Modeling Prep (FMP) data. It works as a Claude skill, and it can also be run directly from the command line or as a local web page.
+Fundamental analysis of US stocks using Financial Modeling Prep (FMP) data: the facts and the standard models. It works as a Claude skill, and it can also be run directly from the command line or as a local web page.
 
 What it covers:
 - Growth: yearly revenue, profit, EPS and FCF, with CAGR
 - Profitability and returns: gross margin, operating margin, ROE, ROIC
 - Balance sheet and liquidity: net debt, leverage, current ratio, interest coverage
 - Cash flow quality and capital allocation: FCF / net income, stock-based compensation, buybacks, dividends
-- Valuation: current multiples against the company's own 5-year history and against peers
-- Industry and sector context: the company's P/E against its industry's and sector's P/E and their historical percentiles; 1-month / 3-month / year-to-date / 1-year returns of the company, industry and sector against the S&P 500
-- Quality scores: Piotroski F-score, Altman Z
+- Valuation: current multiples against the company's own fiscal-year-end history (5 years by default) and against peers
+- Forward multiples: forward P/E on each of the next two fiscal years' EPS and on next-12-month EPS, forward EV/EBITDA, and the 3-year distribution of the daily forward P/E and EV/EBITDA (10th / 25th / median / 75th / 90th percentile and where today sits in it); statistics only, never turned into prices
+- Industry and sector P/E: the company's P/E against its industry's and sector's P/E, and where those sit in their own history
+- Quality scores: Piotroski F-score, Altman Z (with the published cut-offs)
 - DCF and reverse DCF: the discount rate is tied to the 10-year Treasury yield by default (CAPM), with a discount rate × growth sensitivity table
-- Rates and macro backdrop (optional): Treasury yield curve, Fed funds rate, the latest readings of CPI / PPI / PCE / payrolls / Fed decisions, and the next three weeks' schedule
-- Analyst estimates and price targets
-- Price range: forward P/E and EV/EBITDA ranges at three points, **now**, **the end of the current fiscal year** and **the end of the next fiscal year** (next-12-month EPS / EBITDA × the 25th / 50th / 75th percentile of the company's own 3-year multiple on the same basis); volatility ranges to those two fiscal year ends (68% and 95%, optionally from options-implied volatility); all side by side with the DCF range, analyst price targets and the 52-week range
-- Insider trades (observation only, not scored): open-market purchases and sales by officers and directors over the last 12 months, leaving out awards, option exercises, shares withheld for tax and other trades not at the market price; the trades are listed, with no flag
-- Automated flags: positives and concerns, as leads to check, not conclusions
-- Fundamental score: four pillars (valuation 35%, quality 25%, growth 20%, financial health 20%), each indicator scored −2 to +2 from fixed bands, combined into a total with a Bullish / Moderately bullish / Neutral / Moderately bearish / Bearish label (the technical scorecard's scale) and a confidence level; a value trap or a balance-sheet red line caps the total at Neutral. The rules are fixed and versioned; see section 12 of `references/metrics.md`
-- The fa-1.1 contract for other tools: `--contract` writes a small, versioned JSON summary for a decision engine, screener or other tool to read (see "Option 2: command line")
+- Analyst consensus: EPS, revenue and EBITDA estimates as published
+- Rates and macro backdrop (optional): Treasury yield curve, Fed funds rate, the latest readings of CPI / PPI / PCE / payrolls / Fed decisions, the next three weeks' schedule, and the 1-month / 3-month / year-to-date / 1-year returns of the company, its industry and sector against the S&P 500
+- One output for other tools: the fa-2.0 document (`--json` / `--facts`), every field described in `contracts/fa-2.0.schema.json`
 
-All calculations are done by the scripts; Claude only interprets the results.
+All calculations are done by the scripts; Claude presents the results. The skill does not say whether to buy or sell and gives no score, price target or price range: the decision is yours, or the decision engine's ([investment-final-plan](https://github.com/hulkbai-beep/investment-final-plan), which computes its own fundamental score from fa-2.0).
 
 > This is an analysis tool, not investment advice. Data may contain errors; verify important figures against the company's filings.
 
 ---
 
+## What changed in v2.0
+
+v2.0 gives facts and standard models only. Removed, and what replaces it where something does:
+- The fundamental score (pillars, label, confidence, caps) and the fa-1.1 contract, with `scripts/score.py`, `scripts/contract.py`, `contracts/fa-1.1.schema.json`, `scripts/score_batch.py` and `references/validation-set.txt`. The score now lives in the decision engine: investment-final-plan, `ifp/fundamental_view.py`, rules 1.3, documented in [docs/fundamental-score-1.3.md](https://github.com/hulkbai-beep/investment-final-plan/blob/main/docs/fundamental-score-1.3.md).
+- Price ranges and price levels (forward-multiple ranges in prices, the fiscal-year-end price cards, the 52-week range), the volatility ranges (`--iv`), analyst price targets and the margin of safety. The forward multiples and their 3-year distribution remain as statistics (percentiles and today's percentile); the DCF and the reverse DCF remain, with every input, never set against the price.
+- Insider trades (`scripts/insider.py`, `--no-insider`) and the automated flags; on the web page, the K-line (candlestick) chart and the cards of the removed parts. The page shows the same facts as the report.
+- Outputs: `--json`, `--facts` and the deprecated `--contract` all write fa-2.0. `python scripts/facts.py SAVED.json [-o OUT.json]` converts a result saved by `--json` of v1.x (it replaces `contract.py SAVED.json --facts`).
+- Without peers an analysis makes 14 API calls instead of 21, and 25 instead of 27 with `--macro`: insider trades and price targets are no longer fetched, and the returns against the industry, sector and S&P 500 and the Treasury curve 3M / 1Y ago come only with `--macro`.
+
 ## Folder layout
 
 ```
 fmp-fundamental-analysis/
-├── SKILL.md            # Skill instructions for Claude (workflow, interpretation rules, report template)
+├── SKILL.md            # Skill instructions for Claude (workflow, how to present the facts, answer template)
 ├── README.md           # Usage guide for people (Chinese)
 ├── README.en.md        # This file: usage guide for people (English)
 ├── references/
-│   ├── validation-set.txt  # About 20 stocks of every company type for checking the score
-│   └── metrics.md      # Metric definitions, thresholds, sector caveats
+│   └── metrics.md      # How each figure is computed, the standard models, where a measure misleads
 ├── scripts/
 │   ├── fmp_client.py   # FMP API client: connection, cache, rate limiting, plus the check / get commands
-│   ├── analyze.py      # Main analysis script: builds the full report
-│   ├── score.py        # Fundamental score: pillars, scoring bands, caps and confidence
-│   ├── score_batch.py  # Scores for a list of stocks as CSV, to compare before and after a rule change
-│   ├── insider.py      # Insider trades: open-market purchases and sales
-│   ├── contract.py     # The fa-1.1 contract: the small summary other tools read
+│   ├── analyze.py      # Main analysis script: the report on screen, the fa-2.0 document with --json / --facts
+│   ├── facts.py        # The fa-2.0 document: statements, ratios, multiples and standard models; converts results saved by v1.x
+│   ├── facts_report.py # The report: one fa-2.0 document as markdown (also used by the web page and the decision engine)
 │   ├── symbols.py      # Ticker normalisation: BRK.B -> BRK-B, foreign listings refused
 │   └── macro.py        # Rates, macro and sector data: a standalone macro dashboard, also used by analyze.py
 ├── contracts/
-│   └── fa-1.1.schema.json  # Every field of the contract (JSON Schema)
+│   └── fa-2.0.schema.json  # Every field of fa-2.0 (JSON Schema)
 ├── ui/
 │   ├── server.py       # Local web server
 │   ├── index.html      # Web page
 │   └── i18n.js         # Chinese/English toggle and translation tables for the web page
 └── tests/              # Offline tests, no API key needed: python -m unittest discover -s tests
-    ├── fake_fmp.py     # Offline fake FMP data (five made-up companies: QUAL, TRAP, BANK, EXCH, UTIL) for tests and trying the page
-    ├── test_score.py   # Tests of the score
-    ├── test_insider.py # Tests of the insider-trades summary
-    ├── test_contract.py  # Tests of the contract: the output must match the schema and the full result
-    └── test_symbols.py   # Tests of the ticker normalisation
+    ├── fake_fmp.py     # Offline fake FMP data (eight made-up companies: QUAL, TRAP, BANK, EXCH, UTIL, QTRS, ADJE, REIT) for tests and trying the page
+    ├── test_cli.py     # Tests of the command line, the converter, the API calls and the web page's answer
+    ├── test_facts.py   # Tests of fa-2.0: the schema, no judgement words, results saved by earlier versions convert as before
+    ├── test_facts_report.py  # Tests of the report: its sections, the tables as before, no judgement words, a Chinese translation for every text
+    ├── test_docs.py    # Tests of these docs against the code: options, file paths, report sections, the two READMEs
+    ├── test_page.py    # Static tests of the web page: what the decision engine relies on, its labels, no removed parts
+    ├── test_symbols.py # Tests of the ticker normalisation
+    └── data/           # Results and report tables saved by earlier versions, for the tests
 ```
 
 ## Requirements
@@ -121,7 +127,7 @@ Data obtained through the proxy is resold FMP data. The report's Data notes stat
 python scripts/fmp_client.py check
 ```
 
-It shows the current connection (official or proxy, path prefix, auth style, certificate verification), tests a dozen single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done (except `historical-price-eod/full`, which only feeds the web page's candlestick chart; without it the page draws a line of closing prices); the sector and macro results tell you which later features your plan or proxy supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
+It shows the current connection (official or proxy, path prefix, auth style, certificate verification), tests about ten single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done; the sector and macro results tell you which later features your plan or proxy supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
 
 With a proxy whose certificate does not verify, check like this in PowerShell (current terminal window only):
 
@@ -221,7 +227,7 @@ Once the skill is installed, ask Claude in Chinese or English; there is no need 
 - "What are rates and inflation doing right now, and what does that mean for a growth stock like NVDA?"
 - "Which sectors have been strong lately? Is tech expensive right now?"
 
-Claude runs `analyze.py` and writes a report from the template in SKILL.md: conclusion, growth, profitability, balance sheet, cash flow, valuation, risks, things to watch and data notes.
+Claude runs `analyze.py` and presents the facts following SKILL.md: a summary of the facts, the business, growth, profitability, balance sheet and cash flow, the valuation facts (multiples against their history and the group, forward multiples, DCF and reverse DCF), quality scores, limits of the data and data notes. It does not say whether to buy or sell: asked "is it expensive?", it shows these facts and leaves the decision to you.
 
 **Note: Claude reads the copy of the skill in `~/.claude/skills/fmp-fundamental-analysis/`.** After changing this folder, sync the changes there for them to take effect. On Windows:
 
@@ -245,11 +251,17 @@ python scripts/analyze.py AAPL
 
 On a Mac, use `python3 scripts/analyze.py AAPL`. With a third-party proxy whose certificate does not verify, run `$env:FMP_TLS_VERIFY = '0'` first in PowerShell, or put `FMP_TLS_VERIFY=0` in front of the command on a Mac.
 
+The report goes to the screen (stdout, markdown) and notes go to stderr. Its parts, in order:
+- `# TICKER - Name`, a line with sector / industry, exchange, price, market cap and beta, a "Data basis" line (fiscal years, statement currency, TTM or not, the period the valuation uses, the as-of date) and, for a financial company, fee-based financial, REIT or utility, a "Company type" note naming the measures that do not apply to it
+- `## 1. Growth`, `## 2. Profitability & returns`, `## 3. Balance sheet & liquidity`, `## 4. Cash flow quality & capital allocation`
+- `## 5. Valuation` (multiples now against their fiscal-year-end history, EV and yields), `## 6. Forward multiples` (and their 3-year distribution), `## 7. Industry & sector P/E`, `## 8. Quality scores` (Piotroski, Altman), `## 9. DCF` (with the sensitivity grid and the reverse DCF), `## 10. Analyst consensus`
+- `## 11. Peer comparison` (only with peers), `Rates & macro backdrop` (only with `--macro`, numbered after the last section) and `## Data notes`
+
 Common options:
 
 | Option | What it does | When to use it |
 |---|---|---|
-| `--peers MSFT,GOOGL` | Comparison companies, comma-separated | You want specific companies, or the automatic peers are a poor fit |
+| `--peers MSFT,GOOGL` | Comparison companies, comma-separated (5 API calls each) | You want specific companies, or the automatic peers are a poor fit |
 | `--peers none` | No peer comparison | Saves time and API calls |
 | `--max-peers 5` | Maximum number of automatic peers (default 5) | |
 | `--years 5` | Years of history to fetch (default 5; the Starter plan's limit is 5) | |
@@ -257,14 +269,15 @@ Common options:
 | `--growth 0.06` | DCF growth for years 1-5 (default: historical revenue CAGR, clamped to 0-15%) | Past growth is a poor guide (acquisitions, slowdown, company guidance) |
 | `--terminal 0.025` | DCF terminal growth (default 0.025) | |
 | `--fcf-base avg3` | Start the DCF from the 3-year average FCF (default `latest`) | Cyclical businesses, or a volatile latest year |
-| `--iv 0.45` | Use this annual implied volatility for the price-range volatility ranges (0.45 = 45%; default: the past year's realized volatility); "Implied vol %" on the web page | You have the stock's options-implied volatility from your broker |
 | `--no-ttm` | Skip trailing-twelve-month (TTM) data; saves 3 API calls | |
-| `--macro` | Add a "Rates & macro backdrop" section to the report (6 more API calls) | You want to see how rates, inflation and the Fed bear on the company |
-| `--no-market` | Skip Treasury, sector and industry data (fixed 9% discount rate, no industry section); saves 9 API calls; cannot be combined with `--macro` | Those endpoints fail, or you want the old behaviour |
-| `--no-insider` | Skip insider trades (no insider section); saves 1 to 5 API calls; the score is unchanged | You don't need the section, or the endpoint fails |
-| `--json out.json` | Also save every computed number to a JSON file | You need the raw numbers |
-| `--contract out.json` | Also save the fa-1.1 contract: a small, versioned summary for other tools (see below) | A decision engine, screener or other tool will use the result |
+| `--macro` | Add a "Rates & macro backdrop" section to the report (11 more API calls) | You want to see the rates, inflation and Fed backdrop and the returns against the industry, sector and S&P 500 |
+| `--no-market` | Skip Treasury, sector and industry data (fixed 9% discount rate, no industry & sector P/E); saves 4 API calls; cannot be combined with `--macro` | Those endpoints fail, or you want the fixed discount rate |
+| `--json out.json` | Also save the fa-2.0 document to a file (see below) | You need the numbers, or another tool will read them |
+| `--facts out.json` | The same as `--json` (kept because the decision engine passes it) | |
+| `--contract out.json` | Deprecated, for one version: writes the fa-2.0 document too, with a note (the fa-1.1 contract was removed) | Only old scripts still pass it |
 | `--refresh` | Ignore the cache and fetch again | Data looks stale, or the company just reported |
+
+Without peers (`--peers none`) an analysis makes 14 API calls: 11 with `--no-ttm`, 10 with `--no-market`, 25 with `--macro`. Peers add 5 calls each, and finding the automatic peers 1 more. `--iv` and `--no-insider` are still accepted for one version and ignored (v2.0 has no volatility range and fetches no insider trades); they print a note and are hidden from `--help`.
 
 Example:
 
@@ -280,16 +293,16 @@ python scripts/macro.py --sectors    # Adds sector P/E (vs its own history) and 
 python scripts/macro.py --events     # Lists every medium- and high-impact US economic event in the window
 ```
 
-All times are UTC. Sector and industry P/E and returns are FMP's equal-weighted aggregates per exchange (NASDAQ by default): good for direction and relative position, not the same as S&P 500 sector indexes.
+All times are UTC. Sector and industry P/E and returns are FMP's aggregates of one exchange's listed companies (NASDAQ by default), and the returns are equal-weighted averages of daily changes: good for direction and relative position, not the same as S&P 500 sector indexes.
 
-The fa-1.1 contract for other tools:
+The fa-2.0 document for other tools:
 
 ```bash
-python scripts/analyze.py NVDA --contract nvda_contract.json   # write it during the analysis
-python scripts/contract.py nvda_full.json -o nvda_contract.json # convert a saved --json file
+python scripts/analyze.py NVDA --json nvda_facts.json      # write it during the analysis (--facts does the same)
+python scripts/facts.py nvda_full.json -o nvda_facts.json  # convert a full result saved by --json of v1.x
 ```
 
-The full `--json` result is internal and may change; the contract is the public interface, whose fields are only ever added (renaming or removing one means fa-2.0). `contracts/fa-1.1.schema.json` describes every field: the score, pillars and caps, every indicator, the valuation bands and ranges, analysts' next two years, insider activity and the data dates (`as_of` is the price's trading day, `statements_through` the end of the latest statement period). 1.1 adds `valuation.availability`: for the forward P/E and EV/EBITDA bands, the primary value range, the reverse DCF, the DCF, the FCF-yield spread and the industry comparison, whether each is `ok`, a `fallback` (a stand-in measure, for example the trailing multiple when there is no forward P/E range) or `unavailable`, with a reason code (such as `loss_making`, `financial` or `negative_fcf`) and a sentence. The contract selects facts and judges nothing.
+fa-2.0 holds facts only: the statements and standard ratios per fiscal year (and TTM), the multiples now, at each fiscal year end and against their own history, the forward multiples and the 3-year distribution of the next-twelve-month multiples, the industry and sector P/E, the analysts' consensus as published, and Piotroski, Altman, a DCF (every input is a field) and the reverse DCF. It has no score, label, flag, price level, price target or margin of safety; those belong to the tool that makes the decision. Per-period data are column arrays lined up with their `period` array; a value that is missing or does not apply is null, and the block's `status` code says why. `contracts/fa-2.0.schema.json` describes every field; 2.x versions only add fields. Each file written prints `(fa-2.0 written to PATH)` on stderr. Exit codes: 0 ok; 1 FMP error, a ticker that cannot be analysed (not a US listing, not covered by the plan, or no data), a `--peers` entry that is not a US ticker (a peer with no data only gets a "no data" row), or an output file that could not be written; 2 API-key problem or a usage error (an unknown option or value, `--macro` with `--no-market`). `facts.py` writes a file that is already fa-2.x back as it is, prints the document to the screen without `-o`, and refuses anything else (such as an fa-1.x contract) with exit code 1.
 
 Tickers: share classes may be typed `BRK.B`, `BRK/B` or `brk b`; they become FMP's `BRK-B` (`scripts/symbols.py`). A foreign exchange suffix (such as `SHOP.TO` or `0700.HK`) is refused with a hint to use the US ticker or ADR.
 
@@ -312,20 +325,13 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
 - **Handled automatically at start-up:**
   - Reads the `FMP_*` variables saved with `setx`, even if the terminal was opened before `setx`.
   - If it is connecting to the old 54.236.92.205 proxy, sets `FMP_TLS_VERIFY=0` for this server process only; nothing is changed for the official API.
-- **Settings on the page:** ticker, comparison companies, discount rate % (blank = automatic, tied to Treasuries), growth years 1-5 %, terminal growth %, implied volatility % (blank = the past year's realized volatility), starting FCF (latest or 3-year average), macro backdrop, ignore cache.
-- **What the page shows:**
-  - Through a third-party proxy, a yellow banner at the top names the data source; it is not shown for the official API.
-  - Company overview: price, market cap, and key figures such as P/E, EV/EBITDA, FCF yield, ROIC, Piotroski and DCF value. Each analysis takes the price from the latest quote (cached for 1 minute) and shows the quote time (New York) under it; the last candle of the chart is updated to that price too.
-  - A candlestick price chart (each day's open, high, low and close, with volume underneath) for 3 months, 6 months, year to date or 1 year; hovering a day shows its numbers. When the chart is too narrow for a candle a day it switches to weekly candles; when the data source has no open, high or low prices it draws a line of closing prices.
-  - The automated positives and concerns.
-  - A "Fundamental score" card: the total, its label and confidence, then each pillar's weight, score, contribution to the total and data coverage; opening a pillar shows each indicator's value, scoring bands (the matching band highlighted), score, weight and contribution, followed by any caps, conflicts to note, the value range and a "How it is computed" list.
-  - Each part of the report on its own tab, with the full text report expandable at the bottom.
-  - The "Price range" tab has a comparison chart grouped by horizon (past 52 weeks, now, each fiscal year end, in 12 months, in time order): one bar per method in each group, a dot at the mid value, a vertical line at the current price, and a lighter band on the volatility rows for the 95% range; hovering a row shows its numbers. The table below uses the same method + horizon names. The header card shows three forward P/E ranges: now (next-twelve-month EPS, this fiscal year and the next weighted by the time left), and the same P/E band on this fiscal year's EPS and on the next one's.
-- **Chinese / English toggle:** the "EN / 中文" button at the top right switches the whole page and report; Chinese by default, and the browser remembers your last choice. Translation happens only in the web page: numbers do not change, the full text report at the bottom stays in the original English, and industry names from FMP and a few economic release names without a translation stay in English.
+- **Settings on the page:** ticker, comparison companies, discount rate % (blank = automatic, tied to Treasuries), growth years 1-5 %, terminal growth %, starting FCF (latest or 3-year average), macro backdrop, ignore cache.
+- **What the page shows:** the same facts as the report, from the same fa-2.0 document: a header with the company, its price and market cap, tiles of key figures, and the report's sections. Through a third-party proxy, a notice names the data source.
+- **Chinese / English toggle:** the "EN / 中文" button at the top right switches the page between Chinese and English; Chinese by default, and the browser remembers your last choice. Translation happens only in the web page, so the numbers do not change; industry names from FMP and a few economic release names without a translation stay in English.
 - **Links open directly:** for example `http://127.0.0.1:8765/?symbol=NVDA` analyzes NVDA straight away.
 - **Local only:** the page listens on 127.0.0.1, so other devices on your network cannot open it.
 
-The numbers on the page are exactly those `analyze.py` produces, and both share the same cache.
+The page runs the same analysis as `analyze.py` (the same fa-2.0 document and report), and both share the same cache.
 
 ---
 
@@ -360,9 +366,11 @@ This also deletes the detected proxy connection settings; they are detected agai
 | On a Mac, Claude says `FMP_API_KEY is not set` although Terminal has it | The Claude desktop app did not read `~/.zshrc`. Also put the key in the `env` block of `~/.claude/settings.json` (step 5 ⑥), then quit the app with ⌘ + Q and reopen it |
 | On a Mac, `CERTIFICATE_VERIFY_FAILED` when connecting to FMP's official servers | Python installed from python.org ships without certificates. Open Applications → Python 3.x and double-click `Install Certificates.command` once |
 | The web page does not open / the port is taken | Check that `server.py` is still running, or use another port: `--port 9000` |
-| Some metrics show n/a or are meaningless for a financial company or REIT | Expected: gross margin, EV multiples and DCF do not apply to banks and insurers. The report's sector note explains |
+| Some metrics show n/a or are meaningless for a financial company or REIT | Expected: gross margin, EV multiples and DCF do not apply to banks and insurers. The report's "Company type" note names the measures that do not apply |
 | The DCF discount rate says `fixed default` | The Treasury or equity risk premium endpoint returned no data, so the fixed 9% was used this time. Run `fmp_client.py check` to see which endpoint failed |
-| The industry row in the industry comparison is n/a | FMP has no aggregate for that industry on that exchange; use the sector row and the peer comparison instead |
-| Industry P/E shows `negative` | The industry is loss-making as a whole (aggregate P/E below 0), so the P/E comparison is meaningless; look at P/S and peers instead |
+| The industry row in the industry comparison is n/a | FMP has no aggregate for that industry on that exchange; the sector row and the peer comparison still give a comparison |
+| Industry P/E shows `negative` | The industry is loss-making as a whole (aggregate P/E below 0), so there is no industry P/E to compare with |
+| A note says `--iv is ignored`, `--no-insider is ignored` or `--contract is deprecated` | v2.0 accepts these options for one version and ignores them (`--contract` writes fa-2.0, like `--json`); remove them from your scripts |
+| `Cannot convert ... to fa-2.0` | `facts.py` takes a full result saved by `analyze.py --json` of v1.x, or an fa-2.x file; an fa-1.x contract is not a saved result and cannot be converted |
 
-Metric definitions and thresholds: [references/metrics.md](references/metrics.md).
+Metric definitions and formulas: [references/metrics.md](references/metrics.md).

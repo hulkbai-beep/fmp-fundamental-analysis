@@ -2,5 +2,5 @@ __pycache__/
 *.pyc
 *.json
 .env
-score-batch/
 !contracts/*.json
+!tests/data/*.json

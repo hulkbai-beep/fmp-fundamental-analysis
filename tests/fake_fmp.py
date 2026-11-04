@@ -11,6 +11,9 @@ Scenarios:
   BANK  a regional bank (financial-sector rules)
   EXCH  an exchange / data company: in the financial sector, but analysed like other companies
   UTIL  a regulated utility: capex above operating cash flow (negative FCF), high leverage
+  QTRS  a growing company with quarterly statements, so the valuation uses trailing-twelve-month figures
+  ADJE  a software company whose analysts forecast adjusted EPS and EBITDA, well above the reported figures
+  REIT  an industrial REIT: high payout, leverage and share issuance, EBITDA-based interest cover
 """
 from __future__ import annotations
 
@@ -36,9 +39,12 @@ def _days(start, end):
 
 
 def _company(sym, revenue, gm, om, shares, cash, debt, sbc_pct, fcf_ratio, interest, eps_growth_est,
-             rev_growth_est, multiple_now, multiple_mid, sector, industry, beta=1.1, equity_ratio=0.45, asset_turn=1.6):
+             rev_growth_est, multiple_now, multiple_mid, sector, industry, beta=1.1, equity_ratio=0.45, asset_turn=1.6,
+             quarters=None, adjusted=None, capex_pct=0.05, payout=0.01):
     """Five fiscal years of statements and the matching market data. revenue / gm / om / shares / cash /
-    debt / fcf_ratio are per-year lists, oldest first."""
+    debt / fcf_ratio are per-year lists, oldest first. quarters: quarter-on-quarter growth of four quarterly
+    statements after the last fiscal year (trailing-twelve-month figures). adjusted: (EPS, EBITDA) multipliers
+    when analysts forecast on an adjusted basis; they then also publish a row for the last reported year."""
     inc, bs, cf = [], [], []
     for i, fy in enumerate(range(LAST_FY - 4, LAST_FY + 1)):
         date = f"{fy}-12-31"
@@ -59,18 +65,19 @@ def _company(sym, revenue, gm, om, shares, cash, debt, sbc_pct, fcf_ratio, inter
                    "inventory": rev * 0.05, "totalAssets": assets, "totalLiabilities": assets - equity,
                    "totalStockholdersEquity": equity, "retainedEarnings": equity * 0.7, "minorityInterest": 0,
                    "goodwillAndIntangibleAssets": rev * 0.1})
-        ocf = ni * fcf_ratio[i] + rev * 0.05
-        cf.append({"date": date, "fiscalYear": str(fy), "operatingCashFlow": ocf, "capitalExpenditure": -rev * 0.05,
-                   "freeCashFlow": ocf - rev * 0.05, "stockBasedCompensation": rev * sbc_pct,
-                   "commonStockRepurchased": -rev * 0.03, "commonDividendsPaid": -rev * 0.01,
+        ocf = ni * fcf_ratio[i] + rev * capex_pct
+        cf.append({"date": date, "fiscalYear": str(fy), "operatingCashFlow": ocf, "capitalExpenditure": -rev * capex_pct,
+                   "freeCashFlow": ocf - rev * capex_pct, "stockBasedCompensation": rev * sbc_pct,
+                   "commonStockRepurchased": -rev * 0.03, "commonDividendsPaid": -rev * payout,
                    "depreciationAndAmortization": rev * 0.04})
     eps = [r["epsDiluted"] for r in inc]
-    est, e, rv = [], eps[-1], revenue[-1]
+    eps_x, ebitda_x = adjusted or (1.0, 1.0)
+    est, e, rv = [], eps[-1] * eps_x, revenue[-1]
     for k, fy in enumerate(range(LAST_FY + 1, LAST_FY + 4)):
         e *= 1 + eps_growth_est[k]
         rv *= 1 + rev_growth_est[k]
         est.append({"symbol": sym, "date": f"{fy}-12-31", "epsAvg": e, "epsLow": e * 0.9, "epsHigh": e * 1.1,
-                    "revenueAvg": rv, "ebitdaAvg": rv * (om[-1] + 0.04), "numAnalystsEps": 20 - 4 * k})
+                    "revenueAvg": rv, "ebitdaAvg": rv * (om[-1] + 0.04) * ebitda_x, "numAnalystsEps": 20 - 4 * k})
 
     # Daily closes: forward P/E x next-twelve-month EPS, the multiple swinging around multiple_mid over the
     # last three years and ending at multiple_now.
@@ -93,13 +100,50 @@ def _company(sym, revenue, gm, om, shares, cash, debt, sbc_pct, fcf_ratio, inter
         m *= 1 + rnd.gauss(0, 0.01)
         prices.append((d.isoformat(), round(max(ntm(d), 0.05) * m, 2)))
     price = prices[-1][1]
+    if adjusted:  # FMP also lists the analysts' figures for the last reported year, on their (adjusted) basis
+        est.append({"symbol": sym, "date": f"{LAST_FY}-12-31", "epsAvg": eps[-1] * eps_x, "epsLow": eps[-1] * eps_x * 0.98,
+                    "epsHigh": eps[-1] * eps_x * 1.02, "revenueAvg": revenue[-1],
+                    "ebitdaAvg": inc[-1]["ebitda"] * ebitda_x, "numAnalystsEps": 24})
+    q = _quarters(inc[-1], bs[-1], cf[-1], quarters) if quarters else None
     profile = {"symbol": sym, "companyName": f"{sym} Test Corp", "price": price, "marketCap": price * shares[-1],
                "beta": beta, "sector": sector, "industry": industry, "exchange": "NASDAQ",
                "exchangeShortName": "NASDAQ", "currency": "USD", "country": "US", "fullTimeEmployees": "1000",
                "description": f"Synthetic company used by the offline tests ({sym}).", "changePercentage": 0.5}
-    return {"profile": profile, "inc": inc, "bs": bs, "cf": cf, "est": est, "prices": prices,
+    return {"profile": profile, "inc": inc, "bs": bs, "cf": cf, "est": est, "prices": prices, "quarters": q,
             "target": {"targetConsensus": price * 1.2, "targetMedian": price * 1.18, "targetHigh": price * 1.5,
                        "targetLow": price * 0.9}}
+
+
+def _quarters(inc, bs, cf, growth):
+    """Four quarterly income and cash-flow statements after the last fiscal year (each a quarter of that year's
+    figures, growing `growth` a quarter) and the latest quarterly balance sheet. The last quarter ends on the
+    latest quarter end before today, and at least three months after the fiscal year end."""
+    ends, d = [], max(TODAY, dt.date(LAST_FY + 1, 3, 31))
+    while len(ends) < 4:
+        month = (d.month - 1) // 3 * 3 + 3
+        end = dt.date(d.year, month, 31 if month in (3, 12) else 30)
+        if end > d:
+            end = dt.date(d.year - (month == 3), 12 if month == 3 else month - 3, 31 if month in (3, 6) else 30)
+        ends.append(end)
+        d = end - dt.timedelta(days=1)
+    ends.reverse()
+    flows_inc = ("revenue", "grossProfit", "operatingIncome", "ebitda", "ebit", "depreciationAndAmortization",
+                 "netIncome", "epsDiluted", "interestExpense", "incomeBeforeTax", "incomeTaxExpense",
+                 "researchAndDevelopmentExpenses")
+    flows_cf = ("operatingCashFlow", "capitalExpenditure", "freeCashFlow", "stockBasedCompensation",
+                "commonStockRepurchased", "commonDividendsPaid", "depreciationAndAmortization")
+    qi, qc = [], []
+    for k, end in enumerate(ends, 1):
+        f = (1 + growth) ** k / 4
+        meta = {"date": end.isoformat(), "fiscalYear": str(end.year), "period": f"Q{(end.month - 1) // 3 + 1}"}
+        qi.append({**meta, "reportedCurrency": inc["reportedCurrency"],
+                   "weightedAverageShsOutDil": inc["weightedAverageShsOutDil"], **{k2: inc[k2] * f for k2 in flows_inc}})
+        qc.append({**meta, **{k2: cf[k2] * f for k2 in flows_cf}})
+    grow = (1 + growth) ** 4
+    qb = [{"date": ends[-1].isoformat(), "fiscalYear": str(ends[-1].year), "period": qi[-1]["period"],
+           **{k2: (v * grow if isinstance(v, (int, float)) and k2 != "minorityInterest" else v)
+              for k2, v in bs.items() if k2 not in ("date", "fiscalYear")}}]
+    return {"income-statement": qi, "cash-flow-statement": qc, "balance-sheet-statement": qb}
 
 
 def _scenarios():
@@ -134,7 +178,27 @@ def _scenarios():
                     interest=[2.2e9, 2.3e9, 2.4e9, 2.5e9, 2.6e9], eps_growth_est=[0.06, 0.06, 0.06],
                     rev_growth_est=[0.04, 0.04, 0.04], multiple_now=16.0, multiple_mid=18.0, sector="Utilities",
                     industry="Regulated Electric", beta=0.5, equity_ratio=0.28, asset_turn=4.5)
-    return {"QUAL": qual, "TRAP": trap, "BANK": bank, "EXCH": exch, "UTIL": util}
+    qtrs = _company("QTRS", revenue=[50e9 * x for x in (1.0, 1.15, 1.32, 1.50, 1.72)],
+                    gm=[0.55, 0.56, 0.56, 0.57, 0.58], om=[0.22, 0.24, 0.25, 0.26, 0.27],
+                    shares=[2.0e9, 2.0e9, 1.99e9, 1.98e9, 1.97e9], cash=[15e9, 18e9, 21e9, 24e9, 27e9], debt=[10e9] * 5,
+                    sbc_pct=0.03, fcf_ratio=[1.05] * 5, interest=[0.4e9] * 5, eps_growth_est=[0.16, 0.14, 0.12],
+                    rev_growth_est=[0.14, 0.12, 0.11], multiple_now=24.0, multiple_mid=27.0, sector="Technology",
+                    industry="Software - Infrastructure", quarters=0.035)
+    adje = _company("ADJE", revenue=[8e9 * x for x in (1.0, 1.2, 1.42, 1.66, 1.92)],
+                    gm=[0.74, 0.75, 0.76, 0.76, 0.77], om=[0.06, 0.08, 0.10, 0.12, 0.14],
+                    shares=[0.40e9, 0.41e9, 0.42e9, 0.43e9, 0.44e9], cash=[6e9] * 5, debt=[3e9] * 5, sbc_pct=0.16,
+                    fcf_ratio=[2.5, 2.3, 2.1, 1.9, 1.8], interest=[0.1e9] * 5, eps_growth_est=[0.20, 0.18, 0.16],
+                    rev_growth_est=[0.17, 0.15, 0.14], multiple_now=38.0, multiple_mid=45.0, sector="Technology",
+                    industry="Software - Application", adjusted=(1.6, 1.25))
+    reit = _company("REIT", revenue=[4e9 * x for x in (1.0, 1.06, 1.12, 1.19, 1.26)], gm=[0.72] * 5,
+                    om=[0.38, 0.38, 0.39, 0.39, 0.40], shares=[0.80e9, 0.84e9, 0.88e9, 0.92e9, 0.96e9],
+                    cash=[0.3e9] * 5, debt=[14e9, 15e9, 16e9, 17e9, 18e9], sbc_pct=0.004, fcf_ratio=[1.9] * 5,
+                    interest=[0.50e9, 0.53e9, 0.56e9, 0.60e9, 0.64e9], eps_growth_est=[0.04, 0.05, 0.05],
+                    rev_growth_est=[0.06, 0.06, 0.05], multiple_now=34.0, multiple_mid=38.0, sector="Real Estate",
+                    industry="REIT - Industrial", beta=0.9, equity_ratio=0.50, asset_turn=10.0, capex_pct=0.30,
+                    payout=0.55)
+    return {"QUAL": qual, "TRAP": trap, "BANK": bank, "EXCH": exch, "UTIL": util,
+            "QTRS": qtrs, "ADJE": adje, "REIT": reit}
 
 
 SCENARIOS = _scenarios()
@@ -151,7 +215,8 @@ def _market():
     group_pe = {}
     for name, mid in (("Technology", 32.0), ("Software - Application", 34.0), ("Consumer Cyclical", 22.0),
                       ("Department Stores", 12.0), ("Financial Services", 15.0), ("Banks - Regional", 12.5),
-                      ("Financial - Data & Stock Exchanges", 30.0), ("Utilities", 18.0), ("Regulated Electric", 17.0)):
+                      ("Financial - Data & Stock Exchanges", 30.0), ("Utilities", 18.0), ("Regulated Electric", 17.0),
+                      ("Software - Infrastructure", 36.0), ("Real Estate", 35.0), ("REIT - Industrial", 40.0)):
         rows = []
         for j, d in enumerate(_days(TODAY - dt.timedelta(days=5 * 365 + 2), TODAY)):
             rows.append({"date": d.isoformat(), "pe": round(mid * (1 + 0.15 * math.sin(j / 90)), 2), "exchange": "NASDAQ"})
@@ -217,7 +282,9 @@ def answer(endpoint, params):
         return [c["profile"]]
     if endpoint in ("income-statement", "balance-sheet-statement", "cash-flow-statement") and c:
         if period != "annual":
-            raise RestrictedEndpoint(f"{endpoint}: not included in your plan (quarterly)")
+            if not c["quarters"]:
+                raise RestrictedEndpoint(f"{endpoint}: not included in your plan (quarterly)")
+            return list(reversed(c["quarters"][endpoint][-int(params.get("limit", 4)):]))
         rows = {"income-statement": c["inc"], "balance-sheet-statement": c["bs"], "cash-flow-statement": c["cf"]}[endpoint]
         return list(reversed(rows[-int(params.get("limit", 5)):]))
     if endpoint == "analyst-estimates" and c:

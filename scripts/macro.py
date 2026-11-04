@@ -2,8 +2,10 @@
 """
 Rates, macro and sector/industry context from FMP.
 
-analyze.py uses this module for the rate-linked (CAPM) discount rate and the sector & industry
-section of each report. On its own it prints a rates & macro dashboard:
+analyze.py uses this module for the rate-linked (CAPM) discount rate and the industry and sector P/E
+of each analysis, and with --macro for the rates & macro section of its report (this dashboard plus
+the stock's returns against its industry, sector and the S&P 500). On its own it prints a rates &
+macro dashboard:
 
   python macro.py                  Treasury curve, Fed funds, CPI, jobs, risk premium,
                                    latest key US releases and the next ones on the calendar
@@ -14,7 +16,8 @@ section of each report. On its own it prints a rates & macro dashboard:
 
 Notes on the data (what the FMP stable endpoints return, checked against the proxy):
 - treasury-rates returns at most ~3 months per request, so the curves now / 1M ago, 3M ago and
-  1Y ago come from three short windows (three calls).
+  1Y ago come from three short windows (three calls). A company analysis without --macro needs
+  only today's curve (the recent window, one call).
 - economic-indicators returns only the two most recent values for monthly series, so CPI/PPI/PCE
   year-over-year readings come from the economic calendar (actual / estimate / previous).
 - Sector and industry P/E and performance are FMP aggregates of companies listed on one exchange
@@ -136,8 +139,10 @@ def mult(v):
 
 
 def table(headers, rows):
+    """A markdown table. Each cell is put on one line: a line break inside a text from FMP (an event name, a sector)
+    would split its row."""
     lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
-    lines += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    lines += ["| " + " | ".join(" ".join(str(c).split()) for c in r) + " |" for r in rows]
     return "\n".join(lines)
 
 
@@ -165,11 +170,14 @@ def fetch_prices(client, symbol, start, end):
 TREASURY_WINDOWS = (("tsy_recent", 45, 0), ("tsy_3m_ago", 106, 84), ("tsy_year_ago", 380, 355))
 
 
-def rates_requests(client, today):
-    """Requests behind the Treasury curve and the US equity risk premium (4 calls)."""
+def rates_requests(client, today, history=False):
+    """Requests behind the Treasury curve and the US equity risk premium: the recent window (the curve now
+    and 1M ago) and the premium, 2 calls; with history=True also the windows of the curves 3M and 1Y ago
+    (4 calls)."""
+    windows = TREASURY_WINDOWS if history else TREASURY_WINDOWS[:1]  # the first window is the recent one
     reqs = {name: (client.try_get, ("treasury-rates",),
                    {"from": iso(today - dt.timedelta(days=a)), "to": iso(today - dt.timedelta(days=b))})
-            for name, a, b in TREASURY_WINDOWS}
+            for name, a, b in windows}
     reqs["erp"] = (client.try_get, ("market-risk-premium",), {})
     return reqs
 
@@ -213,20 +221,22 @@ def calendar_rows(res, client=None):
     return out
 
 
-def sector_requests(client, profile, today):
-    """Requests behind the sector & industry section of a company report (5 calls)."""
+def sector_requests(client, profile, today, returns=False):
+    """Requests behind the industry and sector P/E of a company (2 calls), and with returns=True their
+    1-year performance and SPY's for the returns table (3 more)."""
     sector, industry = (profile.get("sector") or "").strip(), (profile.get("industry") or "").strip()
     ex = exchange_of(profile)
     five_y = {"from": iso(today - dt.timedelta(days=5 * 365 + 2)), "to": iso(today)}
     one_y = {"from": iso(today - dt.timedelta(days=372)), "to": iso(today)}
     exch = {"exchange": ex} if ex else {}
-    reqs = {"spy": (fetch_prices, (client, "SPY", one_y["from"], one_y["to"]), {})}
-    if sector:
-        reqs["sector_pe"] = (fetch_hist, (client, "historical-sector-pe", dict(five_y, sector=sector, **exch)), {})
-        reqs["sector_perf"] = (fetch_hist, (client, "historical-sector-performance", dict(one_y, sector=sector, **exch)), {})
-    if industry:
-        reqs["industry_pe"] = (fetch_hist, (client, "historical-industry-pe", dict(five_y, industry=industry, **exch)), {})
-        reqs["industry_perf"] = (fetch_hist, (client, "historical-industry-performance", dict(one_y, industry=industry, **exch)), {})
+    reqs = {"spy": (fetch_prices, (client, "SPY", one_y["from"], one_y["to"]), {})} if returns else {}
+    for kind, name in (("sector", sector), ("industry", industry)):
+        if not name:
+            continue
+        reqs[f"{kind}_pe"] = (fetch_hist, (client, f"historical-{kind}-pe", dict(five_y, **{kind: name}, **exch)), {})
+        if returns:
+            reqs[f"{kind}_perf"] = (fetch_hist, (client, f"historical-{kind}-performance",
+                                                 dict(one_y, **{kind: name}, **exch)), {})
     return reqs
 
 
@@ -463,30 +473,33 @@ def window_returns(series, end_day=None):
     return out
 
 
-def sector_context(res, profile, company_pe, company_prices, company_hist_pe=None, today=None):
-    """Assemble the sector & industry section from the results of sector_requests()."""
+def sector_context(res, profile, company_pe, company_prices=None, today=None):
+    """The industry and sector P/E against the company's, from the results of sector_requests(); plus the
+    1M / 3M / YTD / 1Y returns of the company, its industry and sector and SPY when sector_requests()
+    fetched them (returns=True)."""
     sector, industry = profile.get("sector"), profile.get("industry")
     s_pe = pe_stats(res.get("sector_pe") or [], today)
     i_pe = pe_stats(res.get("industry_pe") or [], today)
-    spy = res.get("spy") or []
-    end_day = spy[-1][0] if spy else None
-    returns = {
-        "company": window_returns(company_prices or [], end_day),
-        "industry": window_returns(perf_index(res.get("industry_perf") or []), end_day),
-        "sector": window_returns(perf_index(res.get("sector_perf") or []), end_day),
-        "spy": window_returns(spy, end_day),
-    }
     rel = lambda a, b: (a / b - 1) if a is not None and b else None
     exchanges = {x.get("exchange") for k in ("sector_pe", "industry_pe") for x in (res.get(k) or [])[:1]}
     exchanges.discard(None)
-    return {
+    out = {
         "sector": sector, "industry": industry, "exchange": ", ".join(sorted(exchanges)) or None,
         "sector_pe": s_pe, "industry_pe": i_pe, "company_pe": company_pe,
-        "company_hist_pe": company_hist_pe,
         "vs_industry": rel(company_pe, (i_pe or {}).get("current")),
         "vs_sector": rel(company_pe, (s_pe or {}).get("current")),
-        "returns": returns, "returns_end": end_day,
     }
+    if "spy" in res:
+        spy = res["spy"] or []
+        end_day = spy[-1][0] if spy else None
+        out["returns"] = {
+            "company": window_returns(company_prices or [], end_day),
+            "industry": window_returns(perf_index(res.get("industry_perf") or []), end_day),
+            "sector": window_returns(perf_index(res.get("sector_perf") or []), end_day),
+            "spy": window_returns(spy, end_day),
+        }
+        out["returns_end"] = end_day
+    return out
 
 
 def sector_board(res, sectors, today=None):
@@ -573,38 +586,16 @@ def render_macro(m):
     return "\n".join(out)
 
 
-def render_sector_context(sc, company_label):
-    out = []
-    ex = f" ({sc['exchange']}-listed companies)" if sc.get("exchange") else ""
-    rows = []
-    hist = sc.get("company_hist_pe") or {}
-    rows.append([f"{company_label} (company)", mult(sc.get("company_pe")),
-                 mult(hist.get("median")), f"{mult(hist.get('min'))} - {mult(hist.get('max'))}" if hist.get("n") else "n/a",
-                 "", ""])
-    for key, name in (("industry_pe", f"Industry: {sc.get('industry') or 'n/a'}"),
-                      ("sector_pe", f"Sector: {sc.get('sector') or 'n/a'}")):
-        st = sc.get(key)
-        if not st:
-            rows.append([name, "n/a", "n/a", "n/a", "n/a", "n/a"])
-            continue
-        rows.append([name, pe_now(st), mult(st["median"]), f"{mult(st['min'])} - {mult(st['max'])}",
-                     pct(st["percentile"], 0), mult(st["year_ago"])])
-    out.append(table(["P/E", "Now", "Hist. median", "Hist. range", "Percentile in hist.", "1y ago"], rows))
-    spans = [f"{name} daily since {st['since']} (latest {st['date']})"
-             for key, name in (("industry_pe", "industry"), ("sector_pe", "sector")) for st in [sc.get(key)] if st]
-    if hist.get("n"):
-        spans.insert(0, f"company at its last {hist['n']} fiscal year-ends")
-    out.append(f"\nCompany P/E vs industry: {pct(sc.get('vs_industry'))}; vs sector: {pct(sc.get('vs_sector'))}. "
-               f"Industry/sector P/E is FMP's aggregate for the group{ex}, not a market-cap-weighted index. "
-               f"History: {'; '.join(spans) or 'n/a'}.")
+def render_returns(sc, company_label):
+    """The returns subsection of a report's rates & macro section: the company against its industry and
+    sector (FMP's equal-weighted averages) and SPY, from a sector_context() with returns."""
     r = sc.get("returns") or {}
     labels = ("1M", "3M", "YTD", "1Y")
-    rrows = [[name] + [pct((r.get(key) or {}).get(w)) for w in labels]
-             for key, name in (("company", company_label), ("industry", f"Industry (equal-weight)"),
-                               ("sector", "Sector (equal-weight)"), ("spy", "S&P 500 (SPY)"))]
-    out.append(f"\nPrice performance to {sc.get('returns_end') or 'n/a'}:")
-    out.append(table(["Return"] + list(labels), rrows))
-    return "\n".join(out)
+    rows = [[name] + [pct((r.get(key) or {}).get(w)) for w in labels]
+            for key, name in (("company", company_label), ("industry", "Industry (equal-weight)"),
+                              ("sector", "Sector (equal-weight)"), ("spy", "S&P 500 (SPY)"))]
+    return "\n".join(["### Price performance", f"Price performance to {sc.get('returns_end') or 'n/a'}:",
+                      table(["Return"] + list(labels), rows)])
 
 
 def render_board(b):
@@ -623,7 +614,7 @@ def render_board(b):
 
 # ============================================================ CLI
 def build_dashboard(client, today, now, sectors=False):
-    reqs = dict(rates_requests(client, today), **macro_requests(client, today))
+    reqs = dict(rates_requests(client, today, history=True), **macro_requests(client, today))
     names = list(DEFAULT_SECTORS)
     if sectors:
         snap = rows_of(client.try_get("sector-performance-snapshot",
