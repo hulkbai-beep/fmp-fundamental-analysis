@@ -263,8 +263,21 @@ class Report(unittest.TestCase):
                          f"Last column: compound annual growth (CAGR) over 4 years, {fy(-4)} to {fy()}.")
 
     def test_peer_table_as_before(self):
+        """The peer table is the one the report of 8c5ceed printed. The prices of the synthetic data move with
+        the date, so the table is compared for the document of that same run (2026-11-02, the file next to the
+        table); today's report keeps the columns, the rows and the figures that do not depend on the price."""
         expected = (DATA / "old_report_QUAL_peers_peer_table.md").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(tables_by_section(REPORTS["QUAL_peers"])[11], expected)
+        saved = json.loads((DATA / "old_facts_QUAL_peers.json").read_text(encoding="utf-8"))
+        self.assertEqual(tables_by_section(R.render(saved))[11], expected)
+
+        def cells(rows):
+            """The cells of a table's rows, after its header and separator."""
+            return [[c.strip() for c in row.strip("|").split("|")] for row in rows[2:]]
+
+        today = tables_by_section(REPORTS["QUAL_peers"])[11]
+        self.assertEqual(today[:2], expected[:2])
+        # The ticker and the last five columns (growth, margins, ROIC, leverage) do not depend on the price.
+        self.assertEqual([r[:1] + r[6:] for r in cells(today)], [r[:1] + r[6:] for r in cells(expected)])
         self.assertEqual(section(REPORTS["QUAL_peers"], "11. Peer comparison")[0],
                          "Each company's last fiscal year, same method for all (* = this company).")
 
