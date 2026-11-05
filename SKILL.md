@@ -50,42 +50,25 @@ If the user asks for the fundamental score, a target price or a price range, say
    endpoints the plan allows (company data, plus sector/industry and macro data such as
    treasury rates and economic indicators). Run it the first time, or whenever data
    unexpectedly comes back missing.
-4. Requests run in parallel (`FMP_MAX_WORKERS`, default 6). If a proxy returns frequent
+4. Requests run in parallel (`FMP_MAX_WORKERS`, default 6). If FMP returns frequent
    HTTP 429 or connection errors, set `FMP_MAX_WORKERS=2` (or `1` for one at a time).
 
 If the script exits with "API key problem", walk the user through step 1.
 
-### Using a third-party FMP proxy
+### Connection
 
-Some services resell FMP access through their own server. Set, in addition to `FMP_API_KEY`
-(the token the service issued):
-
-| Variable | Value |
-|---|---|
-| `FMP_BASE_URL` | the proxy address, e.g. `https://1.2.3.4` |
-| `FMP_TLS_VERIFY` | `0` only if the proxy's HTTPS certificate fails verification (typical for a bare IP) |
-| `FMP_PATH_PREFIX`, `FMP_AUTH_STYLE` | normally leave unset: the client auto-detects them on first use and saves the result |
-
-The easiest place for these is the `env` block of `~/.claude/settings.json`, never a file inside
-this skill. Run `python scripts/fmp_client.py check` once to trigger detection and confirm it works.
-
-When data comes through a proxy, the report's Data notes must say so (the script prints the
-route). Treat proxy data as unverified: if a figure looks implausible, say so and suggest checking
-the company's filings. With `FMP_TLS_VERIFY=0` the connection can be intercepted; mention that
-once if the user asks about the setup, and suggest an official FMP key as the long-term fix.
-
-**This machine:** since 2026-10-18 the user has an **official FMP key** (paid plan) and
-`FMP_BASE_URL` is unset, so requests go to `https://financialmodelingprep.com` with certificate
-verification on. Do not set `FMP_TLS_VERIFY` or `FMP_BASE_URL`. The old third-party proxy
-(`54.236.92.205`) is no longer used; if `check` ever shows that address again, tell the user
-`FMP_BASE_URL` is still set instead of turning verification off.
+The scripts talk only to FMP's official API (`https://financialmodelingprep.com/stable`), always with HTTPS
+certificate verification on; third-party proxies are not supported. This machine has used an **official FMP key**
+(paid plan) since 2026-10-18. The old proxy settings `FMP_BASE_URL`, `FMP_TLS_VERIFY`, `FMP_PATH_PREFIX` and
+`FMP_AUTH_STYLE` are no longer read, so a value left in the environment changes nothing. If certificate
+verification fails, the fix is on the machine (see Troubleshooting); never suggest turning verification off.
 
 ### Local UI (for the user, optional)
 
 `python ui/server.py` serves a browser page at http://127.0.0.1:8765 where the user enters a
 ticker and sees the same facts `analyze.py` produces (the same fa-2.0 document and report: a header,
-tiles of key figures and the report's sections; standard library only). It reads `setx`
-values from the Windows user environment and applies the proxy TLS rule above on its own.
+tiles of key figures and the report's sections; standard library only). It also reads values
+saved with `setx` from the Windows user environment.
 A button in the top-right corner switches the page between Chinese (default) and English; the
 translation happens only in the browser, so numbers and `analyze.py` output are unchanged.
 This is for the user's own browsing; when you analyse a stock, still run `scripts/analyze.py`.
@@ -250,9 +233,10 @@ Use headers and short tables; keep it skimmable. Numbers come from the script ou
 7. **Quality scores** - Piotroski (tests passed, and which failed) and Altman Z / Z'' with their zones and cut-offs.
 8. **Limits of the data** - missing figures and why, and the approximations that matter here (estimates on an
    adjusted basis, a currency mismatch, a short history, a DCF dominated by its terminal value).
-9. **Data notes** - source (FMP, and whether it came through a third-party proxy), period basis
-   (TTM or fiscal year), Treasury/macro data dates, any data the plan did not include, and a
-   one-line reminder that these are facts and standard models, not investment advice: the decision is the user's.
+9. **Data notes** - source (FMP's official API; if the document was saved by an older run that went through a
+   third-party proxy, say so), period basis (TTM or fiscal year), Treasury/macro data dates, any data the plan did
+   not include, and a one-line reminder that these are facts and standard models, not investment advice: the
+   decision is the user's.
 
 For a quick question ("is NVDA expensive?"), answer directly in a few paragraphs with the relevant facts (see the
 rule above) instead of the full template.
@@ -345,10 +329,8 @@ the price comes from the quote, so each run uses the current price;
 | "Skipped (not in your FMP plan)" | Expected on Starter for peers / estimates / quarterly data; the analysis still works from annual statements |
 | Price/market cap looks stale | Data notes say "Price from the company profile": the quote was unavailable, re-run with `--refresh` |
 | `python` not found on Windows | Use `py scripts/analyze.py ...` |
-| `certificate verification failed` (proxy) | Proxy certificate not trusted; the user may set `FMP_TLS_VERIFY=0` |
-| `Could not find a working request format` (proxy) | Token or address wrong, or the proxy uses another path/auth scheme: set `FMP_PATH_PREFIX` / `FMP_AUTH_STYLE` from the proxy's docs |
-| `cannot reach ... no response within 30s` | Proxy slow or down: retry in a few minutes; if it keeps happening set `FMP_TIMEOUT=60` and/or `FMP_MAX_WORKERS=2` |
-| Proxy worked before, now `key rejected` | Run `fmp_client.py check` to re-detect; the token may have expired |
+| `HTTPS certificate verification failed` | Python's certificate store is missing or out of date (Python from python.org on a Mac: run `Install Certificates.command` once), or something on the network intercepts HTTPS. Never turn verification off |
+| `network error ... (no response within 30s)` | FMP slow or the network down: retry in a few minutes; if it keeps happening set `FMP_TIMEOUT=60` and/or `FMP_MAX_WORKERS=2` |
 | "Treasury yields unavailable" / "risk premium unavailable" | treasury-rates (no reading in the last 10 days) or market-risk-premium failed; run `fmp_client.py check`. If the DCF table says "fixed default", the DCF used 9% |
 | Industry or sector rows show n/a | FMP has no aggregate for that industry name on that exchange; the sector row and the peers still give the comparison |
 | `(--iv is ignored ...)`, `(--no-insider is ignored ...)`, `(--contract is deprecated ...)` | v2.0 accepts these options for one version and ignores them (`--contract` writes fa-2.0, like `--json`); drop them from scripts |

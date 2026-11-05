@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "ui"))
 import analyze as A  # noqa: E402
 import facts as F  # noqa: E402
 import fake_fmp  # noqa: E402
-from fmp_client import FMPError, InvalidKey  # noqa: E402
+from fmp_client import FMPClient, FMPError, InvalidKey  # noqa: E402
 from test_facts import SAVED, text, validate  # noqa: E402
 
 REPORT = "# QUAL - the report as report.render() returns it"
@@ -40,16 +40,6 @@ DEFAULT_CALLS = {"profile": 1, "quote": 1, "income-statement": 2, "balance-sheet
 MACRO_CALLS = dict(DEFAULT_CALLS, **{"treasury-rates": 3, "historical-price-eod/light": 2,
                                      "historical-sector-performance": 1, "historical-industry-performance": 1,
                                      "economic-indicators": 3, "economic-calendar": 3})
-
-
-def setUpModule():
-    """The offline client must not pick up this machine's connection settings, such as FMP_TLS_VERIFY=0 set for one
-    terminal session: these tests check what a run on the official API writes."""
-    env = mock.patch.dict(os.environ)
-    env.start()
-    unittest.addModuleCleanup(env.stop)
-    for name in ("FMP_BASE_URL", "FMP_PATH_PREFIX", "FMP_AUTH_STYLE", "FMP_TLS_VERIFY"):
-        os.environ.pop(name, None)
 
 
 def recording_client():
@@ -208,8 +198,40 @@ class Calls(unittest.TestCase):
                 mock.patch.object(A.R, "render", return_value=REPORT) as rd:
             doc, report = A.run(A.parse_args(["QUAL", "--peers", "none"]))
         self.assertEqual(report, REPORT)
-        rd.assert_called_once_with(doc, macro_md=None, calls=(14, 0), tls_verify=True)
+        rd.assert_called_once_with(doc, macro_md=None, calls=(14, 0))
         self.assertEqual(validate(doc), [])
+
+
+class Client(unittest.TestCase):
+    def test_only_the_official_api_with_verified_https(self):
+        """The old third-party proxy settings are not read: every request goes to FMP's official API with the key in
+        its apikey header, and urlopen gets no SSL context of its own, so the certificate is always verified."""
+        seen = []
+
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'[{"symbol": "AAPL"}]'
+
+        def urlopen(req, timeout=None, **kw):
+            seen.append((req.full_url, req.get_header("Apikey"), kw))
+            return Response()
+
+        old = {"FMP_API_KEY": "test-key", "FMP_BASE_URL": "https://1.2.3.4", "FMP_TLS_VERIFY": "0",
+               "FMP_PATH_PREFIX": "", "FMP_AUTH_STYLE": "query"}
+        with mock.patch.dict(os.environ, old), mock.patch("urllib.request.urlopen", urlopen), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            client = FMPClient(use_cache=False)
+            self.assertEqual(client.profile("AAPL"), {"symbol": "AAPL"})
+        self.assertEqual(seen, [("https://financialmodelingprep.com/stable/profile?symbol=AAPL", "test-key", {})])
+        self.assertEqual((client.describe()["route"], err.getvalue()), ("official FMP API", ""))
 
 
 class Converter(unittest.TestCase):

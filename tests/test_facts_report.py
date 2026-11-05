@@ -344,15 +344,6 @@ class Report(unittest.TestCase):
                 self.assertEqual(text.replace(block, "", 1).replace(calls, "", 1), plain)
                 self.assertEqual(R.render(DOCS[name], calls=(0, 9)).count("- API calls: 0 network, 9 from cache."), 1)
 
-    def test_tls_note_only_when_verification_was_off(self):
-        line = "- HTTPS certificate verification was OFF for this run."
-        doc = DOCS["QUAL"]
-        self.assertNotIn(line, R.render(doc))
-        self.assertNotIn(line, R.render(doc, tls_verify=True))
-        text = R.render(doc, tls_verify=False)
-        self.assertEqual(text.count(line), 1)
-        self.assertEqual(untranslated(text, doc), [])
-
     def test_texts_from_fmp_stay_on_one_line(self):
         """A line break inside a name, an endpoint or an error from FMP would split a list item or a table row, and
         the page translates the report one line at a time."""

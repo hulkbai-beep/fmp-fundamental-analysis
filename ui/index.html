@@ -212,14 +212,13 @@ function tiles(d) {
     tile(t("s_fpe"), fpe) + tile(t("s_dcf"), dcfValue);
 }
 
-// Data not fetched from FMP's official API (a third-party proxy, or a document that does not say), and a run whose
-// HTTPS certificate verification was off (fa-2.0 does not record it; the report's data notes say so)
-function notices(dq, report) {
-  const route = dq?.route, out = [];
-  if (!(route && route.startsWith("official")))
-    out.push(route ? t("notice_proxy", esc(route.replace(/^third-party proxy at /, ""))) : esc(t("notice_no_route")));
-  if (report.includes("\n- HTTPS certificate verification was OFF for this run.")) out.push(esc(t("notice_tls")));
-  return out.map(n => `<div class="notice">${n}</div>`).join("");
+// Data not fetched from FMP's official API: an older run made through a third-party proxy, or a document that does
+// not say where its data came from
+function notices(dq) {
+  const route = dq?.route;
+  if (route && route.startsWith("official")) return "";
+  const n = route ? t("notice_proxy", esc(route.replace(/^third-party proxy at /, ""))) : esc(t("notice_no_route"));
+  return `<div class="notice">${n}</div>`;
 }
 
 function headCard(d, head) {
@@ -249,7 +248,7 @@ function render(data) {
   const head = parts[0].startsWith("## ") ? "" : parts.shift().split("\n").filter(l => !l.startsWith("# ")).join("\n");
   const sections = parts.filter(s => s.startsWith("## "));
   if (curTab >= sections.length) curTab = 0;
-  let h = notices(d.data_quality, report) + headCard(d, head);
+  let h = notices(d.data_quality) + headCard(d, head);
   if (sections.length) {
     h += `<div class="tabs">` + sections.map((s, i) => `<button type="button" class="tab${i === curTab ? " on" : ""}" ` +
       `data-i="${i}">${esc(tr(s.split("\n")[0].slice(3)))}</button>`).join("") + `</div>`;

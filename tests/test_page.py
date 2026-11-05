@@ -175,13 +175,12 @@ class Engine(unittest.TestCase):
         for absent in ("data.candles", "data.prices", "candles_note", ".profile", ".current", "r.years"):
             self.assertNotIn(absent, SCRIPT)
 
-    def test_the_tls_notice_reads_the_line_the_report_writes(self):
-        """fa-2.0 does not record that HTTPS certificate verification was off; the page reads it from the report's
-        data notes, so the two texts must stay the same."""
-        line = "- HTTPS certificate verification was OFF for this run."
-        self.assertIn(f'"{line}"', (ROOT / "scripts" / "facts_report.py").read_text(encoding="utf-8"))
-        self.assertIn(f'report.includes("\\n{line}")', SCRIPT)
-        self.assertIn('t("notice_tls")', SCRIPT)
+    def test_there_is_no_tls_notice(self):
+        """The client always verifies FMP's HTTPS certificate, so neither the report nor the page has a note that
+        verification was off."""
+        for text in ((ROOT / "scripts" / "facts_report.py").read_text(encoding="utf-8"), SCRIPT, I18N):
+            self.assertNotIn("verification was OFF", text)
+            self.assertNotIn("notice_tls", text)
 
     def test_the_translator_returns_what_it_cannot_read(self):
         """eventZh() runs on every text zh() gets. Its "." stops at a line break inside the text (\\r, U+2028,
