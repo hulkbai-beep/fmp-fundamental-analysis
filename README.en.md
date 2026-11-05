@@ -75,7 +75,7 @@ fmp-fundamental-analysis/
 
 ## 1. First-time setup
 
-Steps 1-4 below are mostly about Windows; **on a MacBook, go straight to step 5** and follow it step by step.
+Steps 1-3 below are mostly about Windows; **on a MacBook, go straight to step 4** and follow it step by step.
 
 ### 1. Set the API key
 
@@ -87,57 +87,32 @@ Windows (PowerShell or CMD):
 setx FMP_API_KEY "your-key"
 ```
 
-macOS / Linux: add `export FMP_API_KEY="your-key"` to `~/.zshrc` or `~/.bashrc` (detailed Mac steps in step 5).
+macOS / Linux: add `export FMP_API_KEY="your-key"` to `~/.zshrc` or `~/.bashrc` (detailed Mac steps in step 4).
 
 > `setx` only applies to terminals opened **afterwards**. After setting it, open a new terminal and restart Claude so they can see the new variable.
 
-### 2. Using a third-party FMP proxy (optional)
+The scripts connect only to FMP's official API at `https://financialmodelingprep.com`, always with HTTPS certificate verification on; third-party proxies are not supported. `FMP_BASE_URL`, `FMP_TLS_VERIFY`, `FMP_PATH_PREFIX` and `FMP_AUTH_STYLE`, once set for a proxy, are no longer read, so leftovers do no harm.
 
-Since 2026-10-18 this machine uses an **official FMP key** and connects to `https://financialmodelingprep.com` directly, so none of these variables are needed and `FMP_BASE_URL` must stay unset. You only need them if you switch to a third-party proxy:
-
-| Environment variable | Value / notes |
-|---|---|
-| `FMP_API_KEY` | The token the proxy provider gave you |
-| `FMP_BASE_URL` | The proxy address, e.g. `https://1.2.3.4` |
-| `FMP_TLS_VERIFY` | `0` turns off HTTPS certificate verification. Set it only if the proxy's certificate does not verify (common for proxies on a bare IP) |
-| `FMP_PATH_PREFIX`, `FMP_AUTH_STYLE` | Usually not needed: detected automatically on the first connection and saved |
-
-Set the proxy address:
-
-```bash
-setx FMP_BASE_URL "https://proxy-address"
-```
-
-**The risk of `FMP_TLS_VERIFY=0`:** with certificate verification off, the connection can be intercepted by a man in the middle, and your API key travels over it. So set it only when needed and only for a single run, never permanently with `setx`.
-
-Data obtained through the proxy is resold FMP data. The report's Data notes state the data route; be extra careful when a number looks odd.
-
-### 3. Other optional environment variables
+### 2. Other optional environment variables
 
 | Environment variable | Default | Notes |
 |---|---|---|
 | `FMP_MAX_PER_MIN` | `280` | Maximum requests per minute |
-| `FMP_MAX_WORKERS` | `6` | How many requests run at once. Lower it when the proxy is unstable or often returns 429; `1` sends them one at a time |
-| `FMP_TIMEOUT` | `30` | Seconds to wait for each request. Raise to `60` if the proxy is slow and often times out |
+| `FMP_MAX_WORKERS` | `6` | How many requests run at once. Lower it when FMP often returns 429 or connections fail; `1` sends them one at a time |
+| `FMP_TIMEOUT` | `30` | Seconds to wait for each request. Raise to `60` if the network is slow and requests often time out |
 | `FMP_CACHE_DIR` | `~/.cache/fmp-fundamentals` | Cache folder |
 
-### 4. Check the connection
+### 3. Check the connection
 
 ```bash
 python scripts/fmp_client.py check
 ```
 
-It shows the current connection (official or proxy, path prefix, auth style, certificate verification), tests about ten single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done; the sector and macro results tell you which later features your plan or proxy supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
+It shows the address it connects to (FMP's official API, certificate verified), tests about ten single-stock endpoints with AAPL, then tests the sector/industry and macro endpoints (sector performance and P/E, Treasury yields, economic indicators, the economic calendar and so on). Each endpoint shows OK, EMPTY (no data), RESTRICTED (not in your plan) or ERROR. If all single-stock endpoints are OK, setup is done; the sector and macro results tell you which later features your plan supports. With `--peek` (`python scripts/fmp_client.py check --peek`) it also prints the field names and the first and last rows the sector and macro endpoints return, to help diagnose data-format problems.
 
-With a proxy whose certificate does not verify, check like this in PowerShell (current terminal window only):
+### 4. Setting up on a MacBook (macOS)
 
-```powershell
-$env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
-```
-
-### 5. Setting up on a MacBook (macOS)
-
-Steps 1-4 above are mostly about Windows. To set everything up from scratch on a Mac, follow these steps. Run the commands in Terminal: press ⌘ + Space and search for "Terminal". macOS uses zsh by default, and its settings file is `~/.zshrc`.
+Steps 1-3 above are mostly about Windows. To set everything up from scratch on a Mac, follow these steps. Run the commands in Terminal: press ⌘ + Space and search for "Terminal". macOS uses zsh by default, and its settings file is `~/.zshrc`.
 
 **① Check Python and git**
 
@@ -178,8 +153,6 @@ Back in Terminal, run `source ~/.zshrc` (or close Terminal and open a new window
 ```bash
 [ -n "$FMP_API_KEY" ] && echo "set" || echo "not set"
 ```
-
-An official key does not need `FMP_TLS_VERIFY`. If you ever switch to a proxy whose certificate does not verify, still do **not** put `FMP_TLS_VERIFY=0` in `~/.zshrc`; add it in front of a single command instead.
 
 **④ Check the connection**
 
@@ -249,7 +222,7 @@ From this folder:
 python scripts/analyze.py AAPL
 ```
 
-On a Mac, use `python3 scripts/analyze.py AAPL`. With a third-party proxy whose certificate does not verify, run `$env:FMP_TLS_VERIFY = '0'` first in PowerShell, or put `FMP_TLS_VERIFY=0` in front of the command on a Mac.
+On a Mac, use `python3 scripts/analyze.py AAPL`.
 
 The report goes to the screen (stdout, markdown) and notes go to stderr. Its parts, in order:
 - `# TICKER - Name`, a line with sector / industry, exchange, price, market cap and beta, a "Data basis" line (fiscal years, statement currency, TTM or not, the period the valuation uses, the as-of date) and, for a financial company, fee-based financial, REIT or utility, a "Company type" note naming the measures that do not apply to it
@@ -322,11 +295,9 @@ python ui/server.py
 
 On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.zshrc` is already set up. Then open **http://127.0.0.1:8765** in a browser; press Ctrl+C to stop. If the port is taken, pick another: `python ui/server.py --port 9000`. After the code is updated, stop it with Ctrl+C and start it again so the page uses the new code.
 
-- **Handled automatically at start-up:**
-  - Reads the `FMP_*` variables saved with `setx`, even if the terminal was opened before `setx`.
-  - If it is connecting to the old 54.236.92.205 proxy, sets `FMP_TLS_VERIFY=0` for this server process only; nothing is changed for the official API.
+- **Reads the `FMP_*` variables saved with `setx` at start-up:** even if the terminal was opened before `setx`.
 - **Settings on the page:** ticker, comparison companies, discount rate % (blank = automatic, tied to Treasuries), growth years 1-5 %, terminal growth %, starting FCF (latest or 3-year average), macro backdrop, ignore cache.
-- **What the page shows:** the same facts as the report, from the same fa-2.0 document: a header with the company, its price and market cap, tiles of key figures, and the report's sections. Through a third-party proxy, a notice names the data source.
+- **What the page shows:** the same facts as the report, from the same fa-2.0 document: a header with the company, its price and market cap, tiles of key figures, and the report's sections. Data fetched earlier through a third-party proxy gets a notice at the top naming its source.
 - **Chinese / English toggle:** the "EN / 中文" button at the top right switches the page between Chinese and English; Chinese by default, and the browser remembers your last choice. Translation happens only in the web page, so the numbers do not change; industry names from FMP and a few economic release names without a translation stay in English.
 - **Links open directly:** for example `http://127.0.0.1:8765/?symbol=NVDA` analyzes NVDA straight away.
 - **Local only:** the page listens on 127.0.0.1, so other devices on your network cannot open it.
@@ -346,8 +317,6 @@ The page runs the same analysis as `analyze.py` (the same fa-2.0 document and re
 python scripts/fmp_client.py clear-cache
 ```
 
-This also deletes the detected proxy connection settings; they are detected again on the next run.
-
 ---
 
 ## 4. Troubleshooting
@@ -355,15 +324,14 @@ This also deletes the detected proxy connection settings; they are detected agai
 | Symptom | Cause / fix |
 |---|---|
 | `FMP_API_KEY is not set` | The key is not set, or the terminal / Claude was not restarted afterwards. See "Set the API key" |
-| `API key problem` / `key rejected` | Wrong or expired key. With a proxy, run `fmp_client.py check` first so the connection is detected again |
-| `HTTPS certificate verification failed for 54.236.92.205` | Still connecting to the old proxy: `FMP_BASE_URL` is still set. Remove it and open a new terminal. Only if you really mean to use a proxy, set `FMP_TLS_VERIFY=0` for a single run (mind the risk) |
+| `API key problem` / `key rejected` | Wrong or expired key. Set the right key, then open a new terminal / restart Claude. See "Set the API key" |
 | `does not cover TICKER` | The plan covers US stocks only. For Hong Kong or mainland China listings, try the US ADR |
 | `No profile found for XXX` | Wrong ticker |
 | The report shows "Skipped (not in your FMP plan)" | Your plan lacks some endpoints (peers, analyst estimates, quarterly data and so on). The rest of the analysis still works from annual statements |
 | Price or market cap looks old | Check where the report's data notes say the price came from: if it says the company profile, the data source gave no latest quote, so add `--refresh` or tick "Ignore cache" on the web page. While the US market is closed the price does not change |
 | Windows says `python` is not found | Use `py`, e.g. `py scripts/analyze.py AAPL` |
 | A Mac says `command not found: python` | Use `python3` on a Mac |
-| On a Mac, Claude says `FMP_API_KEY is not set` although Terminal has it | The Claude desktop app did not read `~/.zshrc`. Also put the key in the `env` block of `~/.claude/settings.json` (step 5 ⑥), then quit the app with ⌘ + Q and reopen it |
+| On a Mac, Claude says `FMP_API_KEY is not set` although Terminal has it | The Claude desktop app did not read `~/.zshrc`. Also put the key in the `env` block of `~/.claude/settings.json` (step 4 ⑥), then quit the app with ⌘ + Q and reopen it |
 | On a Mac, `CERTIFICATE_VERIFY_FAILED` when connecting to FMP's official servers | Python installed from python.org ships without certificates. Open Applications → Python 3.x and double-click `Install Certificates.command` once |
 | The web page does not open / the port is taken | Check that `server.py` is still running, or use another port: `--port 9000` |
 | Some metrics show n/a or are meaningless for a financial company or REIT | Expected: gross margin, EV multiples and DCF do not apply to banks and insurers. The report's "Company type" note names the measures that do not apply |

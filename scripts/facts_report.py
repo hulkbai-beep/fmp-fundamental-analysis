@@ -8,12 +8,10 @@ It shows the statements, ratios, multiples and standard models the document hold
 label, flag, price level, price target or margin of safety, and the distributions of the forward multiples are
 statistics only, never turned into prices.
 
-  render(f, macro_md=None, calls=None, tls_verify=None) -> str
+  render(f, macro_md=None, calls=None) -> str
     f           a fa-2.x document
     macro_md    the body of the rates & macro section (analyze.py --macro); None: no such section
     calls       (network calls, cache hits) for the data notes; None: no such line
-    tls_verify  False: the data notes say HTTPS certificate verification was off (fa-2.0 does not record it);
-                None or True: no such line
 """
 from __future__ import annotations
 
@@ -577,7 +575,7 @@ def peers_section(f, number):
     return out
 
 
-def data_notes(f, calls, tls_verify=None):
+def data_notes(f, calls):
     dq, px = f.get("data_quality") or {}, f.get("price") or {}
     out = ["\n## Data notes"]
     route = dq.get("route")
@@ -586,8 +584,6 @@ def data_notes(f, calls, tls_verify=None):
     elif route:
         out.append(f"- Data route: {one_line(route)}. Data is not served by FMP directly; spot-check key figures "
                    f"against company filings.")
-    if tls_verify is False:
-        out.append("- HTTPS certificate verification was OFF for this run.")
     if px.get("source") == "quote":
         out.append(f"- Price from the latest quote at {px['time']} New York time." if px.get("time") else
                    "- Price from the latest quote.")
@@ -621,9 +617,8 @@ def data_notes(f, calls, tls_verify=None):
     return out
 
 
-def render(f, macro_md=None, calls=None, tls_verify=None):
-    """The report of a fa-2.x document. macro_md: the rates & macro section's body; calls: (network, cache);
-    tls_verify: False adds the data note that HTTPS certificate verification was off."""
+def render(f, macro_md=None, calls=None):
+    """The report of a fa-2.x document. macro_md: the rates & macro section's body; calls: (network, cache)."""
     if not str(f.get("contract") or "").startswith("fa-2"):
         raise ValueError(f"not a fa-2.x document (contract {f.get('contract')!r})")
     out = header(f) + statement_sections(f) + valuation_section(f) + forward_section(f) + group_section(f) + \
@@ -634,5 +629,5 @@ def render(f, macro_md=None, calls=None, tls_verify=None):
         number += 1
     if macro_md:
         out += [f"\n## {number}. Rates & macro backdrop", macro_md.strip("\n")]
-    out += data_notes(f, calls, tls_verify)
+    out += data_notes(f, calls)
     return "\n".join(out)

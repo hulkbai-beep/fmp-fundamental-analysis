@@ -946,7 +946,7 @@ def run(args):
     if mk.get("macro"):  # --macro: the dashboard, then the stock's returns against its industry, sector and SPY
         macro_md = M.render_macro(mk["macro"]) + "\n\n" + M.render_returns(mk["sector"], r["symbol"])
     calls = (r["meta"]["network_calls"], r["meta"]["cache_hits"])
-    return doc, R.render(doc, macro_md=macro_md, calls=calls, tls_verify=r["meta"]["connection"]["tls_verify"])
+    return doc, R.render(doc, macro_md=macro_md, calls=calls)
 
 
 # accepted for one version, with a note on stderr

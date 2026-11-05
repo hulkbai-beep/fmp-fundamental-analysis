@@ -9,10 +9,8 @@ Usage:
   python ui/server.py              # then open http://127.0.0.1:8765
   python ui/server.py --port 9000
 
-Connection settings come from the environment exactly as for the scripts. On Windows, values
-saved with `setx` are also read from the user environment, so a terminal opened before `setx`
-still works. For the third-party proxy at 54.236.92.205, FMP_TLS_VERIFY=0 is set for this
-process only (see SKILL.md).
+Settings come from the environment exactly as for the scripts. On Windows, values saved with
+`setx` are also read from the user environment, so a terminal opened before `setx` still works.
 """
 from __future__ import annotations
 
@@ -32,9 +30,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
 
-ENV_NAMES = ("FMP_API_KEY", "FMP_BASE_URL", "FMP_PATH_PREFIX", "FMP_AUTH_STYLE",
-             "FMP_TLS_VERIFY", "FMP_MAX_PER_MIN", "FMP_CACHE_DIR")
-SKIP_TLS_HOSTS = {"54.236.92.205"}  # third-party FMP proxy; the user chose to skip verification
+ENV_NAMES = ("FMP_API_KEY", "FMP_MAX_PER_MIN", "FMP_CACHE_DIR")
 
 
 def load_user_env():
@@ -56,15 +52,7 @@ def load_user_env():
                 continue
 
 
-def apply_proxy_tls_rule():
-    base = os.environ.get("FMP_BASE_URL", "")
-    host = urllib.parse.urlparse(base if "://" in base else "https://" + base).hostname or ""
-    if host in SKIP_TLS_HOSTS and not os.environ.get("FMP_TLS_VERIFY"):
-        os.environ["FMP_TLS_VERIFY"] = "0"
-
-
 load_user_env()
-apply_proxy_tls_rule()
 
 import analyze as A  # noqa: E402
 from fmp_client import FMPError, InvalidKey  # noqa: E402

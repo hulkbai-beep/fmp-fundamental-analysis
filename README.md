@@ -75,7 +75,7 @@ fmp-fundamental-analysis/
 
 ## 一、首次设置
 
-下面 1-4 步以 Windows 为主；**在 MacBook 上请直接看第 5 步**，一步步照做。
+下面 1-3 步以 Windows 为主；**在 MacBook 上请直接看第 4 步**，一步步照做。
 
 ### 1. 设置 API key
 
@@ -87,57 +87,32 @@ Windows（PowerShell 或 CMD）：
 setx FMP_API_KEY "你的key"
 ```
 
-macOS / Linux：把 `export FMP_API_KEY="你的key"` 加到 `~/.zshrc` 或 `~/.bashrc`（Mac 的详细步骤见第 5 步）。
+macOS / Linux：把 `export FMP_API_KEY="你的key"` 加到 `~/.zshrc` 或 `~/.bashrc`（Mac 的详细步骤见第 4 步）。
 
 > `setx` 只对**新打开**的终端生效。设置完要重新打开终端，并重启 Claude，它才能读到新变量。
 
-### 2. 使用第三方 FMP 代理接口（可选）
+脚本只连 FMP 官方接口 `https://financialmodelingprep.com`，并且始终验证 HTTPS 证书，不支持第三方代理。以前为代理设置过的 `FMP_BASE_URL`、`FMP_TLS_VERIFY`、`FMP_PATH_PREFIX`、`FMP_AUTH_STYLE` 已经不再读取，留着也没有影响。
 
-本机从 2026-10-18 起用的是 **FMP 官方 key**，直连 `https://financialmodelingprep.com`，下面这些变量都不用设置，`FMP_BASE_URL` 也要保持为空。只有改用第三方代理时才需要：
-
-| 环境变量 | 值 / 说明 |
-|---|---|
-| `FMP_API_KEY` | 代理服务商给你的 token |
-| `FMP_BASE_URL` | 代理地址，例如 `https://1.2.3.4` |
-| `FMP_TLS_VERIFY` | 设为 `0` 会关闭 HTTPS 证书验证。只在代理的证书验证不通过时设置（用裸 IP 的代理常见） |
-| `FMP_PATH_PREFIX`、`FMP_AUTH_STYLE` | 一般不用设置，第一次连接时会自动识别并保存 |
-
-设置代理地址：
-
-```bash
-setx FMP_BASE_URL "https://代理地址"
-```
-
-**关于 `FMP_TLS_VERIFY=0` 的风险：** 关闭证书验证后，连接可能被中间人截获，你的 API key 也会经过这条连接。所以只在需要时、只对单次运行设置，不要用 `setx` 永久保存。
-
-经代理拿到的数据是转售的 FMP 数据。报告的 Data notes 会写明数据来源（route），看到异常数字时要多留个心。
-
-### 3. 其他可选环境变量
+### 2. 其他可选环境变量
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `FMP_MAX_PER_MIN` | `280` | 每分钟最多发多少个请求 |
-| `FMP_MAX_WORKERS` | `6` | 同时并发几个请求。代理不稳定或经常报 429 时调小；设为 `1` 就是逐个请求 |
-| `FMP_TIMEOUT` | `30` | 每个请求最多等几秒。代理响应慢、经常超时可以调到 `60` |
+| `FMP_MAX_WORKERS` | `6` | 同时并发几个请求。经常报 429 或连接出错时调小；设为 `1` 就是逐个请求 |
+| `FMP_TIMEOUT` | `30` | 每个请求最多等几秒。网络慢、经常超时可以调到 `60` |
 | `FMP_CACHE_DIR` | `~/.cache/fmp-fundamentals` | 缓存目录 |
 
-### 4. 检查连接
+### 3. 检查连接
 
 ```bash
 python scripts/fmp_client.py check
 ```
 
-它会显示当前连接（官方还是代理、路径前缀、认证方式、证书验证状态），然后用 AAPL 测试十个左右的个股接口，再测试板块/行业和宏观接口（板块表现与 P/E、国债收益率、经济指标、经济日历等）。每个接口显示 OK、EMPTY（没有数据）、RESTRICTED（套餐不含）或 ERROR。个股接口全部 OK 就说明设置成功；板块和宏观接口的结果用来确认你的套餐/代理支持哪些后续功能。加上 `--peek`（`python scripts/fmp_client.py check --peek`）还会打印板块和宏观接口返回的字段名和首尾两行，方便排查数据格式。
+它会显示连接的地址（FMP 官方接口，证书已验证），然后用 AAPL 测试十个左右的个股接口，再测试板块/行业和宏观接口（板块表现与 P/E、国债收益率、经济指标、经济日历等）。每个接口显示 OK、EMPTY（没有数据）、RESTRICTED（套餐不含）或 ERROR。个股接口全部 OK 就说明设置成功；板块和宏观接口的结果用来确认你的套餐支持哪些后续功能。加上 `--peek`（`python scripts/fmp_client.py check --peek`）还会打印板块和宏观接口返回的字段名和首尾两行，方便排查数据格式。
 
-如果用的是证书无法验证的代理，在 PowerShell 里这样检查（只对当前终端窗口生效）：
+### 4. 在 MacBook（macOS）上设置
 
-```powershell
-$env:FMP_TLS_VERIFY = '0'; python scripts/fmp_client.py check
-```
-
-### 5. 在 MacBook（macOS）上设置
-
-上面 1-4 步以 Windows 为主。在 Mac 上从头装一遍，照下面做就行。命令都在「终端」里运行：按 ⌘ + 空格，搜索「终端」或 Terminal 打开。macOS 默认的 shell 是 zsh，配置文件是 `~/.zshrc`。
+上面 1-3 步以 Windows 为主。在 Mac 上从头装一遍，照下面做就行。命令都在「终端」里运行：按 ⌘ + 空格，搜索「终端」或 Terminal 打开。macOS 默认的 shell 是 zsh，配置文件是 `~/.zshrc`。
 
 **① 确认 Python 和 git**
 
@@ -178,8 +153,6 @@ export FMP_API_KEY="你的key"
 ```bash
 [ -n "$FMP_API_KEY" ] && echo "已设置" || echo "没设置"
 ```
-
-用官方 key 不需要 `FMP_TLS_VERIFY`。如果以后改用证书无法验证的代理，也**不要**把 `FMP_TLS_VERIFY=0` 写进 `~/.zshrc`，只在单次运行时加在命令前面。
 
 **④ 检查连接**
 
@@ -249,7 +222,7 @@ rsync -a --exclude .git ~/Documents/claude/fmp-fundamental-analysis/ ~/.claude/s
 python scripts/analyze.py AAPL
 ```
 
-Mac 上用 `python3 scripts/analyze.py AAPL`。如果用的是证书无法验证的第三方代理，PowerShell 里先运行 `$env:FMP_TLS_VERIFY = '0'`，Mac 上在命令前加 `FMP_TLS_VERIFY=0`。
+Mac 上用 `python3 scripts/analyze.py AAPL`。
 
 报告输出到屏幕（stdout，markdown 格式），提示信息输出到 stderr。报告按顺序包括（标题是英文，网页上会翻译）：
 - `# TICKER - Name`，一行板块 / 行业、交易所、股价、市值、Beta，一行「Data basis」（哪几个财年、报表币种、有没有 TTM、估值用哪一期、数据日期），金融公司、收费型金融公司、REIT 和公用事业还有一条「Company type」说明，列出对这类公司没有意义的指标
@@ -322,11 +295,9 @@ python ui/server.py
 
 Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端里启动。然后在浏览器打开 **http://127.0.0.1:8765**，按 Ctrl+C 停止。端口被占用时可以换一个：`python ui/server.py --port 9000`。代码更新后要按 Ctrl+C 停掉再重新启动，网页才会用上新代码。
 
-- **启动时自动处理：**
-  - 自动读取 `setx` 保存的 `FMP_*` 变量，即使终端是在 `setx` 之前打开的也能读到。
-  - 如果连的是旧代理 54.236.92.205，只对这个服务器进程设置 `FMP_TLS_VERIFY=0`；直连官方时不做任何处理。
+- **启动时自动读取 `setx` 保存的 `FMP_*` 变量：** 即使终端是在 `setx` 之前打开的也能读到。
 - **页面上可以设置：** 股票代码、对比公司、折现率 %（留空 = 跟国债挂钩自动计算）、1-5 年增速 %、永续增速 %、起始 FCF（最新或 3 年平均）、宏观背景、忽略缓存。
-- **页面显示的内容：** 和报告相同的事实，来自同一份 fa-2.0 文档：顶部是公司、股价和市值，然后是关键数字的小卡片，再是报告的各节。走第三方代理时会有提示，标明数据来源。
+- **页面显示的内容：** 和报告相同的事实，来自同一份 fa-2.0 文档：顶部是公司、股价和市值，然后是关键数字的小卡片，再是报告的各节。如果显示的是以前经第三方代理取得的数据，顶部会有提示，标明数据来源。
 - **中英文切换：** 右上角的「EN / 中文」按钮切换页面的语言，默认中文，浏览器会记住上次的选择。翻译只在网页里做，数字不变；FMP 返回的行业名、少数没收录的经济数据名称会保留英文。
 - **链接可以直接打开：** 例如 `http://127.0.0.1:8765/?symbol=NVDA` 会自动分析 NVDA。
 - **只能在本机访问：** 网页只监听 127.0.0.1，局域网里的其他设备打不开。
@@ -346,8 +317,6 @@ Mac 上用 `python3 ui/server.py`，要在已经设置好 `~/.zshrc` 的终端�
 python scripts/fmp_client.py clear-cache
 ```
 
-这也会删除自动识别出的代理连接方式，下次运行时会重新识别。
-
 ---
 
 ## 四、常见问题
@@ -355,15 +324,14 @@ python scripts/fmp_client.py clear-cache
 | 现象 | 原因 / 解决 |
 |---|---|
 | `FMP_API_KEY is not set` | 没设置 key，或设置后没重开终端/重启 Claude。见「设置 API key」 |
-| `API key problem` / `key rejected` | key 错误或已过期。用代理时，先运行 `fmp_client.py check` 重新识别连接方式 |
-| `HTTPS certificate verification failed for 54.236.92.205` | 还在连旧代理：`FMP_BASE_URL` 没删干净，删掉后新开终端。确实要用代理时，才在单次运行时设置 `FMP_TLS_VERIFY=0`（注意风险） |
+| `API key problem` / `key rejected` | key 错误或已过期。换成正确的 key 后重开终端/重启 Claude，见「设置 API key」 |
 | `does not cover TICKER` | 套餐只覆盖美股。港股、A 股可以试试对应的美股 ADR |
 | `No profile found for XXX` | 股票代码不对 |
 | 报告里有「Skipped (not in your FMP plan)」 | 套餐不包含某些接口（同行、分析师预期、季度数据等）。其他分析仍然可以基于年报完成 |
 | 股价或市值看起来是旧的 | 看报告「数据说明」里股价来自哪里：写的是公司资料，说明数据源没给最新报价，可以加 `--refresh` 或在网页上勾选「忽略缓存」；美股休市时股价本来就不变 |
 | Windows 上提示找不到 `python` | 改用 `py`，例如 `py scripts/analyze.py AAPL` |
 | Mac 上提示 `command not found: python` | Mac 上用 `python3` |
-| Mac 上的 Claude 提示 `FMP_API_KEY is not set`，但终端里设置好了 | Claude 桌面 App 没读到 `~/.zshrc`。在 `~/.claude/settings.json` 的 `env` 里也写一份（见第 5 步 ⑥），然后用 ⌘ + Q 退出 App 再打开 |
+| Mac 上的 Claude 提示 `FMP_API_KEY is not set`，但终端里设置好了 | Claude 桌面 App 没读到 `~/.zshrc`。在 `~/.claude/settings.json` 的 `env` 里也写一份（见第 4 步 ⑥），然后用 ⌘ + Q 退出 App 再打开 |
 | Mac 上连 FMP 官方服务器报 `CERTIFICATE_VERIFY_FAILED` | 从 python.org 下载安装的 Python 默认不带证书。打开「应用程序 → Python 3.x」，双击 `Install Certificates.command` 运行一次 |
 | 网页打不开 / 端口被占用 | 确认 `server.py` 还在运行，或换个端口：`--port 9000` |
 | 金融或 REIT 公司的某些指标显示 n/a 或没有意义 | 这是正常的：银行、保险不适用毛利率、EV 倍数和 DCF。报告里的「Company type」说明会列出不适用的指标 |

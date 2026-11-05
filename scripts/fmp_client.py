@@ -3,32 +3,28 @@
 Minimal client for the Financial Modeling Prep (FMP) *stable* API.
 
 - Standard library only (no pip install needed); works on Windows, macOS and Linux.
+- Talks only to FMP's official API (https://financialmodelingprep.com/stable), with HTTPS
+  certificate verification on.
 - The API key is read from the FMP_API_KEY environment variable. It never appears
   in cache files or printed output.
 - Responses are cached on disk (fundamentals change quarterly, prices daily; the live quote for a minute).
 - Endpoints that your plan does not include raise RestrictedEndpoint
   (or return None via try_get) instead of crashing an analysis.
 
-Connection settings (environment variables):
-  FMP_API_KEY       required. Official FMP key, or the token a proxy service gave you.
-  FMP_BASE_URL      default https://financialmodelingprep.com . Set it to use a
-                    third-party proxy, e.g. https://1.2.3.4
-  FMP_PATH_PREFIX   path before the endpoint name (default "stable"; auto-detected for proxies)
-  FMP_AUTH_STYLE    how the key is sent: header | bearer | x-api-key | query
-                    (default "header" = FMP's apikey header; auto-detected for proxies)
-  FMP_TLS_VERIFY    "0" turns off HTTPS certificate verification (needed for many
-                    bare-IP proxies; less secure). Default "1".
+Settings (environment variables):
+  FMP_API_KEY       required: your FMP key.
   FMP_MAX_PER_MIN   request rate cap shared by all threads (default 280).
   FMP_MAX_WORKERS   parallel requests analyze.py may run (default 6; 1 = one at a time).
   FMP_TIMEOUT       seconds to wait for each response (default 30).
+  FMP_CACHE_DIR     cache folder (default ~/.cache/fmp-fundamentals).
 
 CLI:
-  python fmp_client.py check [SYMBOL]          connection info + which endpoints work
+  python fmp_client.py check [SYMBOL]          the API address + which endpoints work
                                                (company, sector/industry and macro data)
   python fmp_client.py check --peek            same, plus field names and first/last rows
                                                of each sector/macro response
   python fmp_client.py get ENDPOINT k=v ...    raw JSON from any stable endpoint
-  python fmp_client.py clear-cache             delete the local cache and saved detection
+  python fmp_client.py clear-cache             delete the local cache
 """
 from __future__ import annotations
 
@@ -45,13 +41,13 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-OFFICIAL_BASE = "https://financialmodelingprep.com"
-OFFICIAL_HOSTS = {"financialmodelingprep.com", "www.financialmodelingprep.com"}
+BASE = "https://financialmodelingprep.com"   # FMP's official API, the only server the client talks to
+HOST = "financialmodelingprep.com"
+PREFIX = "stable"
+ROUTE = "official FMP API"                   # describe()["route"]: data_quality.route of the fa-2.0 document
 DEFAULT_CACHE_DIR = Path(
     os.environ.get("FMP_CACHE_DIR") or (Path.home() / ".cache" / "fmp-fundamentals")
 )
-AUTH_STYLES = ("header", "bearer", "x-api-key", "query")
-PREFIX_CANDIDATES = ("stable", "")
 
 DAY = 86400
 TTL_BY_ENDPOINT = {
@@ -119,13 +115,6 @@ def _error_message(body: str):
     return None
 
 
-def _env_flag(name, default=True):
-    v = os.environ.get(name)
-    if v is None or v.strip() == "":
-        return default
-    return v.strip().lower() not in ("0", "false", "no", "off")
-
-
 def _is_timeout(exc):
     reason = getattr(exc, "reason", exc)
     return isinstance(reason, TimeoutError) or "timed out" in str(reason).lower()
@@ -161,145 +150,32 @@ class FMPClient:
         self.stats = {"network_calls": 0, "cache_hits": 0}
         self.restricted = []  # endpoints skipped because the plan lacks them
         self.errors = []      # optional endpoints that failed for other reasons
-
-        base = (os.environ.get("FMP_BASE_URL") or OFFICIAL_BASE).strip().rstrip("/")
-        if "://" not in base:
-            base = "https://" + base
-        self.base = base
-        self.host = urllib.parse.urlparse(base).hostname or base
-        self.is_official = self.host.lower() in OFFICIAL_HOSTS
-        self.tls_verify = _env_flag("FMP_TLS_VERIFY", True)
-        self._ssl_ctx = None if self.tls_verify else ssl._create_unverified_context()
-        if not self.tls_verify:
-            print(f"[fmp] WARNING: HTTPS certificate verification is OFF for {self.host} "
-                  f"(FMP_TLS_VERIFY=0).", file=sys.stderr)
-
-        env_prefix = os.environ.get("FMP_PATH_PREFIX")
-        env_style = (os.environ.get("FMP_AUTH_STYLE") or "").strip().lower() or None
-        if env_style and env_style not in AUTH_STYLES:
-            raise FMPError(f"FMP_AUTH_STYLE must be one of {', '.join(AUTH_STYLES)}")
-        self.prefix = env_prefix.strip("/") if env_prefix is not None else None
-        self.auth_style = env_style
-        self.connection_source = "environment"
-        if self.is_official:
-            self.prefix = "stable" if self.prefix is None else self.prefix
-            self.auth_style = self.auth_style or "header"
-            self.connection_source = "official defaults" if not (env_prefix or env_style) else "environment"
-        elif self.prefix is None or self.auth_style is None:
-            saved = self._load_saved()
-            if saved and not refresh:
-                self.prefix = saved["prefix"] if self.prefix is None else self.prefix
-                self.auth_style = self.auth_style or saved["style"]
-                self.connection_source = "saved detection"
-            else:
-                self.detect()
+        self.base = BASE      # part of every cache key
 
     # ------------------------------------------------------------------ connection
-    def _url(self, endpoint, params, prefix=None, style=None):
-        prefix = self.prefix if prefix is None else prefix
-        style = style or self.auth_style
-        params = dict(params)
-        if style == "query":
-            params["apikey"] = self.api_key
-        path = "/".join(p for p in (prefix, endpoint) if p)
+    def _url(self, endpoint, params):
         query = ("?" + urllib.parse.urlencode(params)) if params else ""
-        return f"{self.base}/{path}{query}"
+        return f"{BASE}/{PREFIX}/{endpoint}{query}"
 
-    def _headers(self, style):
-        h = {"Accept": "application/json", "User-Agent": "fmp-fundamental-analysis-skill/1.1"}
-        if style == "header":
-            h["apikey"] = self.api_key
-        elif style == "bearer":
-            h["Authorization"] = f"Bearer {self.api_key}"
-        elif style == "x-api-key":
-            h["X-API-Key"] = self.api_key
-        return h
+    def _headers(self):
+        return {"Accept": "application/json", "User-Agent": "fmp-fundamental-analysis-skill/1.1",
+                "apikey": self.api_key}
 
-    def _saved_path(self):
-        return self.cache_dir / "connection.json"
-
-    def _load_saved(self):
-        try:
-            data = json.loads(self._saved_path().read_text(encoding="utf-8"))
-            entry = data.get(self.base)
-            if entry and entry.get("style") in AUTH_STYLES and "prefix" in entry:
-                return entry
-        except (OSError, ValueError, AttributeError):
-            pass
-        return None
-
-    def _save(self):
-        try:
-            path = self._saved_path()
-            data = {}
-            if path.exists():
-                data = json.loads(path.read_text(encoding="utf-8"))
-            data[self.base] = {"prefix": self.prefix, "style": self.auth_style}
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except (OSError, ValueError):
-            pass
-
-    def detect(self, symbol="AAPL"):
-        """Find the path prefix and auth style a proxy accepts, by probing `profile`."""
-        print(f"[fmp] Detecting request format for {self.host} (waits up to {self.timeout:g}s "
-              f"per try) ...", file=sys.stderr, flush=True)
-        prefixes = [self.prefix] if self.prefix is not None else list(PREFIX_CANDIDATES)
-        styles = [self.auth_style] if self.auth_style else list(AUTH_STYLES)
-        seen = []
-        for prefix in prefixes:
-            for style in styles:
-                url = self._url("profile", {"symbol": symbol}, prefix, style)
-                for attempt in range(2):  # one retry if the server is momentarily slow
-                    try:
-                        status, body = self._http_get(url, style)
-                        break
-                    except (urllib.error.URLError, OSError) as e:  # OSError covers read timeouts
-                        if _is_cert_error(e):
-                            raise FMPError(self._cert_hint())
-                        if attempt == 0 and _is_timeout(e):
-                            continue
-                        raise FMPError(self._unreachable_hint(e))
-                self._count("network_calls")
-                ok = status == 402 or (status == 200 and _error_message(body) is None
-                                       and body.strip()[:1] in ("[", "{"))
-                seen.append(f"/{prefix or ''} + {style}: HTTP {status}")
-                if ok:
-                    self.prefix, self.auth_style = prefix, style
-                    self.connection_source = "auto-detected"
-                    self._save()
-                    return
-        raise FMPError(
-            f"Could not find a working request format for {self.host}. Tried: "
-            + "; ".join(seen)
-            + ". Check FMP_API_KEY / FMP_BASE_URL, or set FMP_PATH_PREFIX and FMP_AUTH_STYLE "
-              "to match the proxy's documentation."
-        )
-
-    def _unreachable_hint(self, exc):
-        msg = f"cannot reach {self.host}: {getattr(exc, 'reason', exc)}."
-        if _is_timeout(exc):
-            msg += (f" The server sent no response within {self.timeout:g}s (tried twice). It may be "
-                    f"down or overloaded: try again in a few minutes, or set FMP_TIMEOUT=60.")
-        return msg
-
-    def _cert_hint(self):
-        return (f"HTTPS certificate verification failed for {self.host}. This is common for "
-                f"proxies addressed by a bare IP. To run anyway, set FMP_TLS_VERIFY=0 "
-                f"(traffic can then be intercepted; see SKILL.md).")
+    def _cert_hint(self, exc):
+        return (f"HTTPS certificate verification failed for {HOST}: {getattr(exc, 'reason', exc)}. Python's "
+                f"certificate store may be missing or out of date (Python from python.org on a Mac: run "
+                f"Install Certificates.command once), or something on this network intercepts HTTPS.")
 
     def describe(self):
-        route = "official FMP API" if self.is_official else f"third-party proxy at {self.host}"
-        return {
-            "route": route, "base": self.base, "prefix": self.prefix, "auth_style": self.auth_style,
-            "source": self.connection_source, "tls_verify": self.tls_verify,
-        }
+        """Where the data comes from. analyze.py keeps it with the result; facts.py writes its route to the
+        fa-2.0 document (data_quality.route)."""
+        return {"route": ROUTE, "base": BASE}
 
     # ------------------------------------------------------------------ low level
-    def _http_get(self, url, style=None):
-        req = urllib.request.Request(url, headers=self._headers(style or self.auth_style))
+    def _http_get(self, url):
+        req = urllib.request.Request(url, headers=self._headers())
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout, context=self._ssl_ctx) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return resp.status, resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             try:
@@ -341,7 +217,7 @@ class FMPClient:
                 status, body = self._http_get(url)
             except (urllib.error.URLError, TimeoutError, OSError) as e:
                 if _is_cert_error(e):
-                    raise FMPError(self._cert_hint())
+                    raise FMPError(self._cert_hint(e))
                 last_err = FMPError(f"network error on {endpoint}: {getattr(e, 'reason', e)}"
                                     + (f" (no response within {self.timeout:g}s)" if _is_timeout(e) else ""))
                 time.sleep(2 ** attempt)
@@ -354,8 +230,7 @@ class FMPClient:
             msg = _error_message(body)
             low = (msg or "").lower()
             if status == 401 or "invalid api key" in low:
-                hint = "" if self.is_official else " (proxy: run `fmp_client.py check` to re-detect the request format)"
-                raise InvalidKey(f"key rejected on {endpoint}: {msg or status}{hint}")
+                raise InvalidKey(f"key rejected on {endpoint}: {msg or status}")
             if status in (402, 403) or any(m in low for m in RESTRICTED_MARKERS):
                 detail = (msg or body or f"HTTP {status}").strip().replace("\n", " ")[:160]
                 raise RestrictedEndpoint(f"{endpoint}: not included in your plan ({detail})")
@@ -542,12 +417,7 @@ def _probe(client, ep, params, peek=False):
 def _cmd_check(symbol, peek=False):
     client = FMPClient(refresh=True)
     c = client.describe()
-    print("Connection")
-    print(f"  route       : {c['route']}")
-    print(f"  base URL    : {c['base']}")
-    print(f"  path prefix : /{c['prefix'] or ''}")
-    print(f"  auth style  : {c['auth_style']}  ({c['source']})")
-    print(f"  TLS verify  : {'on' if c['tls_verify'] else 'OFF'}")
+    print(f"Connection: {c['route']} at {c['base']}/{PREFIX} (HTTPS certificate verified)")
     print(f"\nProbing company endpoints with {symbol} ...\n")
     print(f"{'endpoint':<30} {'params':<28} {'result':<11} detail")
     print("-" * 92)

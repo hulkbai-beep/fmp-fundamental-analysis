@@ -14,7 +14,7 @@ macro dashboard:
   python macro.py --json out.json  also write the numbers to a JSON file
   python macro.py --refresh        ignore the local cache
 
-Notes on the data (what the FMP stable endpoints return, checked against the proxy):
+Notes on the data (what the FMP stable endpoints return, checked against live responses):
 - treasury-rates returns at most ~3 months per request, so the curves now / 1M ago, 3M ago and
   1Y ago come from three short windows (three calls). A company analysis without --macro needs
   only today's curve (the recent window, one call).
@@ -667,10 +667,8 @@ def main(argv=None):
                     [[e["date"], e["event"], e["impact"], _num(e["actual"], e["unit"]),
                       _num(e["estimate"], e["unit"]), _num(e["previous"], e["unit"])] for e in evs])
               if evs else "None.")
-    conn = client.describe()
     print("\n### Data notes")
-    print(f"- Data route: {conn['route']}." + ("" if conn["route"].startswith("official") else
-          " Not served by FMP directly; spot-check important figures."))
+    print(f"- Data route: {client.describe()['route']}.")
     print(f"- API calls: {client.stats['network_calls']} network, {client.stats['cache_hits']} from cache.")
     if client.restricted:
         print(f"- Skipped (not in your FMP plan): {', '.join(client.restricted)}")
