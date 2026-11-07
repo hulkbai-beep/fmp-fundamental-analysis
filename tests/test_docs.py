@@ -183,11 +183,15 @@ REMOVED_WORDS = re.compile(r"fundamental score|基本面(?:打分|评分)|price 
 SAYS_GONE = re.compile(r"\b(?:no|not(?! only)|never|none|nor|neither|without|removed|deleted|dropped|ignored|ignores|"
                        r"gone)\b|n't|不再|不给|不会|不起作用|不用|不要|不能|不是|没有|无需|删除|删掉|去掉|移除|忽略|别用", re.I)
 ELSEWHERE = re.compile(r"investment-final-plan|decision engine|决策引擎|fundamental_view|before v2\.0|v2\.0 之前", re.I)
+# What only the local page shows, never the report or fa-2.0: the share price chart and the price range of
+# ui/price_range.py. A sentence that names the page may name them (and nothing else of REMOVED_WORDS).
+PAGE_ONLY = re.compile(r"price ranges?|价格区间|K-line|candlestick|K ?线|volatility ranges?|波动区间", re.I)
+ON_THE_PAGE = re.compile(r"网页|web page|local page|the page\b|ui/price_range\.py", re.I)
 
 
 def presented_as_present(text):
     """The sentences of a doc (outside "What changed in v2.0", code blocks and SKILL.md's frontmatter) that name a
-    removed output or option without saying it is gone."""
+    removed output or option without saying it is gone, or that name what only the page shows without the page."""
     if text.startswith("---\n"):
         text = text.split("\n---\n", 1)[1]
     text = without_code(section(text, CHANGES, inside=False))
@@ -195,8 +199,12 @@ def presented_as_present(text):
     for block in re.split(r"\n\s*\n|\n(?=\s*[-*] |\s*\d+\. |\|)", text):
         for s in re.split(r"(?<=[.!?;])\s+|(?<=[。；])", " ".join(block.split())):
             prose = OPTION.sub(" ", re.sub(r"`[^`]*`", " ", s))
-            if REMOVED_WORDS.search(s) and not SAYS_GONE.search(prose) and not ELSEWHERE.search(s):
-                out.append(s)
+            found = [m.group(0) for m in REMOVED_WORDS.finditer(s)]
+            if not found or SAYS_GONE.search(prose) or ELSEWHERE.search(s):
+                continue
+            if ON_THE_PAGE.search(s) and all(PAGE_ONLY.fullmatch(w) for w in found):
+                continue
+            out.append(s)
     return out
 
 
@@ -311,9 +319,12 @@ class Removed(unittest.TestCase):
                    "Run it with `--peers none` and the report still prints the price targets.",
                    "The report shows not only the fundamental score but also the price range.",
                    "Quote the price target instead of the DCF value.",
-                   "报告分别给出目标价和价格区间。", "报告不仅给出目标价，还给出价格区间。"]
+                   "报告分别给出目标价和价格区间。", "报告不仅给出目标价，还给出价格区间。",
+                   "The report draws a K-line chart and the price range.", "The page shows the analyst price targets.",
+                   "网页上有安全边际和价格区间。"]
         kept = ["v2.0 has no price targets.", "不给目标价。", "The score lives in the decision engine.",
-                "`--iv` and `--no-insider` are accepted and ignored.", "`--no-insider` 不起作用。"]
+                "`--iv` and `--no-insider` are accepted and ignored.", "`--no-insider` 不起作用。",
+                "The local page draws a K-line chart and the price range by method.", "网页上画 K 线图和价格区间。"]
         for s in planted:
             self.assertTrue(presented_as_present(f"# Doc\n\nSome text.\n\n{s}\n"), s)
         for s in kept:
@@ -352,6 +363,11 @@ class Content(unittest.TestCase):
             n[name] = len(log)
         self.assertEqual((n["none"], n["no-ttm"], n["no-market"], n["macro"]), (14, 11, 10, 25))
         self.assertEqual((n["two peers"] - n["none"], n["auto peers"] - n["none"]), (10, 1))  # the fake has no peers
+        log.clear()
+        with mock.patch.object(A, "FMPClient", Client):
+            A.analyze(A.parse_args(["QUAL", "--peers", "none"]), page=True)
+        page = len(log) - n["none"]                                      # the local page's daily bars
+        self.assertEqual(page, 1)
         en, zh, skill = TEXT["README.en.md"], TEXT["README.md"], TEXT["SKILL.md"]
         self.assertIn(f"makes {n['none']} API calls: {n['no-ttm']} with `--no-ttm`, {n['no-market']} with "
                       f"`--no-market`, {n['macro']} with `--macro`. Peers add 5 calls each, and finding the automatic "
@@ -366,6 +382,9 @@ class Content(unittest.TestCase):
             self.assertIn(part, zh)
         for part in (f"({ttm} fewer API calls)", "(5 API calls per peer)"):
             self.assertIn(part, skill)
+        self.assertIn(f"the page makes {page} more API call", en)
+        self.assertIn(f"网页另外多调用 {page} 次 API", zh)
+        self.assertIn(f"chart\n({'one' if page == 1 else page} more API call)", skill)
         # What changed in v2.0: 21 and 27 calls before (measured on 8c5ceed), the measured counts now
         for text in (en, skill):
             self.assertIn(f"Without peers an analysis makes {n['none']} API calls instead of 21, and {n['macro']} "

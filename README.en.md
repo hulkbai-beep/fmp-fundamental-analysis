@@ -18,7 +18,7 @@ What it covers:
 - Rates and macro backdrop (optional): Treasury yield curve, Fed funds rate, the latest readings of CPI / PPI / PCE / payrolls / Fed decisions, the next three weeks' schedule, and the 1-month / 3-month / year-to-date / 1-year returns of the company, its industry and sector against the S&P 500
 - One output for other tools: the fa-2.0 document (`--json` / `--facts`), every field described in `contracts/fa-2.0.schema.json`
 
-All calculations are done by the scripts; Claude presents the results. The skill does not say whether to buy or sell and gives no score, price target or price range: the decision is yours, or the decision engine's ([investment-final-plan](https://github.com/hulkbai-beep/investment-final-plan), which computes its own fundamental score from fa-2.0).
+All calculations are done by the scripts; Claude presents the results. The skill does not say whether to buy or sell, and neither the report nor fa-2.0 gives a score, price target or price range: the decision is yours, or the decision engine's ([investment-final-plan](https://github.com/hulkbai-beep/investment-final-plan), which computes its own fundamental score from fa-2.0). The local web page also draws the share price and the price range each method gives, on the page only (see Option 3).
 
 > This is an analysis tool, not investment advice. Data may contain errors; verify important figures against the company's filings.
 
@@ -28,8 +28,8 @@ All calculations are done by the scripts; Claude presents the results. The skill
 
 v2.0 gives facts and standard models only. Removed, and what replaces it where something does:
 - The fundamental score (pillars, label, confidence, caps) and the fa-1.1 contract, with `scripts/score.py`, `scripts/contract.py`, `contracts/fa-1.1.schema.json`, `scripts/score_batch.py` and `references/validation-set.txt`. The score now lives in the decision engine: investment-final-plan, `ifp/fundamental_view.py`, rules 1.3, documented in [docs/fundamental-score-1.3.md](https://github.com/hulkbai-beep/investment-final-plan/blob/main/docs/fundamental-score-1.3.md).
-- Price ranges and price levels (forward-multiple ranges in prices, the fiscal-year-end price cards, the 52-week range), the volatility ranges (`--iv`), analyst price targets and the margin of safety. The forward multiples and their 3-year distribution remain as statistics (percentiles and today's percentile); the DCF and the reverse DCF remain, with every input, never set against the price.
-- Insider trades (`scripts/insider.py`, `--no-insider`) and the automated flags; on the web page, the K-line (candlestick) chart and the cards of the removed parts. The page shows the same facts as the report.
+- Price ranges and price levels in the report and fa-2.0 (forward-multiple ranges in prices, the fiscal-year-end price cards, the 52-week range), the volatility ranges (`--iv`), analyst price targets and the margin of safety. The forward multiples and their 3-year distribution remain as statistics (percentiles and today's percentile); the DCF and the reverse DCF remain, with every input, never set against the price in the report. The local web page works out its own price range by method with `ui/price_range.py` (without analyst targets or `--iv`), shown on the page only.
+- Insider trades (`scripts/insider.py`, `--no-insider`) and the automated flags, and on the web page the cards of the score and the flags. The page shows the same facts as the report, and on the page only the share price (K-line) chart and the price range.
 - Outputs: `--json`, `--facts` and the deprecated `--contract` all write fa-2.0. `python scripts/facts.py SAVED.json [-o OUT.json]` converts a result saved by `--json` of v1.x (it replaces `contract.py SAVED.json --facts`).
 - Without peers an analysis makes 14 API calls instead of 21, and 25 instead of 27 with `--macro`: insider trades and price targets are no longer fetched, and the returns against the industry, sector and S&P 500 and the Treasury curve 3M / 1Y ago come only with `--macro`.
 
@@ -53,6 +53,7 @@ fmp-fundamental-analysis/
 │   └── fa-2.0.schema.json  # Every field of fa-2.0 (JSON Schema)
 ├── ui/
 │   ├── server.py       # Local web server
+│   ├── price_range.py  # The page's price range: worked out from fa-2.0 and the past year's daily closes, shown on the page only
 │   ├── index.html      # Web page
 │   └── i18n.js         # Chinese/English toggle and translation tables for the web page
 └── tests/              # Offline tests, no API key needed: python -m unittest discover -s tests
@@ -62,6 +63,7 @@ fmp-fundamental-analysis/
     ├── test_facts_report.py  # Tests of the report: its sections, the tables as before, no judgement words, a Chinese translation for every text
     ├── test_docs.py    # Tests of these docs against the code: options, file paths, report sections, the two READMEs
     ├── test_page.py    # Static tests of the web page: what the decision engine relies on, its labels, no removed parts
+    ├── test_price_range.py  # Tests of the page's price range: the ranges v1.x showed, no price that is not positive
     ├── test_symbols.py # Tests of the ticker normalisation
     └── data/           # Results and report tables saved by earlier versions, for the tests
 ```
@@ -297,12 +299,13 @@ On a Mac, use `python3 ui/server.py`, started from a Terminal window where `~/.z
 
 - **Reads the `FMP_*` variables saved with `setx` at start-up:** even if the terminal was opened before `setx`.
 - **Settings on the page:** ticker, comparison companies, discount rate % (blank = automatic, tied to Treasuries), growth years 1-5 %, terminal growth %, starting FCF (latest or 3-year average), macro backdrop, ignore cache.
-- **What the page shows:** the same facts as the report, from the same fa-2.0 document: a header with the company, its price and market cap, tiles of key figures, and the report's sections. Data fetched earlier through a third-party proxy gets a notice at the top naming its source.
+- **What the page shows:** the same facts as the report, from the same fa-2.0 document: a header with the company, its price, the day's change and market cap, tiles of key figures, and the report's sections. Data fetched earlier through a third-party proxy gets a notice at the top naming its source.
+- **What only the page shows:** the share price over the past year (daily candles with volume, weekly candles when the chart is too narrow, over 3M, 6M, YTD or 1Y; hovering shows a day's open, high, low and close), and the page's "Price range" tab with the "DCF vs price" and "Forward P/E range" tiles in the header. The page's price range goes by method: forward P/E and forward EV/EBITDA (the 25th percentile, median and 75th percentile of the 3-year distribution times the next-12-month estimates now and at each fiscal year end), the DCF, the lowest and highest close of the past 52 weeks, and the range the past year's volatility gives to each fiscal year end. `ui/price_range.py` works them out from fa-2.0 and the daily closes; none is a forecast, and none is written to fa-2.0 or the report. A measure that is not meaningful for the type of company, or a price that is not positive, is left out.
 - **Chinese / English toggle:** the "EN / 中文" button at the top right switches the page between Chinese and English; Chinese by default, and the browser remembers your last choice. Translation happens only in the web page, so the numbers do not change; industry names from FMP and a few economic release names without a translation stay in English.
 - **Links open directly:** for example `http://127.0.0.1:8765/?symbol=NVDA` analyzes NVDA straight away.
 - **Local only:** the page listens on 127.0.0.1, so other devices on your network cannot open it.
 
-The page runs the same analysis as `analyze.py` (the same fa-2.0 document and report), and both share the same cache.
+The page runs the same analysis as `analyze.py` (the same fa-2.0 document and report), and both share the same cache. For the candles the page makes 1 more API call (the past year's daily open, high, low and close); without them it draws the daily closes.
 
 ---
 
