@@ -26,8 +26,9 @@ v2.0 gives facts and standard models only, as one document (fa-2.0) and the repo
   52-week range), the volatility ranges (`--iv`), analyst price targets and the margin of safety. The forward
   multiples and their 3-year distribution stay as statistics (percentiles and today's percentile); the DCF and
   the reverse DCF stay with every input, never set against the price.
-- Removed: insider trades (`scripts/insider.py`, `--no-insider`) and the automated flags; on the local page, the
-  K-line (candlestick) chart and the cards of the removed parts.
+- Removed: insider trades (`scripts/insider.py`, `--no-insider`) and the automated flags, and on the local page
+  the cards of the score and the flags. The local page still draws the share price and a price range by method
+  (`ui/price_range.py`) for the user's own browsing; neither is part of fa-2.0 or the report.
 - Outputs: `--json`, `--facts` and the deprecated `--contract` all write fa-2.0;
   `python scripts/facts.py SAVED.json [-o OUT.json]` converts a result saved by v1.x (it replaces
   `contract.py SAVED.json --facts`).
@@ -68,7 +69,9 @@ verification fails, the fix is on the machine (see Troubleshooting); never sugge
 `python ui/server.py` serves a browser page at http://127.0.0.1:8765 where the user enters a
 ticker and sees the same facts `analyze.py` produces (the same fa-2.0 document and report: a header,
 tiles of key figures and the report's sections; standard library only). It also reads values
-saved with `setx` from the Windows user environment.
+saved with `setx` from the Windows user environment. The page alone also shows the share price chart
+(one more API call) and a price range by method (`ui/price_range.py`): they are for the user's own
+browsing, not part of the skill's output, so never compute or quote a price range in your answers.
 A button in the top-right corner switches the page between Chinese (default) and English; the
 translation happens only in the browser, so numbers and `analyze.py` output are unchanged.
 This is for the user's own browsing; when you analyse a stock, still run `scripts/analyze.py`.

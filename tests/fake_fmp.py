@@ -299,6 +299,15 @@ def answer(endpoint, params):
         if rows is None:
             raise RestrictedEndpoint(f"{endpoint}: unknown symbol {sym}")
         return _between([{"date": d, "price": p} for d, p in rows], params)
+    if endpoint == "historical-price-eod/full" and c:
+        # daily bars for the page's candlestick chart: each opens at the previous close and trades a little beyond
+        # both, on a volume that varies from day to day
+        rows, bars = c["prices"], []
+        for i, (d, p) in enumerate(rows):
+            o = rows[i - 1][1] if i else p
+            bars.append({"date": d, "open": o, "high": round(max(o, p) * 1.006, 2), "low": round(min(o, p) * 0.994, 2),
+                         "close": p, "volume": 2_000_000 + 150_000 * (i * 7 % 11)})
+        return list(reversed(_between(bars, params)))
     if endpoint == "insider-trading/search" and c:
         page, limit = int(params.get("page", 0)), int(params.get("limit", 100))
         return INSIDER[sym][page * limit:(page + 1) * limit]

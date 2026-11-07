@@ -2,8 +2,10 @@
 """
 Local web UI for the fmp-fundamental-analysis skill.
 
-Runs the same analysis as scripts/analyze.py (analyze.run(): the same fa-2.0 document and the
-same report) and shows it in the browser. Standard library only.
+Runs the same analysis as scripts/analyze.py (analyze.run_page(): the same fa-2.0 document and the
+same report, plus the last year's daily prices for the page's price chart) and shows it in the browser,
+with the price ranges of ui/price_range.py. The chart and the ranges are for the page only: they are not
+part of fa-2.0 or the report. Standard library only.
 
 Usage:
   python ui/server.py              # then open http://127.0.0.1:8765
@@ -29,6 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
+sys.path.insert(0, str(HERE))  # price_range.py, also when this file is imported from elsewhere
 
 ENV_NAMES = ("FMP_API_KEY", "FMP_MAX_PER_MIN", "FMP_CACHE_DIR")
 
@@ -55,6 +58,7 @@ def load_user_env():
 load_user_env()
 
 import analyze as A  # noqa: E402
+import price_range as PR  # noqa: E402
 from fmp_client import FMPError, InvalidKey  # noqa: E402
 from symbols import normalize_symbol  # noqa: E402
 
@@ -63,7 +67,9 @@ _lock = threading.Lock()  # FMPClient rate limiting and cache are per-process; r
 
 def run_analysis(q):
     """(HTTP status, payload) for /api/analyze: {"result": the fa-2.0 document, "report": the markdown report,
-    "log": what the run wrote to stderr}, or {"error": ...}."""
+    "prices", "candles", "candles_note", "change_pct": the price chart's data (analyze.run_page()),
+    "price_range": the price ranges (price_range.build()), "log": what the run wrote to stderr}, or
+    {"error": ...}. Only "result" and "report" are what the command line writes."""
     try:
         sym = normalize_symbol(q.get("symbol"))  # BRK.B -> BRK-B; refuses foreign listings
     except ValueError as e:
@@ -96,14 +102,18 @@ def run_analysis(q):
             lines = log.getvalue().strip().splitlines()
             return 400, {"error": lines[-1] if lines else "Invalid options."}
         try:
-            doc, report = A.run(args)
+            doc, report, chart = A.run_page(args)
         except InvalidKey as e:
             return 401, {"error": f"API key problem: {e}", "log": log.getvalue()}
         except SystemExit as e:
             return 404, {"error": str(e), "log": log.getvalue()}
         except FMPError as e:
             return 502, {"error": f"FMP error: {e}", "log": log.getvalue()}
-    return 200, {"result": doc, "report": report, "log": log.getvalue()}
+        try:
+            chart["price_range"] = PR.build(doc, chart["prices"])
+        except Exception:  # the page shows everything else, and the log says why it has no price ranges
+            traceback.print_exc()
+    return 200, {"result": doc, "report": report, **chart, "log": log.getvalue()}
 
 
 class Handler(BaseHTTPRequestHandler):

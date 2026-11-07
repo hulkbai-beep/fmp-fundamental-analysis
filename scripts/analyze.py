@@ -726,6 +726,18 @@ def fetch_prices(client, sym, start, end):
         return []
 
 
+def fetch_candles(client, sym, start, end):
+    """Daily open/high/low/close bars for the local page's candlestick chart, and why they are missing (or None).
+    Only the page asks for them (run_page), so a failure is not added to the report's data notes."""
+    try:
+        bars = client.ohlc(sym, start, end)
+    except InvalidKey:
+        raise
+    except FMPError as e:
+        return [], str(e)
+    return bars, None if bars else "historical-price-eod/full returned no rows"
+
+
 def fetch_quote(client, sym):
     """The latest quote (price, day change, market cap, day range, timestamp), or None when the plan or data
     source has none; the profile's price, cached for a day, is then used."""
@@ -763,24 +775,37 @@ def quote_price(profile, quote):
     return profile
 
 
-def apply_quote(profile, quote, series):
+def apply_quote(profile, quote, series, candles=()):
     """Use the latest quote for the price, day change and market cap, and for the latest day of the price
-    history, so each run shows the current price while the profile and the daily closes come from the cache.
-    Returns (profile, series, quote time in New York as 'YYYY-MM-DD HH:MM'); the time is "" when the quote has
-    no timestamp, and None when the quote was not used because it is older than the price history."""
+    history (and of the page's daily bars), so each run shows the current price while the profile and the price
+    history come from the cache. Returns (profile, series, candles, quote time in New York as
+    'YYYY-MM-DD HH:MM'); the time is "" when the quote has no timestamp, and None when the quote was not used
+    because it is older than the price history. Only the closes decide whether the quote is used, so the page's
+    daily bars never change the document; bars newer than the quote are left as they are."""
+    candles = list(candles or ())
     ts = num(quote, "timestamp")
     when = us_eastern(ts / 1000 if ts > 1e12 else ts) if ts and ts > 0 else None
     day = when.date().isoformat() if when else None
     if day and series and series[-1][0] > day:
-        return profile, series, None  # the quote is older than the price history: keep the profile's price
+        return profile, series, candles, None  # the quote is older than the price history: keep the profile's price
     profile = quote_price(profile, quote)
+    px = profile["price"]
     if not when:
-        return profile, series, ""
+        return profile, series, candles, ""
     # A close for the quote's day exists once that session has opened (not on weekends or before 9:30).
     opened = when.weekday() < 5 and when.time() >= dt.time(9, 30)
     if series and (series[-1][0] == day or (series[-1][0] < day and opened)):
-        series = [p for p in series if p[0] != day] + [(day, profile["price"])]
-    return profile, series, when.strftime("%Y-%m-%d %H:%M")
+        series = [p for p in series if p[0] != day] + [(day, px)]
+    if candles and px and (candles[-1][0] == day or (candles[-1][0] < day and opened)):
+        qo, qh, ql = (v if v and v > 0 else None for v in (num(quote, "open"), num(quote, "dayHigh"), num(quote, "dayLow")))
+        qv = num(quote, "volume")
+        if candles[-1][0] == day:
+            _, o, h, lo, _, v = candles[-1]
+            candles[-1] = (day, o, max(h, qh or px, px), min(lo, ql or px, px), px, max(v or 0, qv or 0) or None)
+        else:
+            o = qo or px
+            candles.append((day, o, max(qh or px, px, o), min(ql or px, px, o), px, qv or None))
+    return profile, series, candles, when.strftime("%Y-%m-%d %H:%M")
 
 
 def max_workers():
@@ -790,9 +815,11 @@ def max_workers():
         return 6
 
 
-def analyze(args):
+def analyze(args, page=False):
     """One company's analysis: the internal result that facts.build() turns into the fa-2.0 document and run()
-    reports on. It is never written to disk (only fa-2.0 is)."""
+    reports on. It is never written to disk (only fa-2.0 is). With page=True (run_page, for ui/server.py) it also
+    fetches the last year's daily bars and adds what the page's price chart shows under "page"; facts.build()
+    never reads it."""
     try:
         sym = normalize_symbol(args.symbol)  # BRK.B -> BRK-B; refuses foreign listings before any API call
     except ValueError as e:
@@ -828,6 +855,8 @@ def analyze(args):
             submit(st, "balance-sheet-statement", sym, "quarter", 1, optional=True))
         f_est = submit(fetch_estimates, client, sym)
         f_quote = submit(fetch_quote, client, sym)
+        year_ago = (today - dt.timedelta(days=366)).isoformat()
+        f_bars = submit(fetch_candles, client, sym, year_ago, today.isoformat()) if page else None
         f_peer_syms = submit(peer_symbols, client, sym, args.peers, args.max_peers)
         market_reqs = {}
         if not args.no_market:
@@ -851,6 +880,7 @@ def analyze(args):
         ttm = build_ttm(*(f.result() for f in f_q)) if f_q else None
         series = f_px.result()
         est, quote = f_est.result(), f_quote.result()
+        candles, candles_note = f_bars.result() if f_bars else ([], None)
         peers = [peer_snapshot(s, *(f.result() for f in fs)) for s, fs in f_peers]
         market_res = {k: f.result() for k, f in f_market.items()}
     except BaseException:
@@ -862,7 +892,7 @@ def analyze(args):
 
     price_time = None
     if quote:
-        profile, series, price_time = apply_quote(profile, quote, series)
+        profile, series, candles, price_time = apply_quote(profile, quote, series, candles)
 
     if ttm and ttm["date"] <= years[-1]["date"]:
         ttm = None  # latest quarter is the fiscal year end; annual data is already current
@@ -917,7 +947,7 @@ def analyze(args):
     analyst = analyst_view(est, years[-1], price, today.isoformat())
     # the date the price belongs to when there is no quote time: the last close of the past year
     year = [d for d, px in series if d >= (today - dt.timedelta(days=365)).isoformat() and px]
-    return {
+    result = {
         "symbol": sym, "as_of": today.isoformat(), "price_time": price_time,
         "last_close": year[-1] if len(year) >= 2 else None, "profile": profile,
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -934,19 +964,37 @@ def analyze(args):
                  "restricted": sorted(client.restricted), "errors": sorted(client.errors),
                  "connection": client.describe()},
     }
+    if page:  # the local page's price chart: never part of fa-2.0
+        result["page"] = {"prices": [list(p) for p in series if p[0] >= year_ago],
+                          "candles": [list(b) for b in candles], "candles_note": candles_note,
+                          "change_pct": num(profile, "changePercentage")}
+    return result
 
 
 def run(args):
-    """One analysis as (fa-2.0 document, markdown report). main() and ui/server.py both call it, so the command
-    line and the page always agree."""
-    r = analyze(args)
+    """One analysis as (fa-2.0 document, markdown report). main() calls it, and ui/server.py calls run_page(), so
+    the command line and the page always agree."""
+    return _run(args, page=False)[:2]
+
+
+def run_page(args):
+    """run() for ui/server.py: the same document and report, and what the page's price chart shows, which is
+    never part of fa-2.0: {"prices": the last year's daily closes, "candles": its daily bars [date, open, high,
+    low, close, volume] (one more API call), "candles_note": why there are none, "change_pct": the day's change
+    in percent}."""
+    return _run(args, page=True)
+
+
+def _run(args, page):
+    r = analyze(args, page=page)
+    chart = r.pop("page", None)
     doc = F.build(json.loads(json.dumps(r, default=str)))  # built from its JSON form, like a result saved by v1.x
     mk = r["market"] or {}
     macro_md = None
     if mk.get("macro"):  # --macro: the dashboard, then the stock's returns against its industry, sector and SPY
         macro_md = M.render_macro(mk["macro"]) + "\n\n" + M.render_returns(mk["sector"], r["symbol"])
     calls = (r["meta"]["network_calls"], r["meta"]["cache_hits"])
-    return doc, R.render(doc, macro_md=macro_md, calls=calls)
+    return doc, R.render(doc, macro_md=macro_md, calls=calls), chart
 
 
 # accepted for one version, with a note on stderr

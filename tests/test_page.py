@@ -8,8 +8,9 @@ The decision engine (investment-final-plan, ifp/web.py fa_page) embeds this page
 fetch override for /api/analyze in front of the line <script src="i18n.js"></script>, hides the form #f and opens
 the page with ?symbol=, which submits the form. So those stay exactly as they are. The tests also check that every
 label key the page uses has both languages in i18n.js and that i18n.js keeps no label the page does not use, that
-the form sends only what ui/server.py reads, and that the parts v2.0 removed (the score, the flags, the price chart,
-the price range, the implied volatility) are gone from the page.
+the form sends only what ui/server.py reads, that the price chart and the price ranges come from beside the
+document (only the page shows them), and that the parts v2.0 removed (the score, the flags, the insider trades,
+the implied volatility) are gone from the page.
 """
 from __future__ import annotations
 
@@ -34,16 +35,15 @@ ENGINE_INJECT = ("<style>#f{display:none}</style><script>(()=>{const run=\"runs/
                  "encodeURIComponent(run),o):f(u,o);})();</script>")
 # The labels the page set with t(): applyLang() reads the attribute keys; every other call names its key.
 DYNAMIC_CALLS = {"t(el.dataset.i18n)", "t(el.dataset.i18nPh)", "t(el.dataset.i18nTitle)"}
-# Label keys of the parts v2.0 removed, by prefix or name (the score card, the price chart, the price range chart
-# and tiles, the flags card, the implied-volatility input).
-REMOVED_KEYS = re.compile(r"^(sc_|rc_|chart_|k_|p_|lbl_|ind_|note_|val_|cap_|cf_|cr_|q_|zone_|conf_|grp_|pctile|"
-                          r"pio_scaled|altman_rule|month$|no_ohlc$|no_prices$|flags_title$|pos$|neg$|none$|"
-                          r"s_mos$|s_range|f_iv$|iv_tip$|ph_realized$)")
+# Label keys of the parts v2.0 removed, by prefix or name (the score card, the flags card, the implied-volatility
+# input).
+REMOVED_KEYS = re.compile(r"^(sc_|lbl_|ind_|note_|val_|cap_|cf_|cr_|q_|zone_|conf_|grp_|pctile|pio_scaled|"
+                          r"altman_rule|flags_title$|pos$|neg$|none$|f_iv$|iv_tip$|ph_realized$)")
 # What the page may no longer mention (case-sensitive: the Piotroski tile reads models.piotroski.score).
-REMOVED_TEXT = ("candle", "Candle", "ohlc", "drawPrice", "priceCard", "PERIODS", "scoreCard", "r.score", "viewsHtml",
-                "flag", "Flag", "price_range", "rangeChart", "drawRange", "rcRows", "RC_COLOR", "margin_of_safety",
-                "volatility", "Volatility", "s_mos", "s_range", "SCORE_UI", "ResizeObserver", "<svg", "insider",
-                "Insider", "price target")
+REMOVED_TEXT = ("scoreCard", "r.score", "viewsHtml", "flag", "Flag", "margin_of_safety", "SCORE_UI", "insider",
+                "Insider", "price target", "Price target")
+# What the page shows beside the document (ui/server.py; the decision engine sends the same from its run)
+PAGE_ONLY = ("prices", "candles", "candles_note", "change_pct", "price_range")
 
 
 # ---------------------------------------------------------------------------- reading JavaScript as text
@@ -172,7 +172,7 @@ class Engine(unittest.TestCase):
         self.assertIn('startsWith("fa-2")', SCRIPT)                    # an error card for anything but fa-2.x
         self.assertIn("data.result", SCRIPT)
         self.assertIn("data.report", SCRIPT)
-        for absent in ("data.candles", "data.prices", "candles_note", ".profile", ".current", "r.years"):
+        for absent in (".profile", ".current", "r.years"):
             self.assertNotIn(absent, SCRIPT)
 
     def test_there_is_no_tls_notice(self):
@@ -241,7 +241,7 @@ class Form(unittest.TestCase):
 
         q = Query(symbol="QUAL", peers="TRAP", discount="9", growth="5", terminal="2.5", fcf_base="avg3", macro="1",
                   refresh="1", iv="45", years="3")
-        with mock.patch.object(server.A, "run", return_value=({}, "")) as run:
+        with mock.patch.object(server.A, "run_page", return_value=({}, "", {"prices": []})) as run:
             self.assertEqual(server.run_analysis(q)[0], 200)
         args = run.call_args[0][0]
         self.assertEqual((args.peers, args.discount, args.fcf_base, args.macro, args.refresh, args.iv),
@@ -253,6 +253,37 @@ class Form(unittest.TestCase):
     def test_no_implied_volatility_input(self):
         self.assertNotIn("iv", form_fields())
         self.assertNotRegex(PAGE, r"""["'&?]iv\b""")
+
+
+class PageOnly(unittest.TestCase):
+    """The price chart and the price ranges: only the page shows them, from the parts of the answer beside the
+    document (never from the document, which has no such fields)."""
+
+    def test_the_page_reads_them_beside_the_document(self):
+        for name in PAGE_ONLY:
+            self.assertRegex(SCRIPT, rf"\bdata\.{name}\b", name)
+            self.assertNotRegex(SCRIPT, rf"\b(?:d|result|r)\.{name}\b", name)
+
+    def test_each_part_is_left_out_when_it_is_missing(self):
+        """The decision engine may send none of them (a run without a technical chart, an older skill)."""
+        self.assertIn("if (barsOf(data).length) h += priceCard(data);", SCRIPT)
+        self.assertIn("lastRange = data.price_range?.rows?.length ? data.price_range : null;", SCRIPT)
+        self.assertIn('typeof data.change_pct === "number"', SCRIPT)
+        self.assertIn("(pr ? rangeTiles(", SCRIPT)
+
+    def test_the_price_range_tab_comes_before_the_data_notes(self):
+        self.assertIn('sections.findIndex(s => s.startsWith("## Data notes"))', SCRIPT)
+        self.assertIn('name: t("rc_tab"), html: rangeSection(lastRange)', SCRIPT)
+
+    def test_every_method_has_a_colour_and_a_name(self):
+        import price_range as PR  # noqa: F401  (the module that makes the rows)
+        kinds = set(re.findall(r'"kind": "(\w+)"', (ROOT / "ui" / "price_range.py").read_text(encoding="utf-8")))
+        self.assertEqual(kinds, {"week52", "fwd_pe", "fwd_ev", "dcf", "volatility"})
+        colours = re.search(r"const RC_COLOR = \{(.*?)\};", SCRIPT).group(1)
+        names = re.search(r"const rcKind = k => \(\{(.*?)\}\)", SCRIPT, re.S).group(1)
+        for k in kinds:
+            self.assertRegex(colours, rf"\b{k}: \"--c-", k)
+            self.assertIn(f'{k}: t("rc_{k}")', names)
 
 
 class Removed(unittest.TestCase):

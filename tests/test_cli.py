@@ -7,12 +7,14 @@ Offline tests of the command line (scripts/analyze.py and the scripts/facts.py c
 v2.0 writes one document, fa-2.0: --json, --facts and the deprecated --contract all write it, stdout is the
 report alone (facts_report.py, tested in test_facts_report.py) and notes go to stderr. Without peers and
 --macro an analysis makes 14 API calls; --macro also fetches the returns and the Treasury curve 3M and 1Y ago
-for its section.
+for its section. The page gets the same document and report, and beside them its price chart's daily bars (one
+more API call, made only for the page) and its price ranges (ui/price_range.py, tested in test_price_range.py).
 """
 from __future__ import annotations
 
 import collections
 import contextlib
+import datetime as dt
 import io
 import json
 import os
@@ -286,9 +288,11 @@ class Converter(unittest.TestCase):
 
 
 class Page(unittest.TestCase):
-    """ui/server.py answers /api/analyze with the document and the report of analyze.run()."""
+    """ui/server.py answers /api/analyze with the document and the report the command line writes, and beside them
+    what only the page shows: the price chart's data (analyze.run_page()) and the price ranges (price_range.py)."""
 
     def test_the_page_gets_what_the_command_line_writes(self):
+        import price_range as PR
         import server
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(A.R, "render", return_value=REPORT), \
                 mock.patch.dict("os.environ", {"FMP_API_KEY": "offline-test"}):
@@ -298,11 +302,96 @@ class Page(unittest.TestCase):
                 code, body = server.run_analysis({"symbol": "qual", "peers": "none", "iv": "not a number"})
             cli_doc = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(code, 200)
-        self.assertEqual(set(body), {"result", "report", "log"})       # no candles or prices
+        self.assertEqual(set(body), {"result", "report", "log", "prices", "candles", "candles_note", "change_pct",
+                                     "price_range"})
         self.assertEqual(body["report"], REPORT)
         self.assertEqual(without_time(body["result"]), without_time(cli_doc))
         self.assertEqual(validate(body["result"]), [])
         json.dumps(body, allow_nan=False)
+        # the chart: the last year's daily closes, and the same days as open/high/low/close/volume bars
+        doc, prices, candles = body["result"], body["prices"], body["candles"]
+        year_ago = (dt.date.fromisoformat(doc["as_of"]) - dt.timedelta(days=366)).isoformat()
+        self.assertGreater(len(prices), 240)
+        self.assertEqual(prices, sorted(prices))
+        self.assertTrue(all(d >= year_ago for d, _ in prices))
+        self.assertEqual([b[0] for b in candles], [d for d, _ in prices])
+        self.assertEqual([b[4] for b in candles], [p for _, p in prices])
+        for d, o, h, lo, c, v in candles:
+            self.assertTrue(lo <= min(o, c) <= max(o, c) <= h and v > 0, d)
+        self.assertEqual((prices[-1][1], body["candles_note"]), (doc["price"]["value"], None))
+        self.assertIsInstance(body["change_pct"], float)
+        # the price ranges: price_range.build() on that document and those closes
+        self.assertEqual(body["price_range"], json.loads(json.dumps(PR.build(doc, prices))))
+        self.assertEqual({r["kind"] for r in body["price_range"]["rows"]},
+                         {"week52", "fwd_pe", "fwd_ev", "dcf", "volatility"})
+
+    def test_the_page_still_answers_when_the_bars_or_the_ranges_fail(self):
+        import server
+
+        class NoBars(fake_fmp.FakeClient):
+            def _fetch(self, endpoint, params):
+                if endpoint == "historical-price-eod/full":
+                    raise FMPError("historical-price-eod/full: HTTP 500")
+                return super()._fetch(endpoint, params)
+
+        with mock.patch.object(server.A, "FMPClient", NoBars), mock.patch.object(A.R, "render", return_value=REPORT):
+            code, body = server.run_analysis({"symbol": "qual", "peers": "none"})
+        self.assertEqual(code, 200)
+        self.assertEqual((body["candles"], body["candles_note"]), ([], "historical-price-eod/full: HTTP 500"))
+        self.assertGreater(len(body["prices"]), 240)                   # the chart draws the closes instead
+        self.assertEqual(body["result"]["data_quality"]["errors"], [])  # nothing the document reports on
+
+        with mock.patch.object(server.A, "FMPClient", fake_fmp.FakeClient), \
+                mock.patch.object(A.R, "render", return_value=REPORT), \
+                mock.patch.object(server.PR, "build", side_effect=ZeroDivisionError("a bug")):
+            code, body = server.run_analysis({"symbol": "qual", "peers": "none"})
+        self.assertEqual(code, 200)
+        self.assertNotIn("price_range", body)
+        self.assertIn("ZeroDivisionError: a bug", body["log"])
+
+    def test_only_the_page_asks_for_the_daily_bars(self):
+        """The command line makes the calls it always made; the page makes one more, for the chart's bars."""
+        logs = {}
+        for name, run in (("cli", A.run), ("page", A.run_page)):
+            client, logs[name] = recording_client()
+            with mock.patch.object(A, "FMPClient", client), mock.patch.object(A.R, "render", return_value=REPORT):
+                out = run(A.parse_args(["QUAL", "--peers", "none"]))
+            self.assertEqual(len(out), 2 if name == "cli" else 3)
+            if name == "page":
+                self.assertEqual(set(out[2]), {"prices", "candles", "candles_note", "change_pct"})
+        self.assertEqual(dict(collections.Counter(e for e, _ in logs["cli"])), DEFAULT_CALLS)
+        self.assertEqual(dict(collections.Counter(e for e, _ in logs["page"])),
+                         dict(DEFAULT_CALLS, **{"historical-price-eod/full": 1}))
+        (params,) = [p for e, p in logs["page"] if e == "historical-price-eod/full"]
+        self.assertEqual(params["symbol"], "QUAL")
+
+    def test_the_quote_updates_the_last_bar_but_never_decides_alone(self):
+        """apply_quote(): the quote's price is today's close and today's bar's close, widening its high and low;
+        a bar for the quote's day is added once that session has opened. Only the closes decide whether the
+        quote is used, so the page's bars never change the document."""
+        ts = dt.datetime(2026, 11, 6, 15, 0, tzinfo=dt.timezone(dt.timedelta(hours=-5))).timestamp()  # a Friday
+        quote = {"price": 105.0, "changePercentage": 1.5, "timestamp": ts, "open": 99.0, "dayHigh": 104.0,
+                 "dayLow": 98.0, "volume": 1e6}
+        profile = {"price": 100.0, "marketCap": 1e9}
+        series = [("2026-11-05", 100.0), ("2026-11-06", 101.0)]
+        bars = [("2026-11-05", 99.0, 101.0, 98.5, 100.0, 5e5), ("2026-11-06", 100.0, 102.0, 99.5, 101.0, 2e5)]
+        p, s2, b2, when = A.apply_quote(profile, quote, series, bars)
+        self.assertEqual((p["price"], p["changePercentage"], when), (105.0, 1.5, "2026-11-06 15:00"))
+        self.assertEqual(s2[-1], ("2026-11-06", 105.0))
+        self.assertEqual(b2[-1], ("2026-11-06", 100.0, 105.0, 98.0, 105.0, 1e6))  # the quote's day range widens it
+        self.assertEqual(b2[0], bars[0])
+        # the quote's session has opened and no bar has its day yet: one is added from the quote
+        p, s2, b2, _ = A.apply_quote(profile, quote, series[:1], bars[:1])
+        self.assertEqual((s2[-1], b2[-1]), (("2026-11-06", 105.0), ("2026-11-06", 99.0, 105.0, 98.0, 105.0, 1e6)))
+        # bars newer than the quote are left alone, and the quote is still used for the price
+        newer = bars + [("2026-11-09", 101.0, 103.0, 100.0, 102.0, 3e5)]
+        p, s2, b2, when = A.apply_quote(profile, quote, series, newer)
+        self.assertEqual((p["price"], b2, when), (105.0, newer, "2026-11-06 15:00"))
+        # closes newer than the quote: the profile's price stays, and nothing changes
+        later = series + [("2026-11-09", 102.0)]
+        self.assertEqual(A.apply_quote(profile, quote, later, bars), (profile, later, bars, None))
+        # the command line passes no bars
+        self.assertEqual(A.apply_quote(profile, quote, series)[2], [])
 
     def test_values_the_option_parser_would_refuse_get_an_answer(self):
         """Values go to analyze.py attached (--growth=-5e-05), so one starting with "-" is not read as an option;
@@ -332,7 +421,7 @@ class Page(unittest.TestCase):
         import server
         saved = sys.stderr
         first_in_run, second_parsing, first_done = threading.Event(), threading.Event(), threading.Event()
-        real_parse, real_run = server.A.parse_args, server.A.run
+        real_parse, real_run = server.A.parse_args, server.A.run_page
 
         def parse_args(argv):
             if threading.current_thread().name == "second":
@@ -352,7 +441,7 @@ class Page(unittest.TestCase):
 
         with mock.patch.object(server.A, "FMPClient", fake_fmp.FakeClient), \
                 mock.patch.object(A.R, "render", return_value=REPORT), \
-                mock.patch.object(server.A, "parse_args", parse_args), mock.patch.object(server.A, "run", run):
+                mock.patch.object(server.A, "parse_args", parse_args), mock.patch.object(server.A, "run_page", run):
             t1 = threading.Thread(target=first, name="first")
             t1.start()
             first_in_run.wait(1)
