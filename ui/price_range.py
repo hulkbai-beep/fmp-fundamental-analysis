@@ -89,10 +89,9 @@ def build(doc, closes):
      "rows": one per method and horizon, sorted by the horizon's date (methods in the order above within one):
         {"kind", "at": "past" | "now" | "fy_end" | "12m", "fy", "date", "low", "mid", "high", ...what it rests on},
      "pe_ranges": the header's forward P/E ranges: now, then the fiscal year in progress and the next on their own
-        EPS, {"at": "now" | "fy", "fy", "low", "high", "uses": [[fy, weight in % or None], ...]},
-     "dcf_vs_price": the DCF value per share / price - 1, or None}."""
+        EPS, {"at": "now" | "fy", "fy", "low", "high", "uses": [[fy, weight in % or None], ...]}}."""
     price, as_of = _num((doc.get("price") or {}).get("value")), str(doc.get("as_of") or "")[:10]
-    out = {"price": price, "as_of": as_of or None, "rows": [], "pe_ranges": [], "dcf_vs_price": None}
+    out = {"price": price, "as_of": as_of or None, "rows": [], "pe_ranges": []}
     if not as_of:
         return out
     company = doc.get("company") or {}
@@ -147,9 +146,6 @@ def build(doc, closes):
                      "mid": _num(dcf.get("value_per_share")), "high": _num(dcf.get("high")),
                      "discount_rate": _num((inputs.get("discount_rate") or {}).get("value")),
                      "growth": _num(inputs.get("growth_1_5"))})
-        vps = _num(dcf.get("value_per_share"))
-        if vps and price:
-            out["dcf_vs_price"] = vps / price - 1
 
     sigma = volatility(year)
     vol_rows = {}

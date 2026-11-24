@@ -487,8 +487,8 @@ function drawRange(el, w) {
 // A stat tile: its label, the document's value (n/a when there is none) and a note under it: the period or unit
 // of the value, or why there is none. A measure the document marks as not meaningful for this type of company
 // (company.not_meaningful) shows n/a, even though the document still carries its value.
-const tile = (label, [value, note], cls = "") => `<div class="stat"><div class="k">${esc(label)}</div>` +
-  `<div class="v${cls ? " " + cls : ""}">${esc(value)}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
+const tile = (label, [value, note]) => `<div class="stat"><div class="k">${esc(label)}</div>` +
+  `<div class="v">${esc(value)}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
 
 function tiles(d, pr) {
   const c = d.company || {}, now = d.valuation?.now || {}, fw = d.valuation?.forward || {}, m = d.models || {};
@@ -518,18 +518,13 @@ function tiles(d, pr) {
   return tile(t("s_pe"), pe) + tile(t("s_ev"), ev) + tile(t("s_fcfy"), fcf) +
     tile(t("s_roic"), [pct(roic), roic != null ? last(d.statements?.period) || "" : ""]) + tile(t("s_cagr"), growth) +
     tile(t("s_pio"), pio ? [`${txt(pio.score)} / ${txt(pio.out_of)}`, pio.fy || ""] : ["n/a", t("na_short")]) +
-    tile(t("s_fpe"), fpe) + tile(t("s_dcf"), dcfValue) +
-    (pr ? rangeTiles(pr, nm.has("dcf") ? kind[1] : vps == null ? dcfNote
-      : dcf.status === "value_not_positive" ? t("na_dcf_negative") : "") : "");
+    tile(t("s_fpe"), fpe) + tile(t("s_dcf"), dcfValue) + (pr ? rangeTiles(pr) : "");
 }
 
-// Beside the document's figures, from the page's price ranges: the DCF value against the price (or why there is
-// none: the DCF tile's note), then the forward P/E range now (on next-twelve-month EPS) and on the EPS of the
-// fiscal year in progress and of the next.
-function rangeTiles(pr, why) {
-  const mos = pr.dcf_vs_price;
-  const vs = mos != null ? [`${mos >= 0 ? "+" : ""}${(mos * 100).toFixed(1)}%`, ""] : ["n/a", why];
-  return tile(t("s_mos"), vs, mos == null ? "" : mos >= 0 ? "pos" : "neg") + (pr.pe_ranges || []).map(r =>
+// Beside the document's figures, from the page's price ranges: the forward P/E range now (on next-twelve-month EPS)
+// and on the EPS of the fiscal year in progress and of the next. The DCF value is never set against the price.
+function rangeTiles(pr) {
+  return (pr.pe_ranges || []).map(r =>
     tile(`${t("s_range")} · ${r.at === "now" ? t("rc_now") : "FY" + r.fy}`, [rangeTxt(r), t("s_range_eps", r.uses)]))
     .join("");
 }

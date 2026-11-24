@@ -48,7 +48,7 @@ class SameAsBefore(unittest.TestCase):
     def test_the_multiple_and_dcf_ranges_v1_showed(self):
         """Results v1.x saved (tests/data/saved_8c5ceed.json) hold the ranges v1.x showed; the page gets the same
         ones from the fa-2.0 document built from each result: forward P/E and EV/EBITDA now and at both fiscal
-        year ends (net debt from the TTM for QTRS), the DCF range and the DCF value against the price."""
+        year ends (net debt from the TTM for QTRS) and the DCF range."""
         for sym, case in SAVED.items():
             full = case["full"]
             pr = PR.build(F.build(full), [])
@@ -58,8 +58,6 @@ class SameAsBefore(unittest.TestCase):
             for r, s in zip(pr["rows"], saved):
                 for k in ("low", "mid", "high"):
                     self.assertTrue(close(r[k], s[k]), (sym, r["kind"], r["fy"], k, r[k], s[k]))
-            mos = full["dcf"].get("margin_of_safety")
-            self.assertTrue(pr["dcf_vs_price"] is mos is None or close(pr["dcf_vs_price"], mos), sym)
         self.assertEqual(SAVED["QTRS"]["facts"]["periods"]["valuation_basis"], "TTM")
 
     def test_the_header_ranges_v1_showed(self):
@@ -179,7 +177,7 @@ class LeftOut(unittest.TestCase):
         doc, prices = PAGES["BANK"]
         self.assertTrue({"ev_ebitda", "dcf"} <= set(doc["company"]["not_meaningful"]))
         pr = PR.build(doc, prices)
-        self.assertEqual((rows(pr, "fwd_ev"), rows(pr, "dcf"), pr["dcf_vs_price"]), ([], [], None))
+        self.assertEqual((rows(pr, "fwd_ev"), rows(pr, "dcf")), ([], []))
         self.assertTrue(rows(pr, "fwd_pe"))
 
     def test_a_price_that_is_not_positive_gives_no_row(self):
@@ -189,7 +187,6 @@ class LeftOut(unittest.TestCase):
         self.assertEqual(doc["models"]["dcf"]["status"], "value_not_positive")
         pr = PR.build(doc, prices)
         self.assertEqual({r["kind"] for r in pr["rows"]}, {"week52", "volatility"})
-        self.assertIsNone(pr["dcf_vs_price"])
         # without the net debt, the same multiples give positive prices
         ok = copy.deepcopy(doc)
         ok["statements"]["net_debt"] = [0.0] * len(ok["statements"]["net_debt"])
@@ -206,16 +203,19 @@ class LeftOut(unittest.TestCase):
         self.assertEqual(pr["rows"][-1]["date"], (as_of + A.dt.timedelta(days=365)).isoformat())
         self.assertEqual(pr["pe_ranges"], [])
 
+    def test_the_dcf_value_is_never_set_against_the_price(self):
+        """The DCF value is a row of its own; the page works out no margin of safety from it (SKILL.md)."""
+        for sym, (doc, prices) in PAGES.items():
+            self.assertEqual(sorted(PR.build(doc, prices)), ["as_of", "pe_ranges", "price", "rows"], sym)
+
     def test_a_document_without_its_date_or_figures(self):
-        self.assertEqual(PR.build({}, []), {"price": None, "as_of": None, "rows": [], "pe_ranges": [],
-                                            "dcf_vs_price": None})
+        self.assertEqual(PR.build({}, []), {"price": None, "as_of": None, "rows": [], "pe_ranges": []})
         doc, prices = PAGES["QUAL"]
         self.assertEqual(PR.build(dict(doc, as_of=None), prices)["rows"], [])
         no_price = copy.deepcopy(doc)
         no_price["price"]["value"] = None
         pr = PR.build(no_price, prices)
         self.assertEqual({r["kind"] for r in pr["rows"]}, {"week52", "fwd_pe", "dcf"})  # no shares for EV, no volatility
-        self.assertIsNone(pr["dcf_vs_price"])
 
     def test_the_valuation_basis_period_gives_the_net_debt(self):
         doc, _ = PAGES["QTRS"]
