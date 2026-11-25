@@ -10,7 +10,7 @@ the page with ?symbol=, which submits the form. So those stay exactly as they ar
 label key the page uses has both languages in i18n.js and that i18n.js keeps no label the page does not use, that
 the form sends only what ui/server.py reads, that the price chart and the price ranges come from beside the
 document (only the page shows them), and that the parts v2.0 removed (the score, the flags, the insider trades,
-the implied volatility) are gone from the page.
+the implied volatility) and the DCF value against the price are gone from the page.
 """
 from __future__ import annotations
 
@@ -36,12 +36,12 @@ ENGINE_INJECT = ("<style>#f{display:none}</style><script>(()=>{const run=\"runs/
 # The labels the page set with t(): applyLang() reads the attribute keys; every other call names its key.
 DYNAMIC_CALLS = {"t(el.dataset.i18n)", "t(el.dataset.i18nPh)", "t(el.dataset.i18nTitle)"}
 # Label keys of the parts v2.0 removed, by prefix or name (the score card, the flags card, the implied-volatility
-# input).
+# input), and of the "DCF vs price" tile.
 REMOVED_KEYS = re.compile(r"^(sc_|lbl_|ind_|note_|val_|cap_|cf_|cr_|q_|zone_|conf_|grp_|pctile|pio_scaled|"
-                          r"altman_rule|flags_title$|pos$|neg$|none$|f_iv$|iv_tip$|ph_realized$)")
+                          r"altman_rule|flags_title$|pos$|neg$|none$|f_iv$|iv_tip$|ph_realized$|s_mos$)")
 # What the page may no longer mention (case-sensitive: the Piotroski tile reads models.piotroski.score).
 REMOVED_TEXT = ("scoreCard", "r.score", "viewsHtml", "flag", "Flag", "margin_of_safety", "SCORE_UI", "insider",
-                "Insider", "price target", "Price target")
+                "Insider", "price target", "Price target", "dcf_vs_price", "DCF vs")
 # What the page shows beside the document (ui/server.py; the decision engine sends the same from its run)
 PAGE_ONLY = ("prices", "candles", "candles_note", "change_pct", "price_range")
 
